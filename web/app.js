@@ -2986,7 +2986,8 @@ const VENDORS = {
   Juniper:{ipfix:juniper('version-ipfix', 'version-ipfix'), netflow9:juniper('version9', 'version9'),
     sflow:named(rated((ip, port, o) => `# ${T('EX / QFX switches')}\nset protocols sflow collector ${ip} udp-port ${port}\nset protocols sflow sample-rate ingress ${sfRate(o, 1000)}\nset protocols sflow polling-interval 20\n# ${SFLOW_NOTE()}${each(o, ['ge-0/0/0'], n => `\nset protocols sflow interfaces ${n}`)}`))},
   'Palo Alto':{netflow9:steps((ip, port) => [T('Device → Server Profiles → NetFlow → Add: name FlowSphera, active timeout 1 min, template refresh 1 min.'),
-    T('Servers → Add: address {ip}, port {port}.', {ip, port}), T('Network → Interfaces → each interface to watch → Advanced → NetFlow Profile: FlowSphera.'), T('Commit.')])},
+    T('Servers → Add: address {ip}, port {port}.', {ip, port}), T('Network → Interfaces → every inside AND every Internet-facing interface → Advanced → NetFlow Profile: FlowSphera.'),
+    T('PAN-OS exports only the traffic entering an interface: without the profile on the external interfaces the replies from the Internet are not sent, and downloads show 0 B.'), T('Commit.')])},
   'Check Point':{netflow9:(ip, port) => `# Gaia clish\nadd netflow collector ip ${ip} port ${port} export-format Netflow_V9\nsave config`,
     netflow5:(ip, port) => `# Gaia clish\nadd netflow collector ip ${ip} port ${port} export-format Netflow_V5\nsave config`},
   SonicWall:Object.fromEntries([['ipfix', 'IPFIX'], ['netflow9', 'NetFlow version-9'], ['netflow5', 'NetFlow version-5']].map(([k, l]) => [k, steps((ip, port) => [

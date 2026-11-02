@@ -4,6 +4,13 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## Unreleased
+
+### Fixed
+- **Palo Alto: downloads showed 0 B** — PAN-OS exports only the traffic entering an interface, so with the NetFlow
+  profile on the inside interfaces alone the replies from the Internet never arrive. The setup steps in Settings →
+  Devices → Connect a device → Palo Alto now say to put the profile on the inside AND the Internet-facing interfaces.
+
 ## 2.0.0 build 3 — 2026-10-31
 
 ### Fixed
