@@ -10,6 +10,9 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
 - **Palo Alto: downloads showed 0 B** — PAN-OS exports only the traffic entering an interface, so with the NetFlow
   profile on the inside interfaces alone the replies from the Internet never arrive. The setup steps in Settings →
   Devices → Connect a device → Palo Alto now say to put the profile on the inside AND the Internet-facing interfaces.
+- **The sidebar cut off «Collector online» and Ingest on short windows** (e.g. Edge on Windows with display scaling):
+  the menu now tightens on windows under 1,000 px tall and scrolls by itself when even that is not enough; the collector
+  status always stays in view.
 
 ## 2.0.0 build 3 — 2026-10-31
 

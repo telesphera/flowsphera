@@ -821,3 +821,21 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
 /* (1.18.0) what a report holds: three even columns filled top to bottom (rows in turn gave 3/3/3/2), two on a phone */
 .repsecs{display:grid;grid-auto-flow:column;grid-template-rows:repeat(var(--rows),auto);grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 16px}
 @media (max-width:620px){.repsecs{grid-auto-flow:row;grid-template-rows:none;grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* (2.0.0 build 4) short windows (forum: Edge on Windows with display scaling): the sidebar needed ~975 px of height and
+   .side clips (overflow:hidden), so «Collector online» + Ingest fell off the bottom. The menu tightens on short windows
+   and, if that is still not enough, scrolls by itself — the collector block always stays in view. */
+.nav{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(120,150,220,.35) transparent;margin:0 -4px;padding:0 4px}
+.side .brand,.side .health{flex:none}
+@media (min-width:901px) and (max-height:1000px){
+  .side{gap:14px;padding-top:16px}
+  .nav{gap:2px}
+  .nav button{padding:7px 14px}
+  .side .health{gap:8px}
+  .ingest{padding:9px 12px}
+}
+@media (min-width:901px) and (max-height:760px){
+  .side{gap:10px;padding-top:12px}
+  .nav button{padding:5px 12px;font-size:13.5px}
+  .ingest .v{font-size:17px}
+}
