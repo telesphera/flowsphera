@@ -87,7 +87,10 @@ ROLLUPS = {
     # each application's inside hosts and users (User-ID) for app: / user: / ip: filters over long periods. Every
     # record goes in (app '' = not named): a table that held only the named ones could answer another page's question
     # with part of the traffic; for exporters that never name one they are a row per 5 minutes / per host and hour
-    'agg_app': {'bucket': 300, 'keys': [('app', 'LowCardinality(String)', 'app')], 'attrs': []},
+    # its service and L7 name too: Services / Overview under an app: filter over a month are answered from it (for
+    # exporters that name nothing it is a row per service and L7 name every 5 minutes: smaller than agg_traffic)
+    'agg_app': {'bucket': 300, 'keys': [('app', 'LowCardinality(String)', 'app'), ('service', 'LowCardinality(String)', 'service'),
+                ('l7', 'LowCardinality(String)', 'l7')], 'attrs': []},
     'agg_app_host': {'bucket': 3600, 'keys': [('app', 'LowCardinality(String)', 'app'), ('int_ip', 'String', 'int_ip'),
                      ('user_name', 'LowCardinality(String)', 'user_name')], 'attrs': []},
     'agg_iface': {'bucket': 300, 'keys': [('in_if', 'UInt32', 'in_if'), ('out_if', 'UInt32', 'out_if'), ('service', 'LowCardinality(String)', 'service')],

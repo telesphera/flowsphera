@@ -4870,7 +4870,8 @@ function qSuggest(word){
     return out;
   }
   if (!w) return null;                                  // empty: the whole guide
-  Object.keys(info).filter(k => k.startsWith(w.toLowerCase()) && k !== w.toLowerCase()).forEach(k => out.push({text:`${pre}${k}:`, label:`${pre}${k}:`, note:info[k][1], key:true}));
+  // (2.2.0) the whole key typed («app», «ip») still offers «app:» — it used to vanish just when it was spelled out
+  Object.keys(info).filter(k => k.startsWith(w.toLowerCase())).forEach(k => out.push({text:`${pre}${k}:`, label:`${pre}${k}:`, note:info[k][1], key:true}));
   const r = qParse(word);
   if (r.err) out.push({err:r.err});
   else if (r.f) {
