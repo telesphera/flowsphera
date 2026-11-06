@@ -1507,7 +1507,7 @@ def api_devices(q):
     # packets count too: a long session is exported again every active timeout with the same start, and the growth of
     # a steady one (a keepalive) is the same size every time — those are different minutes, not copies
     dups = {r['exporter']: r for r in ch("""SELECT exporter, count() AS n, uniqExact(cityHash64(int_ip, ext_ip, int_port, ext_port, proto, in_if, out_if, ts_start, ts, bytes, packets)) AS u,
-            countIf(obs != 255) AS with_dir FROM flows WHERE ts >= now() - INTERVAL 5 MINUTE GROUP BY exporter""", fmt='JSON')}
+            countIf(obs != 255) AS with_dir, countIf(app != '') AS named FROM flows WHERE ts >= now() - INTERVAL 5 MINUTE GROUP BY exporter""", fmt='JSON')}
     # the latest minute's sampling, unless the devices were edited since: the collector applies a new ratio within
     # about a minute, so until its stats cover that time show the configured one (changed in the UI -> shown at once)
     cfg_changed = max(exporters_mtime())
@@ -1534,6 +1534,9 @@ def api_devices(q):
                     'dup_dropped': int(s.get('dup_dropped') or 0), 'dup_packets': int(s.get('dup_packets') or 0),
                     'dup_pct': round(100 * (int(dups[s['exporter']]['n']) - int(dups[s['exporter']]['u'])) / max(1, int(dups[s['exporter']]['n'])), 2) if s['exporter'] in dups else 0,
                     'direction_field': bool(s['exporter'] in dups and int(dups[s['exporter']]['with_dir'])),
+                    # (2.3.0) records of the last 5 minutes with an application named: a FortiGate / Palo Alto without
+                    # any gets a hint how to turn it on
+                    'apps_named': int(dups[s['exporter']].get('named') or 0) if s['exporter'] in dups else 0,
                     'running_totals': s['exporter'] in running,
                     'sampling': f"1:{int(s['sampling_n'])}" if int(s.get('sampling_n') or 0) > 1 and int(s['last']) > cfg_changed + 120 else c.get('sampling', '1:1'),
                     'wan_ifs': c.get('wan_ifs', []), 'configured': s['exporter'] in exp,
