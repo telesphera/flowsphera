@@ -924,7 +924,6 @@
  "{n} records were not stored in the last hour: the traffic exceeds {rps} records/s, the limit of FlowSphera Community. FlowSphera Pro has no limit.": "За годину {n} записів не збережено: трафік перевищує {rps} записів/с — ліміт FlowSphera Community. У FlowSphera Pro ліміту немає.",
  "{n} repeated packets dropped": "відкинуто повторних пакетів: {n}",
  "{online}/{n} exporters": {"few": "{online}/{n} експортери", "many": "{online}/{n} експортерів", "one": "{online}/{n} експортер", "other": "{online}/{n} експортерів"},
- "{pct}% of the records in 15 min arrive twice. The device monitors both directions on several interfaces but sends no direction field, so the copies cannot be told apart: add the flow direction field to the exported record, or monitor ingress only.": "{pct}% записів за 15 хв приходять двічі. Пристрій стежить за обома напрямками на кількох інтерфейсах, але не передає поле напрямку, тож копії не відрізнити: додайте поле напрямку в запис експорту або залиште лише вхідний напрямок.",
  "{pct}% of this interface’s traffic is from/to public addresses; much less on the others": "{pct}% трафіку цього інтерфейсу — з/до публічних адрес; у решти значно менше",
  "{rps} <small>rec/s</small>": "{rps} <small>записів/с</small>",
  "{size} · peak {fill}%": "{size} · пік {fill}%",
@@ -2024,5 +2023,7 @@
  "full check: restored and counted": "повна перевірка: відновлено й пораховано",
  "{id}: the row counts of the backup cannot be read: {err}": "{id}: не вдалося прочитати кількість рядків у бекапі: {err}",
  "{id}: {t} holds {n} rows, {want} when it was made.": "{id}: у {t} {n} рядків, під час створення було {want}.",
- "unrecognized arguments: {args}": "невідомі аргументи: {args}"
+ "unrecognized arguments: {args}": "невідомі аргументи: {args}",
+ "{pct}% of the records of the last 5 minutes arrive twice. The device monitors both directions on several interfaces but sends no direction field, so the copies cannot be told apart: add the flow direction field to the exported record, or monitor ingress only.": "{pct}% записів за останні 5 хвилин надходять двічі. Пристрій стежить за обома напрямками на кількох інтерфейсах, але не надсилає поле напрямку, тож копії не розрізнити: додайте поле напрямку потоку до записів експорту або стежте лише за вхідним трафіком.",
+ "{pct}% of the records of the last 5 minutes arrive twice, the same in every field, the direction too: the device exports the same flows more than once. Both copies are stored, so the traffic of these flows counts twice — check where and how often the device sends its flow export.": "{pct}% записів за останні 5 хвилин надходять двічі, однакові в кожному полі, зокрема в напрямку: пристрій експортує ті самі потоки більше одного разу. Зберігаються обидві копії, тож трафік цих потоків рахується двічі — перевірте, куди й як часто пристрій надсилає експорт потоків."
 }

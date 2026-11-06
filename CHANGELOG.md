@@ -4,6 +4,14 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## Unreleased
+
+### Fixed
+- **Devices: the «duplicates» hint was wrong for devices that send a direction field** — it always said the device
+  sends none (seen on Palo Alto, which marks every record «ingress» and still sent copies). It now says what happens:
+  the device exports the same flows more than once and both copies are stored, so their traffic counts twice. The
+  hint also said 15 minutes where the share is of the last 5.
+
 ## 2.1.0 — 2026-11-06
 
 New: Ingest over time on the Flows page, data retention of your choice, «Last 15 minutes»; fixes collected as
