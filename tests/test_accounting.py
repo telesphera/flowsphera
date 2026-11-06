@@ -137,6 +137,32 @@ class RepeatedPackets(unittest.TestCase):
         self.assertIsNone(a.account('192.0.2.5', bytes(p), now=0.1))
         self.assertEqual(a.take()[IP], {'packets': 2, 'lost': 0, 'version': 10, 'dup_packets': 1})
 
+    def test_copy_numbered_next_is_not_loss(self):
+        # (2.0.0 build 4) Palo Alto cluster: the copy takes the next number of the same counter
+        a = C.Accounting()
+        p1, p3 = v9(fs(256, b'\1' * 8), seq=1), v9(fs(256, b'\3' * 8), seq=3)
+        copy = v9(fs(256, b'\1' * 8), seq=2, up=10)                    # p1 again, numbered 2
+        for i, p in enumerate((p1, copy, p3, v9(fs(256, b'\4' * 8), seq=4))):
+            a.account(IP, p, now=i * 0.1)
+        self.assertEqual(a.take()[IP], {'packets': 3, 'lost': 0, 'version': 9, 'dup_packets': 1})
+
+    def test_real_gap_after_a_copy_is_still_loss(self):
+        a = C.Accounting()
+        a.account(IP, v9(fs(256, b'\1' * 8), seq=1), now=0.0)
+        a.account(IP, v9(fs(256, b'\1' * 8), seq=2, up=10), now=0.1)   # copy, numbered 2
+        a.account(IP, v9(fs(256, b'\5' * 8), seq=5), now=0.2)          # 3 and 4 lost
+        self.assertEqual(a.take()[IP]['lost'], 2)
+
+    def test_ipfix_copy_numbered_next_is_not_loss(self):
+        a = C.Accounting()
+        a.account(IP, ipfix(IPFIX_TPL, seq=0), now=0.0)
+        body = iset(300, b'\0' * 12)                                   # one 12-byte record
+        rec = lambda seq, t, b=body: struct.pack('!HHIII', 10, 16 + len(b), t, seq, 7) + b
+        a.account(IP, rec(0, 50), now=0.1)
+        a.account(IP, rec(1, 50), now=0.2)                              # the same packet, next record number
+        a.account(IP, rec(2, 51, iset(300, b'\1' * 12)), now=0.3)
+        self.assertEqual(a.take()[IP], {'packets': 3, 'lost': 0, 'version': 10, 'dup_packets': 1})
+
     def test_window_is_pruned(self):
         a = C.Accounting()
         for i in range(1000):

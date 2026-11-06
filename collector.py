@@ -165,6 +165,7 @@ class Accounting:
         key = hash(packet_body(data))
         if key in recent:
             x['dups'] += 1
+            self._copy_seq(x, data)
             return None
         recent[key] = now
         order.append((now, key))
@@ -189,6 +190,23 @@ class Accounting:
             x['seq'].clear()
         x['seq'][dom] = (seq, nrec)
         return shared
+
+
+    @staticmethod
+    def _copy_seq(x, data):
+        """(2.0.0 build 4) A dropped copy numbered as the very next packet of the same counter (seen: a Palo Alto
+        cluster) used that number: move the counter on, or the next real packet looks like one lost. Copies with
+        their own counters (RouterOS 7) are not next in line and change nothing."""
+        try:
+            ver, seq, dom, nrec, _ = peek(data, x['tpl'])
+        except (struct.error, IndexError):
+            return
+        last = x['seq'].get(dom) if seq is not None else None
+        if last is None:
+            return
+        diff = (seq - last[0]) % 2**32
+        if diff == 1 if ver in (9, SFLOW) else (last[1] is not None and diff == last[1] and diff > 0):
+            x['seq'][dom] = (seq, nrec)
 
 
 def _tpl_fields(body, off, n, ipfix):
