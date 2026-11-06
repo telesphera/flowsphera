@@ -2870,9 +2870,13 @@ def post_devices_import(body, user, ip_addr):
         raise BadRequest(tr('Too many devices in one file'))
     AUTH.check_password(user, str(body.get('password') or ''), ip_addr)
     have, ready = exporters_cfg(raw=True), []
+    alias = common.device_aliases(have)
     for dev, c in data['devices'].items():
         if not isinstance(c, dict):
             raise BadRequest(tr('Not a FlowSphera devices file'))
+        if dev in alias and alias[dev] not in data['devices']:
+            # an export from before the device moved: this address is the earlier one of a device here now
+            raise BadRequest(tr('{ip} is now an earlier address of {name}: export the devices again', ip=dev, name=have[alias[dev]].get('name', alias[dev])))
         ip, cfg = device_from_body({**c, 'ip': dev})
         cfg.pop('if_names', None); cfg.pop('if_addrs', None)       # the file's, not what this server had
         cfg.update(_device_extra(ip, c))

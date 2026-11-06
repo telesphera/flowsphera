@@ -2079,5 +2079,6 @@
  "Drop what this address sends; undo below the table": "Відкидати те, що надсилає ця адреса; скасувати можна під таблицею",
  "Ignored sources (what they send is dropped):": "Ігноровані джерела (те, що вони надсилають, відкидається):",
  "stop ignoring": "не ігнорувати",
- "A configured device cannot be ignored: delete its description first": "Описаний пристрій не можна ігнорувати: спершу видаліть його опис"
+ "A configured device cannot be ignored: delete its description first": "Описаний пристрій не можна ігнорувати: спершу видаліть його опис",
+ "{ip} is now an earlier address of {name}: export the devices again": "{ip} тепер — попередня адреса пристрою {name}: експортуйте пристрої заново"
 }

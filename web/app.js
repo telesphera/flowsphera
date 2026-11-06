@@ -4305,9 +4305,9 @@ function openDevice(dev){
       ${protoSeg()}
       <div class="cols"><div><h4>${T('1. Configuration on the device')}</h4>${codeBox(code(), 'devCode')}</div>
       <form class="form" id="devForm" autocomplete="off"><h4 style="margin:0">${T('2. Description for FlowSphera')}</h4>
-        <div class="two"><label>${T('IP the export comes from')}<input id="fIp" required value="${esc(editing ? dev.ip : '')}" ${editing ? 'readonly' : ''} placeholder="192.0.2.1">${editing && dev.configured ? `<button type="button" class="lnk" id="fMove">${T('Change address…')}</button>
-          <span id="fMoveBox" hidden><input id="fNewIp" placeholder="192.0.2.2" aria-label="${T('New address')}"> <button type="button" class="btn sm" id="fMoveOk">${T('Move')}</button>
-          <span class="nat">${T('Everything set here moves to the new address; the records from the old one stay this device\'s.')}</span></span>` : ''}</label><label>${T('Name')}<input id="fName" value="${esc(c.name || '')}" placeholder="branch-fw01"></label></div>
+        <div class="two"><label>${T('IP the export comes from')}<input id="fIp" required value="${esc(editing ? dev.ip : '')}" ${editing ? 'readonly' : ''} placeholder="192.0.2.1">${editing && dev.configured ? `<button type="button" class="lnk" id="fMove" style="justify-self:start">${T('Change address…')}</button>` : ''}</label><label>${T('Name')}<input id="fName" value="${esc(c.name || '')}" placeholder="branch-fw01"></label></div>
+        ${editing && dev.configured ? `<div class="moverow" id="fMoveBox" hidden><label>${T('New address')}<input id="fNewIp" placeholder="192.0.2.2"></label>
+          <button type="button" class="btn primary" id="fMoveOk">${T('Move')}</button><p class="nat">${T('Everything set here moves to the new address; the records from the old one stay this device\'s.')}</p></div>` : ''}
         <div class="two"><label>${T('Model')}<input id="fModel" value="${esc(c.model || '')}" placeholder="FortiGate 60F"></label><label>${T('form::Sampling')}<input id="fSamp" value="${esc(c.sampling || '1:1')}"></label></div>
         <p class="note warn" id="fSampNote" hidden></p>
         <div class="two"><label>${T('snmp-index of WAN interfaces (comma-separated)')}<input id="fWan" value="${esc((c.wan_ifs || []).join(', '))}" placeholder="1"></label><label>${T('Index of «the device itself» (FortiOS: 0)')}<input id="fLocal" value="${c.local_if ?? ''}" placeholder="0"></label></div>

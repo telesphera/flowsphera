@@ -100,6 +100,13 @@ class ExportImport(Move):
         self.assertEqual(cfg['192.0.2.7']['if_names'], {'1': 'ether1'})
         self.assertEqual(cfg['192.0.2.50']['name'], 'keep-me')            # not in the file: as it was
 
+    def test_an_export_from_before_a_move_is_refused(self):
+        old = api.get_devices_export()
+        api.post_device_move({'ip': '192.0.2.1', 'new_ip': '192.0.2.9'}, 'admin')
+        with self.assertRaises(api.BadRequest):
+            self.imp(old)                     # 192.0.2.1 is edge's earlier address now: no second device with its history
+        self.assertNotIn('192.0.2.1', common.load_exporters())
+
     def test_nothing_changes_on_a_bad_file_a_wrong_password_or_one_bad_device(self):
         with self.assertRaises(api.BadRequest):
             self.imp({'devices': {}})                                       # not our format
