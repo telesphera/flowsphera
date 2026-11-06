@@ -1402,9 +1402,10 @@ def api_devices(q):
             UNION ALL SELECT exporter, out_if AS i, bytes AS b, if(dir IN ('up', 'transit'), bytes, 0) AS e FROM {day})
         GROUP BY exporter, i ORDER BY exporter, i""", fmt='JSON')
     seen_addrs = iface_hints()
-    # records reported twice although the exporter sends no direction field (both directions monitored on
-    # several interfaces): identical flow, interfaces, start time and size
-    dups = {r['exporter']: r for r in ch("""SELECT exporter, count() AS n, uniqExact(cityHash64(int_ip, ext_ip, int_port, ext_port, proto, in_if, out_if, ts_start, bytes)) AS u,
+    # records reported twice: identical flow, interfaces, start AND end, bytes and packets. (2.1.1) The end and the
+    # packets count too: a long session is exported again every active timeout with the same start, and the growth of
+    # a steady one (a keepalive) is the same size every time — those are different minutes, not copies
+    dups = {r['exporter']: r for r in ch("""SELECT exporter, count() AS n, uniqExact(cityHash64(int_ip, ext_ip, int_port, ext_port, proto, in_if, out_if, ts_start, ts, bytes, packets)) AS u,
             countIf(obs != 255) AS with_dir FROM flows WHERE ts >= now() - INTERVAL 5 MINUTE GROUP BY exporter""", fmt='JSON')}
     # the latest minute's sampling, unless the devices were edited since: the collector applies a new ratio within
     # about a minute, so until its stats cover that time show the configured one (changed in the UI -> shown at once)

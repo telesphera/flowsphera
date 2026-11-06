@@ -11,6 +11,9 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
   sends none (seen on Palo Alto, which marks every record «ingress» and still sent copies). It now says what happens:
   the device exports the same flows more than once and both copies are stored, so their traffic counts twice. The
   hint also said 15 minutes where the share is of the last 5.
+- **Devices: «duplicates» counted the updates of long sessions as copies** — a device exports a long session again
+  every active timeout with the same start; when it grows by the same amount each time (a keepalive) the records
+  looked identical. Now a copy must match the end and the packets as well.
 
 ## 2.1.0 — 2026-11-06
 
