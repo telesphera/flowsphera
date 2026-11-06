@@ -624,6 +624,61 @@ def deactivate_license(with_code=False):
 _TTL_RE = None
 
 
+# ---- (2.0.0 build 4) the retention an administrator chose: at most the edition's, any fewer days (a small disk)
+RETENTION_FILE = os.path.join(STATE_DIR, 'retention.json')
+RETENTION_MIN = 1
+
+
+def retention_choice():
+    """Days the administrator chose (None = as long as the edition allows)."""
+    try:
+        with open(RETENTION_FILE) as f:
+            d = json.load(f).get('days')
+        return int(d) if d else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def save_retention(days):
+    """days None = the edition's; else RETENTION_MIN..the edition's (the caller checks the range)."""
+    tmp = RETENTION_FILE + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'days': int(days) if days else None}, f)
+    os.replace(tmp, RETENTION_FILE)
+
+
+def keep_days(ed=None):
+    """Days new records are kept: the edition's retention, or the administrator's choice when it is shorter. A
+    choice above the edition (a license ended) keeps the edition's days and comes back with a longer license."""
+    ed = ed or edition()
+    choice = retention_choice()
+    return min(choice, ed['retention_days']) if choice else ed['retention_days']
+
+
+def flows_shorten(days):
+    """The administrator chose fewer days: every stored record (flows and the rollups) keeps at most `days`, and whole
+    days older than that are dropped at once so the disk is freed now, not at the next merges. Only for an explicit
+    choice — an ended license never shortens anything. -> (records shortened, partitions dropped)."""
+    import rollups
+    days, n, dropped = int(days), 0, 0
+    cutoff = time.strftime('%Y%m%d', time.gmtime(time.time() - days * 86400))   # whole UTC days before this one go
+    for name in ['flows'] + list(rollups.ROLLUPS):
+        try:
+            k = int(ch(f'SELECT count() AS n FROM {name} WHERE keep_days > {days}', fmt='JSON')[0]['n'])
+        except CHError:
+            continue                                  # a rollup not made yet
+        if k:
+            ch(f'ALTER TABLE {name} UPDATE keep_days = {days} WHERE keep_days > {days}')
+            n += k if name == 'flows' else 0
+        parts = ch("SELECT DISTINCT partition_id AS p FROM system.parts WHERE database = currentDatabase() AND table = {t:String} "
+                   "AND active AND partition_id < {c:String} ORDER BY p", {'t': name, 'c': cutoff}, fmt='JSON')
+        for r in parts:
+            if re.fullmatch(r'\d{8}', r['p']):
+                ch(f"ALTER TABLE {name} DROP PARTITION ID '{r['p']}'", timeout=600)
+                dropped += name == 'flows'
+    return n, dropped
+
+
 def flows_keep_days(days):
     """Flow details are kept per record: the collector writes `keep_days` (the edition's retention) with each one
     and the TTL of `flows` is ts + keep_days. Raises the records still stored to `days` when they have fewer (a new

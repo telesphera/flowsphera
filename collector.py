@@ -30,7 +30,7 @@ import ifcounters  # noqa: E402
 import recovery  # noqa: E402
 import rollups  # noqa: E402
 from common import (BUILD, STATE_DIR, VERSION, CHError, Geo, apply_schema, ch, classify_l7, describe_listeners, edition,  # noqa: E402
-                    exporters_mtime, flows_keep_days, is_private, license_checkin, listen_label, listen_signature, load_exporters, open_listeners, server_is_src,
+                    exporters_mtime, flows_keep_days, flows_shorten, is_private, keep_days, retention_choice, license_checkin, listen_label, listen_signature, load_exporters, open_listeners, server_is_src,
                     service_name, PORT_NAMES, default_l7, load_port_names, reload_port_names)
 
 BIND = os.environ.get('FT_BIND', '0.0.0.0')
@@ -352,7 +352,7 @@ class Collector:
         self.rate_limited = rate_limit
         ed = edition()
         self.rps = ed['rps'] if rate_limit else None
-        self.keep_days = ed['retention_days']       # written with every record: the days the edition keeps it
+        self.keep_days = keep_days(ed)              # written with every record: the edition's days, or the shorter choice (2.0.0 b4)
         # the compiled core decodes and applies the limit (rate=0, unlimited, exists in test builds of it only)
         self.dec = ftcore.Decoder(self.workers) if rate_limit else ftcore.Decoder(self.workers, rate=0)
         self.geo = Geo()
@@ -579,7 +579,7 @@ class Collector:
             if reload_port_names():          # the user's names of ports: new records get them at once
                 log(f'port names: {len(PORT_NAMES)} of your own')
             ed = edition()                   # a license change applies without a restart (the core's limiter follows)
-            self.keep_days = ed['retention_days']
+            self.keep_days = keep_days(ed)
             if self.rate_limited:
                 self.rps = ed['rps']
 
@@ -748,12 +748,16 @@ class Receiver:
             self.retention_lock.release()
 
     def _apply_retention(self):
-        days, now = edition()['retention_days'], time.time()
+        days, now, choice = keep_days(), time.time(), retention_choice()
         if days != getattr(self, 'retention_target', None) or now - getattr(self, 'retention_checked', 0) >= 3600:
             try:
                 raised = flows_keep_days(days)
-                if days != getattr(self, 'retention_target', None) or raised:
-                    log(f'flow details kept {days} days' + (f' ({raised:,} stored records raised to it)' if raised else ''))
+                # (2.0.0 build 4) the administrator chose fewer days: stored records are shortened to them as well
+                cut, gone = flows_shorten(days) if choice and choice == days else (0, 0)
+                if days != getattr(self, 'retention_target', None) or raised or cut or gone:
+                    log(f'flow details kept {days} days' + (' (chosen in Settings)' if choice == days else '')
+                        + (f' ({raised:,} stored records raised to it)' if raised else '')
+                        + (f' ({cut:,} stored records shortened to it, {gone} older days deleted)' if cut or gone else ''))
                 self.retention_target, self.retention_checked = days, now
                 self.retention_ready.set()
             except (CHError, OSError) as ex:

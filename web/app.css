@@ -858,3 +858,17 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
   #ingSec:not(.is-max){display:flex;flex-direction:column}
   #ingSec:not(.is-max) > .chart.ing{flex:1 1 auto;height:auto;min-height:210px}
 }
+/* (2.0.0 build 4) Settings → General → Data retention */
+.kstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.kstat{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:12px;background:rgba(47,123,255,.06);border:1px solid var(--edge, rgba(120,160,255,.14))}
+.kstat .k{font-size:12px;color:var(--ink3)}
+.kstat .v{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--ink)}
+.kstat .nat{font-size:11.5px;color:var(--ink3)}
+.keepform{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+.keepform label{display:flex;flex-direction:column;gap:4px}
+.kpin{display:flex;align-items:center;gap:8px}
+.kpin input{width:90px}
+.kpq{display:flex;flex-wrap:wrap;gap:6px}
+.btn.sm{padding:4px 10px;font-size:12px}
+#kpNote.warnline{color:var(--warn)}
+@media (max-width:900px){.kstats{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -7,6 +7,12 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
 ## Unreleased
 
 ### Added
+- **Data retention of your choice** — Settings → General → Data retention: keep flow details for fewer days than the
+  license allows (a small disk), any number from 1 up to the license's days, never more. Shows what the data takes now,
+  about a day, and with the choice. Fewer days delete the older records (and the totals of long periods) within a minute,
+  confirmed with your password; the disk is freed at once (whole old days dropped). An ended license still deletes
+  nothing, as before. Forum request.
+- **Last 15 minutes** in the period selector, with one-minute steps (forum request).
 - **Ingest over time on the Flows page** — under the Inspector: records/s from each device for the chosen period
   (stacked), the busiest minute of every step, the license limit once traffic comes near it and red bands where records
   over the limit were not stored. Drag across it to zoom the period; full screen from its button. Built from the

@@ -45,8 +45,8 @@ WEB_LISTEN = []          # set at start: what this web server listens on
 TLS_CERT = os.environ.get('FT_TLS_CERT', '')
 TLS_KEY = os.environ.get('FT_TLS_KEY', '')
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
-RANGES = {'1h': 3600, '6h': 6 * 3600, '24h': 86400, '7d': 7 * 86400, '30d': 30 * 86400}
-STEP = {3600: 60, 6 * 3600: 300, 86400: 300, 7 * 86400: 3600, 30 * 86400: 4 * 3600}
+RANGES = {'15m': 900, '1h': 3600, '6h': 6 * 3600, '24h': 86400, '7d': 7 * 86400, '30d': 30 * 86400}
+STEP = {900: 60, 3600: 60, 6 * 3600: 300, 86400: 300, 7 * 86400: 3600, 30 * 86400: 4 * 3600}
 NICE_STEPS = (60, 120, 300, 600, 900, 1800, 3600, 7200, 4 * 3600)
 LONG = 86400            # (1.17.0) from a day on a period is answered from the rollups only (see scope)
 _stored = {'t': 0, 'days': 0}
@@ -69,7 +69,8 @@ def view_days():
                 pass
             _stored['t'] = time.time()
         days = max(days, _stored['days'])
-    return days
+    choice = common.retention_choice()       # (2.0.0 build 4) the administrator's fewer days: never more shown
+    return min(days, choice) if choice else days
 
 
 def period(q):
@@ -424,7 +425,7 @@ def edition_info(admin=False):
     """What the UI shows about the edition; the license's customer/expiry and the error message only to admins."""
     ed = edition()
     out = {'name': ed['name'], 'status': ed['status'], 'rps': ed['rps'], 'retention_days': ed['retention_days'], 'view_days': view_days(),
-           'community_days': COMMUNITY['retention_days']}
+           'community_days': COMMUNITY['retention_days'], 'keep_days': common.keep_days(ed), 'retention_choice': common.retention_choice()}
     col = collector_health(24 * 60)
     out['license_drops_24h'] = col['license_drops'] if col else 0
     lic = ed['license'] or {}
@@ -2764,10 +2765,10 @@ STATIC = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', 
 
 AUTH = None
 POLLER = snmp.Poller()
-ADMIN_GET = {'/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
+ADMIN_GET = {'/api/retention', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
 # (1.11.0) what an API token can never do, whatever its scope: people's accounts, the tokens themselves, the license,
 # deleting backups, and what only a browser session has
-TOKEN_DENY = {'/api/users', '/api/users/update', '/api/users/delete', '/api/tokens', '/api/tokens/delete', '/api/ldap', '/api/ldap/test', '/api/mail/delete', '/api/license',
+TOKEN_DENY = {'/api/retention', '/api/users', '/api/users/update', '/api/users/delete', '/api/tokens', '/api/tokens/delete', '/api/ldap', '/api/ldap/test', '/api/mail/delete', '/api/license',
               '/api/license/deactivate', '/api/license/checkin', '/api/backups/delete', '/api/me/password', '/api/me/prefs',
               '/api/logout', '/api/cancel'}
 COOKIE = 'ft_session'
@@ -2894,6 +2895,8 @@ class H(BaseHTTPRequestHandler):
                     return self.json(200, get_reports())
                 if u.path == '/api/mail':
                     return self.json(200, get_mail())
+                if u.path == '/api/retention':
+                    return self.json(200, get_retention())
                 if u.path == '/api/tokens':
                     return self.json(200, {'tokens': AUTH.list_tokens()})
                 if u.path == '/api/ldap':
@@ -3020,6 +3023,7 @@ class H(BaseHTTPRequestHandler):
                 '/api/backups/run': lambda: post_backups_run(body),
                 '/api/backups/verify': lambda: post_backups_verify(body),
                 '/api/backups/delete': lambda: post_backups_delete(body, user, self.client_ip()),
+                '/api/retention': lambda: post_retention(body, user, self.client_ip()),
                 '/api/backups/test': lambda: post_backups_test(body),
                 '/api/reports/save': lambda: post_report_save(body),
                 '/api/reports/delete': lambda: post_report_delete(body),
@@ -3354,6 +3358,41 @@ def _backup_request(req):
 
 def post_backups_run(body):
     return _backup_request({'do': 'backup', 'full': bool(body.get('full'))})
+
+
+def get_retention():
+    """(2.0.0 build 4) Settings → General → Data retention: the days kept now, the edition's most, the choice, and what
+    the stored data takes on disk (flows and the rollups; per day = over the days that hold records)."""
+    import rollups
+    ed = edition()
+    names = ['flows'] + list(rollups.ROLLUPS)
+    rows = ch("""SELECT table, sum(bytes_on_disk) AS b, uniqExact(partition_id) AS d FROM system.parts
+        WHERE database = currentDatabase() AND active AND table IN {t:Array(String)} GROUP BY table""", {'t': names}, fmt='JSON')
+    by = {r['table']: r for r in rows}
+    flows = int(by.get('flows', {}).get('b', 0)); summ = sum(int(r['b']) for t, r in by.items() if t != 'flows')
+    days = int(by.get('flows', {}).get('d', 0))
+    return {'keep_days': common.keep_days(ed), 'max': ed['retention_days'], 'min': common.RETENTION_MIN,
+            'choice': common.retention_choice(), 'edition': ed['name'], 'status': ed['status'],
+            'bytes': flows + summ, 'flows_bytes': flows, 'rollup_bytes': summ, 'days_stored': days,
+            'per_day': round((flows + summ) / days) if days else 0}
+
+
+def post_retention(body, user, ip):
+    """Choose the days kept: RETENTION_MIN..the edition's (the edition's = no choice). Fewer days than kept now delete
+    the older records within a minute (the collector), so they are confirmed with the admin's own password."""
+    ed = edition()
+    days = body.get('days')
+    try:
+        days = int(days) if days not in (None, '') else None
+    except (TypeError, ValueError):
+        raise BadRequest(tr('Days must be a whole number'))
+    if days is not None and not common.RETENTION_MIN <= days <= ed['retention_days']:
+        raise BadRequest(tr('Choose {min} to {max} days: your edition keeps at most {max}', min=common.RETENTION_MIN, max=ed['retention_days']))
+    new = days or ed['retention_days']
+    if new < common.keep_days(ed):
+        AUTH.check_password(user, str(body.get('password') or ''), ip)
+    common.save_retention(None if new == ed['retention_days'] else new)
+    return get_retention()
 
 
 def post_backups_delete(body, user, ip):

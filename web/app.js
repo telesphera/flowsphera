@@ -116,7 +116,7 @@ const colorCache = new Map();
 const keyColor = k => { if (!colorCache.has(k)) colorCache.set(k, PAL[colorCache.size % (PAL.length - 1)]); return colorCache.get(k); };
 const isCustom = () => state.range === 'custom';
 const periodParams = () => isCustom() ? {from:state.from, to:state.to} : {range:state.range};
-const rangeSecs = () => isCustom() ? state.to - state.from : ({'1h':3600, '6h':21600, '24h':86400, '7d':604800, '30d':2592000})[state.range];
+const rangeSecs = () => isCustom() ? state.to - state.from : ({'15m':900, '1h':3600, '6h':21600, '24h':86400, '7d':604800, '30d':2592000})[state.range];
 // '5 Oct, 14:05 – 14:20' or '4 Oct, 22:00 – 5 Oct, 01:00'
 function periodText(t0, t1){
   const d = t => new Date(t * 1000).toLocaleDateString(LOC, {day:'numeric', month:'short'}), sameDay = d(t0) === d(t1 - 1);
@@ -127,7 +127,7 @@ function setPeriod(t0, t1){
   if (!isCustom()) state.prevRange = state.range;
   state.range = 'custom'; state.from = Math.floor(t0 / 60) * 60; state.to = Math.ceil(t1 / 60) * 60; state.sel = null; render();
 }
-const rangeLabel = () => isCustom() ? periodText(state.from, state.to) : ({'1h':T('inline::Last hour'), '6h':T('inline::Last 6 hours'), '24h':T('inline::Last 24 hours'), '7d':T('inline::Last 7 days'), '30d':T('inline::Last 30 days')})[state.range];
+const rangeLabel = () => isCustom() ? periodText(state.from, state.to) : ({'15m':T('inline::Last 15 minutes'), '1h':T('inline::Last hour'), '6h':T('inline::Last 6 hours'), '24h':T('inline::Last 24 hours'), '7d':T('inline::Last 7 days'), '30d':T('inline::Last 30 days')})[state.range];
 const devName = ip => (META.devices.find(d => d.ip === ip) || {}).name || ip;
 const ifLabel = (ip, idx) => { const d = META.devices.find(x => x.ip === ip) || {}, n = (d.if_names || {})[String(idx)] || (d.local_if === idx ? 'local' : ''); return n ? `${n} (${idx})` : String(idx); };
 const hostLabel = h => h.name ? `${esc(h.name)}` : esc(h.ip);
@@ -3515,14 +3515,64 @@ function vGeneral(){
     ${card('globe', T('Language'), `<select id="langSel" aria-label="${T('Language')}">${langs().map(([v, l]) => `<option value="${v}" lang="${v}" ${LANG === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`,
       T('only in this browser'))}
     ${card(USER_ICON, T('Account'), esc(ME.display || ME.name), `${ME.role === 'admin' ? T('Administrator') : T('Viewer')}${ME.source === 'ldap' ? ` · ${T('directory account')}` : ` · <button class="lnk" id="myPass">${T('Change my password')}</button>`}`)}
+    ${isAdmin() ? `<section class="glass panel s12" id="keepBox">${ph(DISK_ICON, T('Data retention'), T('how many days flow details are kept · at most what your license allows'))}<div id="keepBody" class="loading"></div></section>` : ''}
     ${isAdmin() ? `<section class="glass panel s12" id="mailBox">${ph(MAIL_ICON, T('Mail server'), T('e-mail (SMTP) for the reports and the e-mail notifications'))}<div id="mailBody" class="loading"></div></section>` : ''}</div>`;
   if (isAdmin()) (async () => { const el = document.getElementById('mailBody');
     try { const r = await fetch('api/mail'); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); mailPanel(el, j);
       if (state.goMail) { state.goMail = false; document.getElementById('mailBox').scrollIntoView({block:'start', behavior:'smooth'}); const h = document.getElementById('rmHost'); if (h) h.focus({preventScroll:true}); } }
     catch (e) { el.classList.remove('loading'); el.innerHTML = `<p class="err">${esc(e.message)}</p>`; } })();
+  if (isAdmin()) keepPanel();
   document.getElementById('langSel').onchange = e => { if (e.target.value !== LANG) setLang(e.target.value); };
   document.getElementById('toLic').onclick = () => { state.setTab = 'license'; render(); };
   const mp = document.getElementById('myPass'); if (mp) mp.onclick = openPassword;
+}
+// (2.0.0 build 4) Data retention: the administrator keeps fewer days than the license allows (a small disk). Visual
+// first: what the data takes now, per day, and after the choice; then the choice. Fewer days than kept now delete the
+// older records (the collector, within a minute): confirmed with the admin's own password.
+const DISK_ICON = 'M3 4.5c0-1.4 2.7-2.5 6-2.5s6 1.1 6 2.5v9c0 1.4-2.7 2.5-6 2.5s-6-1.1-6-2.5zM3 4.5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5M3 9c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5';
+async function keepPanel(){
+  const el = document.getElementById('keepBody'); if (!el) return;
+  let d; try { d = await fetch('api/retention').then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }); }
+  catch (e) { el.classList.remove('loading'); el.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  el.classList.remove('loading');
+  const est = n => d.per_day ? fmtB(d.per_day * n) : '—';
+  const stat = (k, v, sub) => `<div class="kstat"><span class="k">${k}</span><span class="v">${v}</span><span class="nat">${sub}</span></div>`;
+  const quick = [7, 14, 30, 90, 365].filter(n => n < d.max);
+  const draw = () => { el.innerHTML = `<div class="kstats">
+      ${stat(T('Kept now'), Tn(d.keep_days, '{n} day', '{n} days', {n: d.keep_days}), d.choice ? T('your choice · the license allows {max}', {max: d.max}) : T('as long as the license allows'))}
+      ${stat(T('On disk now'), fmtB(d.bytes), Tn(d.days_stored, 'over {n} day of records', 'over {n} days of records', {n: d.days_stored}))}
+      ${stat(T('About a day'), est(1), T('records and the totals of long periods'))}
+      ${stat(T('With your choice'), `<span id="kpEst">${est(d.keep_days)}</span>`, T('estimate at today\'s traffic'))}</div>
+    <form class="form keepform" id="kpForm" novalidate>
+      <label>${T('Keep flow details, days')}<span class="kpin"><input id="kpDays" type="number" min="${d.min}" max="${d.max}" step="1" value="${d.keep_days}" inputmode="numeric"></span></label>
+      <div class="kpq">${quick.map(n => `<button type="button" class="btn sm" data-kd="${n}">${Tn(n, '{n} day', '{n} days', {n})}</button>`).join('')}<button type="button" class="btn sm" data-kd="${d.max}">${T('Most: {n}', {n: d.max})}</button></div>
+      <button class="btn primary" type="submit" id="kpSave" disabled>${T('Save')}</button></form>
+    <p class="note" id="kpNote">${T('Your license keeps at most {max} days; choose any fewer. Long-period pages (Capacity, Usage, Events learning) see only what is kept.', {max: d.max})}</p>
+    <p class="err" id="kpErr" hidden></p>`;
+    const inp = document.getElementById('kpDays'), save = document.getElementById('kpSave');
+    const val = () => { const n = Math.round(+inp.value); return Number.isFinite(n) ? n : 0; };
+    const check = () => { const n = val(), ok = n >= d.min && n <= d.max; save.disabled = !ok || n === d.keep_days;
+      document.getElementById('kpEst').textContent = ok ? est(n) : '—'; formErr('kpErr', ok ? '' : T('Choose {min} to {max} days: your edition keeps at most {max}', {min: d.min, max: d.max}));
+      const nt = document.getElementById('kpNote'); nt.classList.toggle('warnline', ok && n < d.keep_days);
+      nt.textContent = ok && n < d.keep_days ? T('Records older than {n} days will be deleted within a minute. It cannot be undone.', {n}) : T('Your license keeps at most {max} days; choose any fewer. Long-period pages (Capacity, Usage, Events learning) see only what is kept.', {max: d.max}); };
+    inp.addEventListener('input', check);
+    el.querySelectorAll('[data-kd]').forEach(b => b.onclick = () => { inp.value = b.dataset.kd; check(); });
+    document.getElementById('kpForm').onsubmit = e => { e.preventDefault(); if (save.disabled) return; const n = val();
+      if (n >= d.keep_days) return send({days: n});
+      const md = openModal(T('Keep fewer days'), '', `<form class="form" id="kpcForm" novalidate style="padding:4px 2px">
+        <p class="note" style="margin:0">${T('Flow details older than {n} days are deleted within a minute, the totals of long periods too. About {size} is freed. It cannot be undone; a backup made before keeps them.', {n, size: `<b>${est(Math.max(0, d.days_stored - n))}</b>`})}</p>
+        <label>${T('Your password ({user}) to confirm', {user: esc(ME.name)})}<input id="kpPass" type="password" autocomplete="current-password"></label>
+        <p class="err" id="kpcErr" hidden></p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn danger" type="submit" id="kpcOk" disabled>${Tn(n, 'Keep {n} day', 'Keep {n} days', {n})}</button><button class="btn" type="button" id="kpcNo">${T('Cancel')}</button></div></form>`);
+      const pw = document.getElementById('kpPass'), ok = document.getElementById('kpcOk');
+      pw.addEventListener('input', () => { ok.disabled = !pw.value; }); pw.focus();
+      document.getElementById('kpcNo').onclick = md.close;
+      document.getElementById('kpcForm').onsubmit = async ev => { ev.preventDefault(); if (ok.disabled) return; ok.disabled = true; formErr('kpcErr', '');
+        try { await send({days: n, password: pw.value}, true); md.close(); } catch (err) { formErr('kpcErr', err.message); pw.select(); ok.disabled = false; } }; };
+  };
+  const send = async (body, raise) => { try { d = await apiPost('retention', body); META.edition = Object.assign(META.edition || {}, {keep_days: d.keep_days, retention_choice: d.choice}); draw(); }
+    catch (err) { if (raise) throw err; formErr('kpErr', err.message); } };
+  draw();
 }
 // (1.8.4) a table of settings rows: each added with a checked form, changed or deleted in its row, saved at once.
 // o: {id, admin, fields:[{k, label, opts:[[v, label]], ph, max, mono, num, def}], cols (grid of the form), items,
@@ -4659,7 +4709,7 @@ function render(){ if (state.view === 'devices' || state.view === 'users') { sta
 
 document.getElementById('devSel').onchange = e => { state.filters = state.filters.filter(f => f.k !== 'device'); if (e.target.value) putFilter({k:'device', v:e.target.value, neg:false}); render(); };
 document.getElementById('rangeSel').onchange = e => { const v = e.target.value; if (v === 'pick') { e.target.value = state.range; openPeriod(); return; } if (v !== 'custom') { state.range = v; render(); } };
-const presetLabel = r => ({'1h':T('Last hour'), '6h':T('Last 6 hours'), '24h':T('Last 24 hours'), '7d':T('Last 7 days'), '30d':T('Last 30 days')})[r] || r;
+const presetLabel = r => ({'15m':T('Last 15 minutes'), '1h':T('Last hour'), '6h':T('Last 6 hours'), '24h':T('Last 24 hours'), '7d':T('Last 7 days'), '30d':T('Last 30 days')})[r] || r;
 // the custom period dialog: from / to to the minute, within the 30 days of detailed data
 function openPeriod(){
   closePeriod();
