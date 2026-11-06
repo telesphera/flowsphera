@@ -118,7 +118,7 @@ def network_of(ip):
 
 def exporters_mtime():
     mt = []
-    for p in (os.path.join(CONFIG_DIR, 'exporters.json'), UI_EXPORTERS):
+    for p in (os.path.join(CONFIG_DIR, 'exporters.json'), UI_EXPORTERS, IGNORED_SOURCES):
         try:
             mt.append(os.path.getmtime(p))
         except OSError:
@@ -133,6 +133,25 @@ def load_ui_exporter(ip):
             return json.load(f).get(ip) or {}
     except (FileNotFoundError, ValueError):
         return {}
+
+
+# (2.4.0, issue #4) sources an administrator chose to ignore (Settings → Devices): their packets are dropped unread
+IGNORED_SOURCES = os.path.join(STATE_DIR, 'ignored_sources.json')
+
+
+def load_ignored():
+    try:
+        with open(IGNORED_SOURCES) as f:
+            return {str(x) for x in json.load(f)}
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def save_ignored(ips):
+    tmp = IGNORED_SOURCES + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(sorted(ips)[:1000], f)
+    os.replace(tmp, IGNORED_SOURCES)
 
 
 def device_aliases(cfgs=None):

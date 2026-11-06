@@ -77,5 +77,67 @@ class Move(unittest.TestCase):
         self.assertIn('exporter = {f0:String}', p2['_filt'])                # a device without aliases: as before
 
 
+class ExportImport(Move):
+    def imp(self, data, password='pw'):
+        return api.post_devices_import({'data': data, 'password': password}, 'admin', '1.2.3.4')
+
+    def test_export_has_the_devices_and_no_secrets(self):
+        d = api.get_devices_export()
+        self.assertEqual(d['format'], 'flowsphera-devices')
+        self.assertEqual(d['devices']['192.0.2.1']['if_names'], {'3': 'wan1', '5': 'lan'})
+        self.assertNotIn('secret', json.dumps(d))                         # SNMP community stays on the server
+
+    def test_import_adds_and_replaces_only_what_is_listed(self):
+        common.save_ui_exporter('192.0.2.50', {'name': 'keep-me'}); api.NAMES.reload()
+        d = api.get_devices_export()
+        d['devices']['192.0.2.1']['name'] = 'fw-renamed'
+        d['devices']['192.0.2.1']['if_caps'] = {'3': [300, 50]}
+        d['devices']['192.0.2.7'] = {'name': 'branch', 'vendor': 'MikroTik', 'wan_ifs': [1], 'if_names': {'1': 'ether1'}}
+        del d['devices']['192.0.2.50']
+        self.assertEqual(self.imp(d), {'ok': True, 'added': 1, 'updated': 1})
+        cfg = common.load_exporters()
+        self.assertEqual((cfg['192.0.2.1']['name'], cfg['192.0.2.1']['if_caps'], cfg['192.0.2.1']['if_names']['5']), ('fw-renamed', {'3': [300.0, 50.0]}, 'lan'))
+        self.assertEqual(cfg['192.0.2.7']['if_names'], {'1': 'ether1'})
+        self.assertEqual(cfg['192.0.2.50']['name'], 'keep-me')            # not in the file: as it was
+
+    def test_nothing_changes_on_a_bad_file_a_wrong_password_or_one_bad_device(self):
+        with self.assertRaises(api.BadRequest):
+            self.imp({'devices': {}})                                       # not our format
+        good = {'format': 'flowsphera-devices', 'devices': {'192.0.2.7': {'name': 'branch'}}}
+        self.check.side_effect = api.BadRequest('Wrong password')
+        with self.assertRaises(api.BadRequest):
+            self.imp(good, 'bad')
+        self.check.side_effect = None
+        bad = {'format': 'flowsphera-devices', 'devices': {'192.0.2.7': {'name': 'branch'}, '192.0.2.8': {'name': 'x', 'if_caps': {'1': ['lots', 1]}}}}
+        with self.assertRaises(api.BadRequest):
+            self.imp(bad)
+        self.assertNotIn('192.0.2.7', common.load_exporters())             # all or nothing
+
+    def setUp(self):
+        super().setUp()
+        self.check = mock.Mock()
+        pt = mock.patch.object(api, 'AUTH', mock.Mock(check_password=self.check))
+        pt.start()
+        self.addCleanup(pt.stop)
+
+
+class Ignore(Move):
+    def test_ignore_and_stop(self):
+        d = tempfile.mkdtemp()
+        with mock.patch.object(common, 'IGNORED_SOURCES', d + '/ignored.json'):
+            self.assertEqual(api.post_device_ignore({'ip': '198.51.100.7'}, 'admin')['ignored'], ['198.51.100.7'])
+            self.assertEqual(common.load_ignored(), {'198.51.100.7'})
+            with self.assertRaises(api.BadRequest):
+                api.post_device_ignore({'ip': '192.0.2.1'}, 'admin')     # a configured device: delete it instead
+            self.assertEqual(api.post_device_ignore({'ip': '198.51.100.7', 'stop': True}, 'admin')['ignored'], [])
+
+    def test_the_receiver_drops_an_ignored_source(self):
+        import collector as C
+        d = tempfile.mkdtemp()
+        with mock.patch.object(common, 'IGNORED_SOURCES', d + '/ignored.json'), mock.patch.object(C, 'load_ignored', common.load_ignored):
+            common.save_ignored({'198.51.100.7'})
+            self.assertIn('198.51.100.7', C.load_ignored())
+
+
 if __name__ == '__main__':
     unittest.main()

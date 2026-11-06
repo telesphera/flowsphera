@@ -30,7 +30,7 @@ import ifcounters  # noqa: E402
 import recovery  # noqa: E402
 import rollups  # noqa: E402
 from common import (BUILD, STATE_DIR, VERSION, CHError, Geo, apply_schema, ch, classify_l7, describe_listeners, edition,  # noqa: E402
-                    exporters_mtime, flows_keep_days, flows_shorten, is_private, keep_days, retention_choice, license_checkin, listen_label, listen_signature, load_exporters, open_listeners, server_is_src,
+                    exporters_mtime, flows_keep_days, flows_shorten, is_private, keep_days, load_ignored, retention_choice, license_checkin, listen_label, listen_signature, load_exporters, open_listeners, server_is_src,
                     service_name, PORT_NAMES, default_l7, load_port_names, reload_port_names)
 
 BIND = os.environ.get('FT_BIND', '0.0.0.0')
@@ -688,6 +688,7 @@ class Receiver:
         self.acct = Accounting()
         self.new, self.new_logged = NewSources(), 0
         self.cfg = load_exporters()
+        self.ignored = load_ignored()           # (2.4.0) sources an administrator ignores
         self.cfg_mtime = exporters_mtime()
         self.exp_acc, self.col_acc = {}, self.empty_col()
         self.worker_state = {}
@@ -918,7 +919,7 @@ class Receiver:
     def reload_config(self):
         mt = exporters_mtime()
         if mt != self.cfg_mtime:
-            self.cfg_mtime, self.cfg = mt, load_exporters()
+            self.cfg_mtime, self.cfg, self.ignored = mt, load_exporters(), load_ignored()
 
     def run(self):
         for attempt in range(60):
@@ -1014,6 +1015,8 @@ class Receiver:
                         except OSError:
                             pass
                     ip = norm_addr(addr[0])
+                    if ip in self.ignored:               # (2.4.0) an administrator chose to ignore this source
+                        continue
                     if ip not in self.cfg and ip not in ALLOW and (ALLOW or not self.new.admit(ip)):
                         continue
                     self.col_acc['packets'] += 1

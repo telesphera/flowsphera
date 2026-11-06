@@ -4060,10 +4060,33 @@ function vLicense(){
 }
 function vDevices(){
   const v = document.getElementById('setBody'); state.ifEdit = null;
-  v.innerHTML = `<div class="grid"><section class="glass panel s12">${ph('dev', T('Exporter devices'), T('NetFlow v5/v9 and IPFIX from any vendor · statistics for 15 min'), isAdmin() ? `<button class="btn primary" id="addDev">${T('+ Connect a device')}</button>` : `<span class="nat">${T('an administrator can add devices')}</span>`)}<div id="dBox" class="loading"></div></section>
+  v.innerHTML = `<div class="grid"><section class="glass panel s12">${ph('dev', T('Exporter devices'), T('NetFlow v5/v9 and IPFIX from any vendor · statistics for 15 min'), isAdmin() ? `<span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="devExp">${T('Export')}</button><button class="btn" id="devImp">${T('Import…')}</button><input type="file" id="devFile" accept=".json,application/json" hidden><button class="btn primary" id="addDev">${T('+ Connect a device')}</button></span>` : `<span class="nat">${T('an administrator can add devices')}</span>`)}<div id="dBox" class="loading"></div></section>
     <section class="glass panel s12">${ph('ip', T('Interfaces'), T('indexes the collector saw in 24 h · the WAN role defines what is upload and download'))}<div id="ifBox" class="loading"></div></section>
 </div>`;
-  if (isAdmin()) document.getElementById('addDev').onclick = () => openDevice(null);
+  if (isAdmin()) { document.getElementById('addDev').onclick = () => openDevice(null);
+    // (2.4.0, issue #4) every device described here as a JSON file, and back: to another server or edited by hand
+    document.getElementById('devExp').onclick = async () => { try { const d = await api('devices/export');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(d, null, 1)], {type:'application/json'}));
+      a.download = `flowsphera-devices-${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+      catch (e) { alert(e.message); } };
+    const file = document.getElementById('devFile');
+    document.getElementById('devImp').onclick = () => { file.value = ''; file.click(); };
+    file.onchange = async () => { const f = file.files[0]; if (!f) return; let data;
+      try { data = JSON.parse(await f.text()); } catch (e) { data = null; }
+      const devs = data && data.format === 'flowsphera-devices' && data.devices && typeof data.devices === 'object' ? Object.keys(data.devices) : null;
+      const have = new Set((window.__devs || []).filter(x => x.configured).map(x => x.ip));
+      const md = openModal(T('Import devices'), esc(f.name), !devs ? `<p class="err">${T('Not a FlowSphera devices file')}</p>` : `<form class="form" id="diForm" novalidate style="padding:4px 2px">
+        <p class="note" style="margin:0">${T('{n} devices in the file: {a} new, {u} replace the description here. Devices not in the file stay as they are; SNMP settings are not touched.', {n: devs.length, a: devs.filter(x => !have.has(x)).length, u: devs.filter(x => have.has(x)).length})}</p>
+        <div class="tw"><table class="compact"><tbody>${devs.slice(0, 20).map(ip => `<tr><td class="mono">${esc(ip)}</td><td>${esc(data.devices[ip].name || '')}</td><td>${have.has(ip) ? `<span class="pill warn">${T('replaces')}</span>` : `<span class="pill ok">${T('new')}</span>`}</td></tr>`).join('')}</tbody></table></div>
+        <label>${T('Your password ({user}) to confirm', {user: esc(ME.name)})}<input id="diPass" type="password" autocomplete="current-password"></label>
+        <p class="err" id="diErr" hidden></p>
+        <div style="display:flex;gap:8px"><button class="btn primary" type="submit" id="diOk" disabled>${T('Import')}</button><button class="btn" type="button" id="diNo">${T('Cancel')}</button></div></form>`);
+      if (!devs) return;
+      const pw = document.getElementById('diPass'), ok = document.getElementById('diOk');
+      pw.addEventListener('input', () => { ok.disabled = !pw.value; }); pw.focus(); document.getElementById('diNo').onclick = md.close;
+      document.getElementById('diForm').onsubmit = async e => { e.preventDefault(); if (ok.disabled) return; ok.disabled = true; formErr('diErr', '');
+        try { await apiPost('devices/import', {data, password: pw.value}); md.close(); META = await fetch('api/meta').then(r => r.json()); render(); }
+        catch (err) { formErr('diErr', err.message); ok.disabled = false; } }; }; }
   section('dBox', async () => { const res = await api('devices'), d = res.devices; window.__devs = d; window.__snmpTools = res.snmp_tools;
     // the interfaces panel shows one device: the one picked in the table, else the global device filter, else the first
     const df = state.filters.find(f => f.k === 'device' && !f.neg);
@@ -4072,12 +4095,17 @@ function vDevices(){
       showIfaces(d);
       document.querySelectorAll('#dBox tr[data-pick]').forEach(tr => tr.onclick = () => { if (tr.dataset.pick === state.ifDev) return; if (state.ifEdit && !confirm(T('Discard unsaved interface changes?'))) return; state.ifEdit = null; state.ifDev = tr.dataset.pick; showIfaces(d); });
       document.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); openDevice(d.find(x => x.ip === b.dataset.edit)); });
+      // (2.4.0, issue #4) a source that should not send here: ignored (dropped unread), and back
+      document.querySelectorAll('[data-ignore]').forEach(b => b.onclick = async e => { e.stopPropagation();
+        try { await apiPost('devices/ignore', {ip:b.dataset.ignore}); render(); } catch (err) { alert(err.message); } });
+      document.querySelectorAll('[data-unignore]').forEach(b => b.onclick = async e => { e.stopPropagation();
+        try { await apiPost('devices/ignore', {ip:b.dataset.unignore, stop:true}); render(); } catch (err) { alert(err.message); } });
     });
     return `<div class="tw"><table><thead><tr><th>${T('Status')}</th><th>${T('Device')}</th><th>${T('Vendor / model')}</th><th>${T('Protocol')}</th><th>${T('Site')}</th><th>${T('Export IP')}</th><th class="num">${T('Records/s')}</th><th class="num">${T('Templates')}</th><th>${T('Sampling')}</th><th class="num">${T('Loss')}</th><th class="num">${T('No template')}</th>${isAdmin() ? '<th></th>' : ''}</tr></thead><tbody>
       ${d.map(x => { const never = !x.last, stale = Date.now() / 1000 - x.last > 180, st = never ? 'warn' : stale ? 'crit' : x.loss_pct > 0.5 ? 'warn' : '';
-        return `<tr class="click" data-pick="${esc(x.ip)}"><td><span class="dot ${st}" title="${never ? T('has not sent data yet') : stale ? T('no data for over 3 min') : T('online')}"></span></td><td><b class="mono">${esc(x.name)}</b>${x.configured ? '' : ` <span class="tag">${T('not described')}</span>`}${protoPill(x)}${snmpTag(x)}${dupPill(x)}${repeatPill(x)}${runningPill(x)}${appsPill(x)}</td><td>${esc(x.vendor || '—')}<br><span class="nat">${esc(x.model)}</span></td><td><span class="tag">${never ? T('waiting') : esc(x.proto)}</span></td><td>${esc(x.site || '—')}</td><td class="ipl">${esc(x.ip)}</td>
+        return `<tr class="click" data-pick="${esc(x.ip)}"><td><span class="dot ${st}" title="${never ? T('has not sent data yet') : stale ? T('no data for over 3 min') : T('online')}"></span></td><td><b class="mono">${esc(x.name)}</b>${x.configured ? '' : ` <span class="tag" title="${T('It sends, but has no description here. Describe it to keep it, or ignore it if it should not send here; without data it leaves this list after 15 minutes.')}">${T('not described')}</span>`}${protoPill(x)}${snmpTag(x)}${dupPill(x)}${repeatPill(x)}${runningPill(x)}${appsPill(x)}</td><td>${esc(x.vendor || '—')}<br><span class="nat">${esc(x.model)}</span></td><td><span class="tag">${never ? T('waiting') : esc(x.proto)}</span></td><td>${esc(x.site || '—')}</td><td class="ipl">${esc(x.ip)}</td>
           <td class="num mono">${x.rps}</td><td class="num mono">${x.templates}</td><td class="mono">${esc(x.sampling)}</td><td class="num mono" style="color:${x.loss_pct ? 'var(--warn)' : 'inherit'}">${x.loss_pct}%</td><td class="num mono">${x.no_template}</td>
-          ${isAdmin() ? `<td><button class="btn" data-edit="${esc(x.ip)}">${T('Edit')}</button></td>` : ''}</tr>`; }).join('') || `<tr><td colspan="12"><div class="empty">${T('No device has sent data yet')}</div></td></tr>`}</tbody></table></div>${collectorBar(res.collector, res.listen)}<p class="note">${T('Click a row to see the device’s interfaces below. To filter by device, use the device list at the top.')}${isAdmin() ? T(' The collector picks up description changes within a minute.') : ''}</p>`; });
+          ${isAdmin() ? `<td style="white-space:nowrap"><button class="btn" data-edit="${esc(x.ip)}">${x.configured ? T('Edit') : T('Describe')}</button>${x.configured ? '' : ` <button class="btn" data-ignore="${esc(x.ip)}" title="${T('Drop what this address sends; undo below the table')}">${T('Ignore')}</button>`}</td>` : ''}</tr>`; }).join('') || `<tr><td colspan="12"><div class="empty">${T('No device has sent data yet')}</div></td></tr>`}</tbody></table></div>${(res.ignored || []).length && isAdmin() ? `<p class="note">${T('Ignored sources (what they send is dropped):')} ${res.ignored.map(ip => `<span class="mono">${esc(ip)}</span> <button class="lnk" data-unignore="${esc(ip)}">${T('stop ignoring')}</button>`).join(' · ')}</p>` : ''}${collectorBar(res.collector, res.listen)}<p class="note">${T('Click a row to see the device’s interfaces below. To filter by device, use the device list at the top.')}${isAdmin() ? T(' The collector picks up description changes within a minute.') : ''}</p>`; });
 }
 // the protocol chosen in the description and the one that arrives differ
 const protoPill = x => x.config && x.config.protocol && x.detected && x.config.protocol !== x.detected

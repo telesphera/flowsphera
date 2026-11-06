@@ -1528,8 +1528,9 @@ def api_devices(q):
     # about a minute, so until its stats cover that time show the configured one (changed in the UI -> shown at once)
     cfg_changed = max(exporters_mtime())
     out = []
-    alias = common.device_aliases(exp)      # (2.4.0) an earlier address still sending a while: no row of its own
-    stats = [s for s in stats if s['exporter'] not in alias]
+    alias, ignored = common.device_aliases(exp), common.load_ignored()
+    # (2.4.0) an earlier address still sending a while, or an ignored source: no row of its own
+    stats = [s for s in stats if s['exporter'] not in alias and s['exporter'] not in ignored]
     seen = {s['exporter'] for s in stats}
     for ip in exp:
         if ip not in seen:
@@ -1563,7 +1564,8 @@ def api_devices(q):
                     'interfaces': interfaces_of(c, [r for r in ifs if r['exporter'] == s['exporter']], seen_addrs.get(s['exporter'], {}),
                                                 sdata.get(s['exporter']) if sset.get(s['exporter'], {}).get('enabled') else None,
                                                 cnt.get(s['exporter'], {}))})
-    return {'devices': out, 'collector': collector_health(), 'listen': listen_info(), 'snmp_tools': snmp.available()}
+    return {'devices': out, 'collector': collector_health(), 'listen': listen_info(), 'snmp_tools': snmp.available(),
+            'ignored': sorted(ignored)}      # (2.4.0) sources an administrator ignores
 
 
 def api_ifload(q):
@@ -2821,6 +2823,78 @@ def post_device_interfaces(body, user):
     return {'ok': True}
 
 
+DEVICES_FORMAT = 'flowsphera-devices'
+DEVICE_KEYS = ('name', 'vendor', 'model', 'protocol', 'city', 'country', 'lat', 'lon', 'sampling', 'wan_ifs', 'local_if', 'public_ips',
+               'export_ifs', 'if_names', 'if_addrs', 'if_caps', 'aliases')
+
+
+def get_devices_export():
+    """(2.4.0, issue #4) every configured device as JSON for another server or editing by hand: its description,
+    interface names / addresses / capacities and earlier addresses. SNMP secrets never leave the server (enter them
+    again after an import)."""
+    devs = {ip: {k: c[k] for k in DEVICE_KEYS if k in c} for ip, c in exporters_cfg(raw=True).items() if c}
+    return {'format': DEVICES_FORMAT, 'version': 1, 'flowsphera': VERSION, 'exported': int(time.time()), 'devices': devs}
+
+
+def _device_extra(ip, c):
+    """The parts of an imported device the form has no fields for, checked: interface names (≤32 chars), addresses
+    (networks), capacities (Mbit/s in, out) and earlier addresses."""
+    out = {}
+    try:
+        names = {str(int(k)): str(v).strip() for k, v in (c.get('if_names') or {}).items()}
+        if any(len(v) > 32 or any(ord(x) < 32 for x in v) for v in names.values()) or len(names) > 1024:
+            raise ValueError
+        addrs = {str(int(k)): [str(ipaddress.ip_interface(str(a))) for a in (v or [])][:16] for k, v in (c.get('if_addrs') or {}).items()}
+        caps = {}
+        for k, v in (c.get('if_caps') or {}).items():
+            a, b = (float(v[0] or 0), float(v[1] or 0))
+            if not (0 <= a <= 1e6 and 0 <= b <= 1e6):
+                raise ValueError
+            caps[str(int(k))] = [a, b]
+        aliases = [str(ipaddress.ip_address(str(x))) for x in (c.get('aliases') or [])][:16]
+    except (TypeError, ValueError, AttributeError, IndexError):
+        raise BadRequest(tr('{ip}: interface names, addresses, capacities or earlier addresses are not valid', ip=ip))
+    for k, v in (('if_names', names), ('if_addrs', addrs), ('if_caps', caps), ('aliases', [a for a in aliases if a != ip])):
+        if v:
+            out[k] = v
+    return out
+
+
+def post_devices_import(body, user, ip_addr):
+    """(2.4.0, issue #4) Devices from an export: each checked as the form checks it, then added or replaced; devices
+    not in the file stay as they are. Confirmed with the admin's own password. SNMP settings are not touched."""
+    data = body.get('data')
+    if not isinstance(data, dict) or data.get('format') != DEVICES_FORMAT or not isinstance(data.get('devices'), dict):
+        raise BadRequest(tr('Not a FlowSphera devices file'))
+    if len(data['devices']) > 1000:
+        raise BadRequest(tr('Too many devices in one file'))
+    AUTH.check_password(user, str(body.get('password') or ''), ip_addr)
+    have, ready = exporters_cfg(raw=True), []
+    for dev, c in data['devices'].items():
+        if not isinstance(c, dict):
+            raise BadRequest(tr('Not a FlowSphera devices file'))
+        ip, cfg = device_from_body({**c, 'ip': dev})
+        cfg.pop('if_names', None); cfg.pop('if_addrs', None)       # the file's, not what this server had
+        cfg.update(_device_extra(ip, c))
+        ready.append((ip, cfg))
+    for ip, cfg in ready:                                          # only after every device passed
+        save_ui_exporter(ip, cfg)
+    NAMES.reload()
+    added = sum(1 for ip, _ in ready if ip not in have)
+    return {'ok': True, 'added': added, 'updated': len(ready) - added}
+
+
+def post_device_ignore(body, user):
+    """(2.4.0, issue #4) ignore a source that is not a configured device (its packets are dropped unread), or stop."""
+    ip = device_ip(body)
+    if ip in exporters_cfg(raw=True):
+        raise BadRequest(tr('A configured device cannot be ignored: delete its description first'))
+    ips = common.load_ignored()
+    ips.discard(ip) if body.get('stop') else ips.add(ip)
+    common.save_ignored(ips)
+    return {'ok': True, 'ignored': sorted(ips)}
+
+
 def post_device_move(body, user):
     """(2.4.0) The device now exports from another address: its description, interfaces, capacities and SNMP move
     there; the old address becomes an alias, so its records still count as the device's."""
@@ -2912,10 +2986,10 @@ STATIC = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', 
 
 AUTH = None
 POLLER = snmp.Poller()
-ADMIN_GET = {'/api/retention', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
+ADMIN_GET = {'/api/devices/export', '/api/retention', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
 # (1.11.0) what an API token can never do, whatever its scope: people's accounts, the tokens themselves, the license,
 # deleting backups, and what only a browser session has
-TOKEN_DENY = {'/api/retention', '/api/users', '/api/users/update', '/api/users/delete', '/api/tokens', '/api/tokens/delete', '/api/ldap', '/api/ldap/test', '/api/mail/delete', '/api/license',
+TOKEN_DENY = {'/api/devices/import', '/api/retention', '/api/users', '/api/users/update', '/api/users/delete', '/api/tokens', '/api/tokens/delete', '/api/ldap', '/api/ldap/test', '/api/mail/delete', '/api/license',
               '/api/license/deactivate', '/api/license/checkin', '/api/backups/delete', '/api/me/password', '/api/me/prefs',
               '/api/logout', '/api/cancel'}
 COOKIE = 'ft_session'
@@ -3044,6 +3118,8 @@ class H(BaseHTTPRequestHandler):
                     return self.json(200, get_mail())
                 if u.path == '/api/retention':
                     return self.json(200, get_retention())
+                if u.path == '/api/devices/export':
+                    return self.json(200, get_devices_export())
                 if u.path == '/api/tokens':
                     return self.json(200, {'tokens': AUTH.list_tokens()})
                 if u.path == '/api/ldap':
@@ -3150,6 +3226,8 @@ class H(BaseHTTPRequestHandler):
                 '/api/devices/save': lambda: post_device_save(body, user),
                 '/api/devices/delete': lambda: post_device_delete(body, user),
                 '/api/devices/move': lambda: post_device_move(body, user),
+                '/api/devices/ignore': lambda: post_device_ignore(body, user),
+                '/api/devices/import': lambda: post_devices_import(body, user, self.client_ip()),
                 '/api/devices/interfaces': lambda: post_device_interfaces(body, user),
                 '/api/devices/snmp_test': lambda: post_snmp_test(body, user),
                 '/api/devices/snmp_poll': lambda: post_snmp_poll(body, user),

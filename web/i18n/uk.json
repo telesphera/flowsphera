@@ -2064,5 +2064,20 @@
  "Move": "Перенести",
  "Everything set here moves to the new address; the records from the old one stay this device's.": "Усе, що тут налаштовано, переходить на нову адресу; записи зі старої лишаються записами цього пристрою.",
  "That is the address it has": "Це його поточна адреса",
- "{ip} is already a device of its own": "{ip} уже є окремим пристроєм"
+ "{ip} is already a device of its own": "{ip} уже є окремим пристроєм",
+ "Export": "Експорт",
+ "Import…": "Імпорт…",
+ "Import devices": "Імпорт пристроїв",
+ "Import": "Імпортувати",
+ "replaces": "замінить",
+ "Not a FlowSphera devices file": "Це не файл пристроїв FlowSphera",
+ "Too many devices in one file": "Забагато пристроїв в одному файлі",
+ "{n} devices in the file: {a} new, {u} replace the description here. Devices not in the file stay as they are; SNMP settings are not touched.": "У файлі пристроїв: {n} — нових {a}, замінять опис тут {u}. Пристрої, яких немає у файлі, лишаються як є; налаштування SNMP не змінюються.",
+ "{ip}: interface names, addresses, capacities or earlier addresses are not valid": "{ip}: назви, адреси, ємності інтерфейсів або попередні адреси некоректні",
+ "It sends, but has no description here. Describe it to keep it, or ignore it if it should not send here; without data it leaves this list after 15 minutes.": "Пристрій надсилає дані, але тут не описаний. Опишіть його, щоб залишити, або ігноруйте, якщо він не має сюди надсилати; без даних він зникне зі списку через 15 хвилин.",
+ "Describe": "Описати",
+ "Drop what this address sends; undo below the table": "Відкидати те, що надсилає ця адреса; скасувати можна під таблицею",
+ "Ignored sources (what they send is dropped):": "Ігноровані джерела (те, що вони надсилають, відкидається):",
+ "stop ignoring": "не ігнорувати",
+ "A configured device cannot be ignored: delete its description first": "Описаний пристрій не можна ігнорувати: спершу видаліть його опис"
 }
