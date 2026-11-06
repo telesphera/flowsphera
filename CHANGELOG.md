@@ -4,7 +4,7 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
-## Unreleased
+## 2.1.1 — 2026-11-06
 
 ### Fixed
 - **Devices: the «duplicates» hint was wrong for devices that send a direction field** — it always said the device
