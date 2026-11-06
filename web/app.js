@@ -2554,9 +2554,13 @@ function vApps(){
         <td style="width:30%"><span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%;display:flex"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></td>
         <td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), all)}</td><td class="num mono">${fmtN(r.hosts || 0)}</td></tr>`).join('')}</tbody></table></div>`);
     wireFilters(document.getElementById('appBox')); }).catch(() => {});
-  api('top', {dim:'user_name', limit:8}).then(t => { const sec = document.getElementById('userSec'); if (!sec || !t.rows.length) return; sec.hidden = false;
-    setTimeout(() => { const el = document.getElementById('cUsers'); if (el) donut(el, t.rows, k => PAL[t.rows.findIndex(r => r.k === k) % PAL.length], [String(t.rows.length), Tn(t.rows.length, 'user', 'users')]); });
-    fill('userBox', `<div class="chart donut" id="cUsers"></div><div class="dl">${t.rows.map((r, i) => `<i class="idot" style="background:${PAL[i % PAL.length]}"></i><button class="link" data-f="user" data-v="${esc(r.k)}">${esc(r.k)}</button><span class="p">${pct(tot(r), t.total)}</span><span class="t">${fmtB(tot(r))}</span>`).join('')}</div>`);
+  // users: a ranked list, not a ring — a network has 5 or 10,000 of them; the count says how many there are in all and
+  // what share the ten shown carry
+  api('top', {dim:'user_name', limit:10}).then(t => { const sec = document.getElementById('userSec'); if (!sec || !t.rows.length) return; sec.hidden = false;
+    const max = tot(t.rows[0]) || 1, shown = t.rows.reduce((a, r) => a + tot(r), 0), n = t.count || t.rows.length;
+    fill('userBox', `<div class="ucount"><b class="mono">${n.toLocaleString(LOC)}</b> <span>${Tn(n, 'user', 'users')}</span>${n > t.rows.length ? `<span class="nat"> · ${T('the top {k} carry {p}', {k: t.rows.length, p: pct(shown, t.total)})}</span>` : ''}</div>
+      <div class="blist">${t.rows.map(r => `<button class="brow" data-f="user" data-v="${esc(r.k)}"><span class="n">${esc(r.k)}<span class="nat"> · ${Tn(r.hosts || 0, '{n} host', '{n} hosts', {n: r.hosts || 0})}</span></span><span class="t">${fmtB(tot(r))}</span><span class="p">${pct(tot(r), t.total)}</span>
+        <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
     wireFilters(document.getElementById('userBox')); }).catch(() => {});
   section('pBox', async () => { const t = await api('top', {dim:'l7', limit:10});
     setTimeout(() => { const el = document.getElementById('cL7'); if (el) donut(el, t.rows.slice(0, 8), k => PAL[t.rows.findIndex(r => r.k === k) % PAL.length], [String(t.rows.length), T('protocols')]); });

@@ -735,6 +735,8 @@ def api_top(q):
         rows, totals = ch_totals(f"""SELECT toString({col}) AS k, sumIf(bytes, dir IN ('up', 'internal')) AS up, sumIf(bytes, dir NOT IN ('up', 'internal')) AS dn,
                 sum(flows) AS fl, sum(packets) AS pk {extra}
             FROM {src(p, cols)}{named} GROUP BY k WITH TOTALS ORDER BY up + dn DESC LIMIT {{lim:UInt32}}""", p)
+        if named:               # (2.2.0) how many there are in all, not only the top shown (10,000 users: a ring of 8 lied)
+            count = int(ch(f"SELECT uniqExact({col}) AS n FROM {src(p, [col])}{named}", p, fmt='JSON')[0]['n'])
         if dim == 'ext_port' and rows:
             p['ports'] = [int(r['k']) for r in rows]
             # (1.17.0) exact, from the hosts and the addresses of each port per hour (agg_port_host / agg_port_peer);
@@ -764,6 +766,8 @@ def api_top(q):
             if k in r:
                 r[k] = int(r[k])
     out = {'total': int(tot), 'rows': rows}
+    if dim in ('app', 'user_name') and dim in DIMS:
+        out['count'] = count
     if every:
         out['truncated'] = len(rows) > TOP_ALL
         out['rows'] = rows[:TOP_ALL]
