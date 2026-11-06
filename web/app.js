@@ -2535,25 +2535,28 @@ function vApps(){
   v.innerHTML = `<div class="grid"><section class="glass panel s12">${ph('chart', T('Services over time'), T('the service comes from the destination ASN and port'))}<div class="chart" id="cApps"></div></section>
     <section class="glass panel s8">${ph('grid', T('Services'), T('click to filter by service'), '<button class="lnk" id="aMore"></button>')}<div id="aBox" class="loading"></div></section>
     <section class="glass panel s4">${ph('pie', T('Protocols'), T('L7 by port'))}<div id="pBox" class="loading"></div></section>
-    <section class="glass panel s8" id="appSec" hidden>${ph('grid', T('Applications'), T('named by the firewall (Palo Alto App-ID) · click to filter'))}<div id="appBox"></div></section>
-    <section class="glass panel s4" id="userSec" hidden>${ph(USER_ICON, T('Users'), T('named by the firewall (User-ID)'))}<div id="userBox"></div></section></div>`;
+    <section class="glass panel s8" id="appSec" hidden>${ph('chart', T('Applications over time'), T('named by the firewall (Palo Alto App-ID)'))}<div class="chart" id="cAppT" data-wait="line"></div></section>
+    <section class="glass panel s4" id="userSec" hidden>${ph(USER_ICON, T('Users'), T('named by the firewall (User-ID)'))}<div id="userBox"></div></section>
+    <section class="glass panel s12" id="appTblSec" hidden>${ph('grid', T('Applications'), T('click to filter every page by the application'))}<div id="appBox"></div></section></div>`;
   api('series', {by:'service', top:7}).then(s => { const el = document.getElementById('cApps'); if (el) stackChart(el, s, k => k, k => addFilter('service', k)); }).catch(e => fill('cApps', errBox(e)));
   section('aBox', async () => { const t = await api('top', {dim:'service', limit:all ? 100 : 11}), rows = all ? t.rows : t.rows.slice(0, 10);
     moreToggle('aMore', 'appsAll', all, t.rows.length > 10);
     return `<div class="tw"><table><thead><tr><th>${T('Service')}</th><th>${T('Protocol')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="click" data-f="service" data-v="${esc(r.k)}"><td><button class="link" data-f="service" data-v="${esc(r.k)}">${svcBadge(r.k)}</button></td><td class="ipl">${esc(dv(r.l7))}</td><td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono"><b>${fmtB(tot(r))}</b></td><td class="num mono">${pct(tot(r), t.total)}</td><td class="num mono">${r.hosts}</td></tr>`).join('')}</tbody></table></div>`; });
-  // (2.2.0) applications and users the exporter named: shown only when a device sent them in the period
-  api('top', {dim:'app', limit:12}).then(t => { const sec = document.getElementById('appSec'); if (!sec || !t.rows.length) return; sec.hidden = false;
-    const all = tot(t.totals || {}) || t.rows.reduce((a, r) => a + tot(r), 0), max = tot(t.rows[0]) || 1;
-    fill('appBox', `<div class="tw"><table><thead><tr><th>${T('Application')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th></tr></thead><tbody>
-      ${t.rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${esc(r.k)}</button>
-        <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%;display:block;margin-top:4px"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></td>
+  // (2.2.0) applications and users the exporter named (Palo Alto App-ID / User-ID): shown only when a device named any
+  // in the period. Visual first: the applications over time and the users' ring, the table of applications below
+  api('top', {dim:'app', limit:12}).then(t => { if (!t.rows.length || !document.getElementById('appSec')) return;
+    ['appSec', 'appTblSec'].forEach(id => { document.getElementById(id).hidden = false; });
+    api('series', {by:'app', top:7}).then(sr => { const el = document.getElementById('cAppT'); if (el) { delete el.dataset.wait; stackChart(el, sr, k => k, k => addFilter('app', k)); } }).catch(e => fill('cAppT', errBox(e)));
+    const all = t.total || t.rows.reduce((a, r) => a + tot(r), 0), max = tot(t.rows[0]) || 1;
+    fill('appBox', `<div class="tw"><table><thead><tr><th>${T('Application')}</th><th>${T('Share')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th></tr></thead><tbody>
+      ${t.rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${esc(r.k)}</button></td>
+        <td style="width:30%"><span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%;display:flex"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></td>
         <td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), all)}</td><td class="num mono">${fmtN(r.hosts || 0)}</td></tr>`).join('')}</tbody></table></div>`);
     wireFilters(document.getElementById('appBox')); }).catch(() => {});
-  api('top', {dim:'user_name', limit:12}).then(t => { const sec = document.getElementById('userSec'); if (!sec || !t.rows.length) return; sec.hidden = false;
-    const max = tot(t.rows[0]) || 1;
-    fill('userBox', `<div class="blist">${t.rows.map(r => `<button class="brow" data-f="user" data-v="${esc(r.k)}"><span class="n">${esc(r.k)}<span class="nat"> · ${Tn(r.hosts || 0, '{n} host', '{n} hosts', {n: r.hosts || 0})}</span></span><span class="t">${fmtB(tot(r))}</span><span class="p"></span>
-      <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
+  api('top', {dim:'user_name', limit:8}).then(t => { const sec = document.getElementById('userSec'); if (!sec || !t.rows.length) return; sec.hidden = false;
+    setTimeout(() => { const el = document.getElementById('cUsers'); if (el) donut(el, t.rows, k => PAL[t.rows.findIndex(r => r.k === k) % PAL.length], [String(t.rows.length), Tn(t.rows.length, 'user', 'users')]); });
+    fill('userBox', `<div class="chart donut" id="cUsers"></div><div class="dl">${t.rows.map((r, i) => `<i class="idot" style="background:${PAL[i % PAL.length]}"></i><button class="link" data-f="user" data-v="${esc(r.k)}">${esc(r.k)}</button><span class="p">${pct(tot(r), t.total)}</span><span class="t">${fmtB(tot(r))}</span>`).join('')}</div>`);
     wireFilters(document.getElementById('userBox')); }).catch(() => {});
   section('pBox', async () => { const t = await api('top', {dim:'l7', limit:10});
     setTimeout(() => { const el = document.getElementById('cL7'); if (el) donut(el, t.rows.slice(0, 8), k => PAL[t.rows.findIndex(r => r.k === k) % PAL.length], [String(t.rows.length), T('protocols')]); });
@@ -3041,7 +3044,8 @@ const VENDORS = {
   Juniper:{ipfix:juniper('version-ipfix', 'version-ipfix'), netflow9:juniper('version9', 'version9'),
     sflow:named(rated((ip, port, o) => `# ${T('EX / QFX switches')}\nset protocols sflow collector ${ip} udp-port ${port}\nset protocols sflow sample-rate ingress ${sfRate(o, 1000)}\nset protocols sflow polling-interval 20\n# ${SFLOW_NOTE()}${each(o, ['ge-0/0/0'], n => `\nset protocols sflow interfaces ${n}`)}`))},
   'Palo Alto':{netflow9:steps((ip, port) => [T('Device → Server Profiles → NetFlow → Add: name FlowSphera, active timeout 1 min, template refresh 1 min.'),
-    T('Servers → Add: address {ip}, port {port}.', {ip, port}), T('Network → Interfaces → every inside AND every Internet-facing interface → Advanced → NetFlow Profile: FlowSphera.'),
+    T('Servers → Add: address {ip}, port {port}.', {ip, port}), T('In the same profile tick PAN-OS Field Types: FlowSphera then shows the application (App-ID) and the user (User-ID) of every flow.'),
+    T('Network → Interfaces → every inside AND every Internet-facing interface → Advanced → NetFlow Profile: FlowSphera.'),
     T('PAN-OS exports only the traffic entering an interface: without the profile on the external interfaces the replies from the Internet are not sent, and downloads show 0 B.'), T('Commit.')])},
   'Check Point':{netflow9:(ip, port) => `# Gaia clish\nadd netflow collector ip ${ip} port ${port} export-format Netflow_V9\nsave config`,
     netflow5:(ip, port) => `# Gaia clish\nadd netflow collector ip ${ip} port ${port} export-format Netflow_V5\nsave config`},

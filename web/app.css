@@ -872,3 +872,6 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
 .btn.sm{padding:4px 10px;font-size:12px}
 #kpNote.warnline{color:var(--warn)}
 @media (max-width:900px){.kstats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* (2.2.0) Services: applications over time fills its row next to the users' ring */
+#appSec:not(.is-max){display:flex;flex-direction:column}
+#appSec:not(.is-max) > .chart{flex:1 1 auto;height:auto;min-height:260px}

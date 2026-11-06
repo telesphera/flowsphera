@@ -577,6 +577,8 @@ def api_series(q):
         if rng >= LONG and step % 3600 and not has(step) and has(-(-step // 3600) * 3600):
             step = p['_step'] = p['step'] = -(-step // 3600) * 3600
         s = src(p, dim[:1], bucketed=True)
+        if by in ('app', 'user_name'):      # (2.2.0) what the exporter did not name is no series of its own
+            s += f" AND {col} != ''"
         if both:
             # (1.17.0) both ends from the conversations per hour (agg_conv), a chosen host's turned to it too
             pairs = src(p, ['int_ip', 'ext_ip'], bucketed=True)
