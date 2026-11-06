@@ -880,3 +880,5 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
 /* (2.4.0) device dialog: change address, a row of its own under IP + name */
 .moverow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:end;margin:4px 0 8px}
 .moverow p{grid-column:1 / -1;margin:0}
+/* (2.4.0) Flow configuration: CSV buttons in the panel header */
+.csvbtns{display:flex;gap:6px;flex-wrap:wrap}

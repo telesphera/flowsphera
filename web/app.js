@@ -3711,12 +3711,55 @@ async function openPortName(proto, port){
 }
 // ===================== Settings → Flow configuration: how FlowSphera names and treats the traffic =====================
 // (1.8.4) own port names (a table, added with a form) and the roles of our services (from the Events tab)
+// (2.4.0, GitHub issue #2) the Flow configuration tables as CSV and back. Read: a UTF-8 BOM, «,» «;» or a tab (the
+// first line decides — a Ukrainian Excel saves «;»), quotes, an optional header; written: «,» + BOM so Excel shows the
+// names right. An import adds and replaces rows by their key and keeps the rest; the server checks every row as before.
+function csvParse(text){
+  text = String(text).replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0], d = [';', '\t', ','].sort((a, b) => first.split(b).length - first.split(a).length)[0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) { const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === d) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c; }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.map(r => r.map(x => x.trim())).filter(r => r.some(Boolean));
+}
+const csvCell = v => /[",;\n\r]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+const csvBtns = id => `<span class="csvbtns"><button type="button" class="btn sm" id="${id}CsvOut">${T('Export CSV')}</button><button type="button" class="btn sm" id="${id}CsvIn">${T('Import CSV…')}</button><input type="file" id="${id}CsvFile" accept=".csv,text/csv,text/plain" hidden></span>`;
+// o: {id, file, header: [..], toRow(item) -> cells, fromRow(cells) -> item | {err}, key(item), items() -> current, save(list)}
+function csvTools(o){
+  const out = document.getElementById(`${o.id}CsvOut`), inp = document.getElementById(`${o.id}CsvIn`), file = document.getElementById(`${o.id}CsvFile`);
+  if (!out || !inp || !file) return;
+  out.onclick = () => { const text = '﻿' + [o.header, ...o.items().map(o.toRow)].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'text/csv;charset=utf-8'}));
+    a.download = `flowsphera-${o.file}-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+  inp.onclick = () => { file.value = ''; file.click(); };
+  file.onchange = async () => { const f = file.files[0]; if (!f) return;
+    let rows = csvParse(await f.text()), skip = 0;
+    if (rows.length && rows[0].map(x => x.toLowerCase()).join() === o.header.map(x => x.toLowerCase()).join()) { rows = rows.slice(1); skip = 1; }
+    const got = [], bad = [];     // line numbers as in the file (the header counts), blank lines aside
+    rows.forEach((r, i) => { const it = o.fromRow(r); if (it && !it.err) got.push(it); else bad.push(`${T('line {n}', {n: i + 1 + skip})}: ${(it && it.err) || r.join(', ')}`); });
+    const cur = o.items(), byKey = new Map(cur.map(x => [o.key(x), x])), seen = new Map();
+    got.forEach(x => seen.set(o.key(x), x));
+    const fresh = [...seen.values()].filter(x => !byKey.has(o.key(x))), changed = [...seen.values()].filter(x => byKey.has(o.key(x)) && JSON.stringify(o.toRow(byKey.get(o.key(x)))) !== JSON.stringify(o.toRow(x)));
+    const list = [...cur.map(x => seen.get(o.key(x)) || x), ...fresh];
+    const md = openModal(T('Import CSV'), esc(f.name), `<div class="form" style="padding:4px 2px">
+      <p class="note" style="margin:0">${T('{a} new, {c} changed, {k} kept as they are. Rows already here and not in the file stay.', {a: fresh.length, c: changed.length, k: cur.length - changed.length})}</p>
+      ${bad.length ? `<p class="err" style="margin:0">${T('{n} lines could not be read and are left out:', {n: bad.length})}<br>${bad.slice(0, 8).map(esc).join('<br>')}${bad.length > 8 ? '<br>…' : ''}</p>` : ''}
+      <p class="err" id="csvErr" hidden></p>
+      <div style="display:flex;gap:8px"><button class="btn primary" id="csvOk" ${fresh.length + changed.length ? '' : 'disabled'}>${T('Import')}</button><button class="btn" id="csvNo">${T('Cancel')}</button></div></div>`);
+    document.getElementById('csvNo').onclick = md.close;
+    document.getElementById('csvOk').onclick = async () => { try { await o.save(list); md.close(); render(); } catch (err) { formErr('csvErr', err.message); } }; };
+}
 function vFlowCfg(){
   const admin = isAdmin();
   document.getElementById('setBody').innerHTML = `<div class="grid top">
-    <section class="glass panel s12">${ph('list', T('Port names'), T('your own names of ports: they replace the protocol FlowSphera names (e.g. TCP other) in every report'))}<div id="pnBox" class="loading"></div></section>
-    <section class="glass panel s12">${ph('dev', T('Host names'), T('your own names of the hosts in your network: shown next to their addresses everywhere, over the names from DNS'))}<div id="hnBox" class="loading"></div></section>
-    <section class="glass panel s12">${ph('nodes', T('Network names'), T('your own names of networks: filter by them (net:Office) and see the traffic of each on Top hosts → Networks'))}<div id="nnBox" class="loading"></div></section>
+    <section class="glass panel s12">${ph('list', T('Port names'), T('your own names of ports: they replace the protocol FlowSphera names (e.g. TCP other) in every report'), admin ? csvBtns('pn') : '')}<div id="pnBox" class="loading"></div></section>
+    <section class="glass panel s12">${ph('dev', T('Host names'), T('your own names of the hosts in your network: shown next to their addresses everywhere, over the names from DNS'), admin ? csvBtns('hn') : '')}<div id="hnBox" class="loading"></div></section>
+    <section class="glass panel s12">${ph('nodes', T('Network names'), T('your own names of networks: filter by them (net:Office) and see the traffic of each on Top hosts → Networks'), admin ? csvBtns('nn') : '')}<div id="nnBox" class="loading"></div></section>
     ${admin ? `<section class="glass panel s7">${ph('dev', T('Services on our side'), T('learned from the last day: what outside addresses call · the role decides which events they get'))}<div id="evsBox" class="loading"></div></section>
     <section class="glass panel s5">${ph('shield', T('Port roles'), T('for services not listed on the left'))}<div id="prBox" class="loading"></div></section>
     <section class="glass panel s12 evsave"><div><button class="btn primary" id="svSave">${T('Save')}</button> <button class="btn" id="svDef">${T('Restore defaults')}</button></div><p class="err" id="svErr"></p><p class="note" id="svOk" hidden>${T('Saved. The next 10-minute check uses the new settings.')}</p></section>` : ''}</div>`;
@@ -3778,7 +3821,13 @@ function vFlowCfg(){
       ok.onclick = commit; document.getElementById('pnEdNo').onclick = () => { edit = null; draw(d); };
       [eN, eT].forEach(x => x.addEventListener('keydown', e => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') { edit = null; draw(d); } }));
     } };
-  api('ports').then(draw).catch(e => fill('pnBox', errBox(e)));
+  api('ports').then(d => { draw(d);
+    csvTools({id:'pn', file:'port-names', header:['protocol', 'port', 'name'], items:() => items, key:x => `${x.proto}/${x.port}`,
+      toRow:x => [x.proto, x.port, x.name], save,
+      fromRow:([pr = '', port = '', ...rest]) => { const name = rest.join(' ').trim(), p = pr.toLowerCase();
+        if (!['tcp', 'udp'].includes(p)) return {err:T('the protocol must be TCP or UDP')};
+        if (!portOk(port)) return {err:T('A port is a number from 1 to 65535.')};
+        return name ? {proto:p, port:+port, name} : {err:T('no name')}; }}); }).catch(e => fill('pnBox', errBox(e)));
   // host names: the IP of a host and the name to show
   let hn = null;
   api('hosts/names').then(d => { if (!document.getElementById('hnBox')) return;
@@ -3795,6 +3844,10 @@ function vFlowCfg(){
       save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; return r.items; },
       delAsk:it => T('Delete the name «{name}» of {ip}?', {name:it.name, ip:it.ip}),
       empty:T('No own host names yet.') + (admin ? ' ' + T('Example: 10.0.0.15 → NAS in the office.') : '')});
+    csvTools({id:'hn', file:'host-names', header:['ip', 'name'], items:() => cur, key:x => x.ip, toRow:x => [x.ip, x.name],
+      save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; },
+      fromRow:([ip = '', ...rest]) => { const name = rest.join(' ').trim(), c = addrCheck(ip);
+        return !c.ok || c.net ? {err:T('Not an IP address: {v}', {v:ip})} : name ? {ip:c.v, name} : {err:T('no name')}; }});
   }).catch(e => fill('hnBox', errBox(e)));
   // (1.8.7) network names: a network (CIDR) and its name; several networks may share one name
   let nn = null;
@@ -3814,6 +3867,10 @@ function vFlowCfg(){
       save:async list => { const r = await apiPost('networks', {items:list}); cur = r.items; META.networks = r.items; return r.items; },
       delAsk:it => T('Delete the name «{name}» of {net}?', {name:it.name, net:it.net}),
       empty:T('No named networks yet.') + (admin ? ' ' + T('Example: 172.16.0.0/24 → Office.') : '')});
+    csvTools({id:'nn', file:'network-names', header:['network', 'name'], items:() => cur, key:x => norm(x.net) || x.net, toRow:x => [x.net, x.name],
+      save:async list => { const r = await apiPost('networks', {items:list}); cur = r.items; META.networks = r.items; },
+      fromRow:([net = '', ...rest]) => { const name = rest.join(' ').trim(), n = norm(net);
+        return !n ? {err:T('Write the network with its mask: {v}/24', {v:net})} : name ? {net:n, name} : {err:T('no name')}; }});
   }).catch(e => fill('nnBox', errBox(e)));
   if (!admin) return;
   // the roles of our services and the port lists (detections read them; saved apart from the rest of the Events tab)

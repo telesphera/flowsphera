@@ -13,6 +13,10 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
   without a break. (GitHub issue #4)
 - **Export / import devices** as a JSON file (Settings → Devices), for another server or editing many devices by hand;
   each device is checked as the form checks it, nothing changes unless all pass, confirmed with your password.
+- **Port, host and network names as CSV** (Settings → Flow configuration): *Export CSV* and *Import CSV…* on each
+  table. An import adds and replaces rows by address / network / port and keeps the rest; it shows what is new,
+  changed and unreadable (with the file's line numbers) before saving. Reads «,» «;» or tabs, so a file saved by Excel
+  in any language works. (GitHub issue #2)
 - **Sources that send but are not described** say so and can be **ignored** (what they send is dropped); the list of
   ignored sources with «stop ignoring» is under the table.
 

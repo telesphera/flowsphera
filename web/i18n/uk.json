@@ -2080,5 +2080,11 @@
  "Ignored sources (what they send is dropped):": "Ігноровані джерела (те, що вони надсилають, відкидається):",
  "stop ignoring": "не ігнорувати",
  "A configured device cannot be ignored: delete its description first": "Описаний пристрій не можна ігнорувати: спершу видаліть його опис",
- "{ip} is now an earlier address of {name}: export the devices again": "{ip} тепер — попередня адреса пристрою {name}: експортуйте пристрої заново"
+ "{ip} is now an earlier address of {name}: export the devices again": "{ip} тепер — попередня адреса пристрою {name}: експортуйте пристрої заново",
+ "Import CSV…": "Імпорт CSV…",
+ "Import CSV": "Імпорт CSV",
+ "line {n}": "рядок {n}",
+ "{a} new, {c} changed, {k} kept as they are. Rows already here and not in the file stay.": "Нових: {a}, змінених: {c}, без змін: {k}. Рядки, які вже є тут і яких немає у файлі, лишаються.",
+ "{n} lines could not be read and are left out:": "Не вдалося прочитати рядків: {n}, їх пропущено:",
+ "the protocol must be TCP or UDP": "протокол має бути TCP або UDP"
 }
