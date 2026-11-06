@@ -197,6 +197,35 @@ function trendChart(el, series, compact){
       {name:'↑ Upload', type:'line', smooth:.35, showSymbol:false, lineStyle:{width:2, color:C.up, shadowBlur:12, shadowColor:C.up}, itemStyle:{color:C.up}, areaStyle:area(C.up), data:ts.map(t => [t * 1000, ((m.get(t) || [])[2] || 0) * 8 / step])}]});
   return compact ? c : zoomable(c);
 }
+// (2.0.0 build 4) Ingest over the period (forum #17): records/s per device stacked (exporter_stats, per minute),
+// the busiest minute of each step dashed, the edition's limit once the traffic comes near it, red bands where it dropped records
+function ingestChart(el, d){
+  const {ts, step} = grid(d), keys = new Map(), peak = new Map(d.peak), drops = new Map(d.drops);
+  for (const [t, k, r] of d.rows) { if (!keys.has(k)) keys.set(k, new Map()); keys.get(k).set(t, r); }
+  const order = [...keys.keys()].sort((a, b) => devName(a).localeCompare(devName(b)));
+  const top = Math.max(0, ...d.peak.map(x => x[1])), near = d.limit && top >= d.limit / 2;
+  const rate = v => T('{n} rec/s', {n: fmtN(v)});
+  // a step without any row = the collector was not running (e.g. a power cut): a gap, not 0 rec/s
+  const seen = new Set([...d.rows.map(r => r[0]), ...d.peak.map(r => r[0])]), at = (t, v) => [t * 1000, seen.has(t) ? v : null];
+  const c = mkChart(el);
+  c.setOption({animation:false, grid:{left:12, right:10, top:order.length > 1 ? 30 : 12, bottom:4, containLabel:true},
+    legend:{show:order.length > 1, top:0, left:0, type:'scroll', icon:'roundRect', itemWidth:10, itemHeight:10, data:order.map(devName), textStyle:{color:C.ink2, fontFamily:'Manrope'}},
+    tooltip:{...tipBase(), trigger:'axis', confine:true, order:'seriesDesc', formatter:ps => { const t = ps.length ? Math.round(ps[0].value[0] / 1000) : 0;
+      const sum = ps.filter(x => x.seriesId !== '__peak').reduce((a, x) => a + (x.value[1] || 0), 0), n = drops.get(t);
+      if (!seen.has(t)) return `<b>${esc(dMon(t) + ' ' + hhmm(t))}</b><br>${T('The collector was not running')}`;
+      return `<b>${esc(dMon(t) + " " + hhmm(t))}</b><br>` + ps.map(x => `${x.marker}${esc(x.seriesName)}: <b>${rate(x.value[1] || 0)}</b>`).join('<br>')
+        + (order.length > 1 ? `<br>${T('All devices')}: <b>${rate(sum)}</b>` : '')
+        + (n ? `<br><span style="color:${RED}">${T('{n} records over the license limit were not stored', {n: fmtN(n)})}</span>` : ''); }},
+    xAxis:axisX(ts), yAxis:{...axisY(v => fmtN(v)), max:near ? (v => Math.max(v.max, d.limit) * 1.08) : null},
+    series:[...order.map(k => { const col = keyColor(k); return {name:devName(k), id:k, type:'line', stack:'a', smooth:.25, showSymbol:false,
+        lineStyle:{width:1.4, color:col}, itemStyle:{color:col}, areaStyle:{opacity:.3}, data:ts.map(t => at(t, keys.get(k).get(t) || 0))}; }),
+      {name:T('Busiest minute'), id:'__peak', type:'line', showSymbol:false, step:'middle', lineStyle:{width:1, type:'dashed', color:C.ink2}, itemStyle:{color:C.ink2},
+        data:ts.map(t => at(t, peak.get(t) || 0)),
+        markLine:near ? {silent:true, symbol:'none', label:{color:AMBER, fontFamily:'Manrope', formatter:T('limit {n}/s', {n: fmtN(d.limit)}), position:'insideEndTop'},
+          lineStyle:{color:AMBER, type:'dashed', width:1.2}, data:[{yAxis:d.limit}]} : undefined,
+        markArea:d.drops.length ? {silent:true, itemStyle:{color:hexA(RED, .22)}, data:d.drops.map(([t]) => [{xAxis:t * 1000}, {xAxis:(t + step) * 1000}])} : undefined}]});
+  return zoomable(c);
+}
 function stackChart(el, series, label, onPick){
   const {ts, step} = grid(series), keys = new Map();
   for (const [t, k, b] of series.rows) { if (!keys.has(k)) keys.set(k, new Map()); keys.get(k).set(t, b); }
@@ -935,14 +964,15 @@ async function inspectorHtml(sel){
 function vFlows(){
   const v = document.getElementById('view');
   v.innerHTML = `<div class="grid">
-    <section class="glass panel s9">${ph('flow', isInternal() ? T('Exchange between inside addresses') : T('Exchange between inside and outside addresses'), isInternal() ? T('who connects to whom: clients on the left, the servers they connect to on the right · colour = direction · width = volume (the compressed scale shows small flows too) · top 10 on each side, the rest in «Others»') : T('Colour = direction · width = volume (the compressed scale shows small flows too) · top 10 on each side, the rest in «Others»'),
+    <section class="glass panel s9" id="flowRiverSec">${ph('flow', isInternal() ? T('Exchange between inside addresses') : T('Exchange between inside and outside addresses'), isInternal() ? T('who connects to whom: clients on the left, the servers they connect to on the right · colour = direction · width = volume (the compressed scale shows small flows too) · the biggest on each side, the rest in «Others»') : T('Colour = direction · width = volume (the compressed scale shows small flows too) · the biggest on each side, the rest in «Others»'),
       seg('metricSeg', [['bytes', T('Bytes')], ['packets', T('Packets')], ['flows', 'Flows']], state.metric) + seg('scaleSeg', [['sqrt', T('Compressed'), T('Width ∝ √volume — small flows stay visible next to big ones')], ['lin', T('Linear'), T('Width proportional to volume')]], state.scale) + seg('liveSeg', [['live', T('Live')], ['period', T('toggle::Period')]], flowLive() ? 'live' : 'period'), true)}
       <div class="legend" style="margin:-6px 0 10px">${isInternal() ? `<span><i class="bar" style="background:${C.up}"></i>${T('client → server (what it sends)')}</span><span><i class="bar" style="background:${C.down}"></i>${T('server → client (the answer)')}</span><span><i style="background:${C.int}"></i>${T('inside address')}</span>` : `<span><i class="bar" style="background:${C.down}"></i>${T('download (outside → inside)')}</span><span><i class="bar" style="background:${C.up}"></i>${T('upload (inside → outside)')}</span><span><i style="background:${C.int}"></i>${T('inside address')}</span><span><i style="background:${C.ext}"></i>${T('outside address')}</span>`}<span id="winLbl" class="mono" style="margin-left:auto"></span></div>
       <div class="river big" id="river"></div></section>
-    <div class="col s3">
+    <div class="col s3" id="flowSide">
       <section class="glass panel kcard" style="grid-template-columns:auto 1fr"><span class="ico">${icon(ICO.pulse, 22)}</span><span class="k">${T('Total traffic')}</span><span class="v" id="kTot">—</span></section>
       <section class="glass panel kcard" style="grid-template-columns:auto 1fr"><span class="ico">${icon(ICO.nodes, 22)}</span><span class="k">${T('Flow records')}</span><span class="v" id="kFl">—</span></section>
       <section class="glass panel">${ph('search', T('Inspector'), T('details of the selection'))}<div id="insp"></div></section>
+      <section class="glass panel" id="ingSec">${ph('pulse', T('Ingest'), T('records/s from the devices'), '', false, maxBtn())}<div class="chart ing loading" id="cIng" data-wait="line"></div><div class="note" id="ingNote"></div></section>
     </div>
     <section class="glass panel s4">${ph('chart', T('Traffic volume'), 'download / upload')}<div class="chart" id="cVol"></div></section>
     <section class="glass panel s4">${ph('conv', T('Top conversations'), T('with the service'), `<button class="lnk" data-to-conv>${T('All conversations →')}</button>`)}<div id="convBox" class="loading"></div></section>
@@ -964,7 +994,9 @@ function vFlows(){
     if (riverScope) riverScope.dispose();
     riverScope = childScope();
     riverScope.run(() => createRiver(document.getElementById('river'), {compact:false, refreshMs:flowLive() ? 10000 : 0, onSelect:onRiverSelect,
-      fetchData:() => api('river', {top:10, live:flowLive() ? 1 : 0, win:120, metric:state.metric}), onData:d => { lastData = d; winLbl(d); }}));
+      // (2.0.0 build 4) the river grows with its row (a tall Inspector): as many pairs as fit, never fewer than the old 10
+      fitTop:(h, cpt) => Math.max(10, Math.min(20, Math.floor((h - (cpt ? 22 : 30) + (cpt ? 6 : 8)) / (cpt ? 46 : 58)))),
+      fetchData:top => api('river', {top:top || 10, live:flowLive() ? 1 : 0, win:120, metric:state.metric}), onData:d => { lastData = d; winLbl(d); }}));
   };
   mountRiver();
   wireSeg('scaleSeg', m => { state.scale = m; setPressed('scaleSeg', m); RIVERS.forEach(k => k()); if (lastData) winLbl(lastData); });
@@ -973,6 +1005,13 @@ function vFlows(){
   wireSeg('liveSeg', m => { const live = m === 'live'; if (live === state.flowLive) return; state.flowLive = live; setPressed('liveSeg', m); mountRiver(); });
   api('summary').then(s => { fill('kTot', fmtB(s.bytes)); fill('kFl', fmtN(s.flows)); }).catch(() => {});
   api('series').then(s => { const el = document.getElementById('cVol'); if (el) trendChart(el, s); }).catch(e => fill('cVol', errBox(e)));
+  const ingest = () => api('ingest').then(d => { const el = document.getElementById('cIng'); if (!el) return; el.classList.remove('loading'); delete el.dataset.wait;
+    const c = echarts.getInstanceByDom(el); if (c) c.dispose(); ingestChart(el, d);
+    const n = d.drops.reduce((a, x) => a + x[1], 0), top = Math.max(0, ...d.peak.map(x => x[1]));
+    fill('ingNote', (top ? T('dashed: the busiest minute (top {n} rec/s) · drag to zoom', {n: fmtN(top)}) : T('No records from the devices in this period'))
+      + (d.limit ? ' · ' + T('license limit {n}/s', {n: fmtN(d.limit)}) : '') + (n ? ` · <span style="color:${RED}">${T('{n} records over the limit not stored', {n: fmtN(n)})}</span>` : '')); })
+    .catch(e => fill('cIng', errBox(e)));
+  ingest(); if (!isCustom()) every(60000, ingest);
   section('convBox', async () => { const t = await api('top', {dim:'conv', limit:6});
     return `<div class="tw"><table class="compact"><thead><tr><th>${isInternal() ? T('Client') : T('col::Inside')}</th><th>${isInternal() ? T('Server') : T('Outside')}</th><th>${T('Service')}</th><th class="num">${T('Volume')}</th></tr></thead><tbody>${t.rows.map(x => `<tr class="click" data-conv="${esc(x.int_ip)}|${esc(x.ext_ip)}" title="${T('Filter by this conversation')}"><td class="ipl">${esc(x.name || x.int_ip)}</td><td class="ipl">${esc(x.ext_ip)}</td><td>${svcBadge(x.service)}</td><td class="num mono">${isInternal() ? `<div class="two-line"><b>${fmtB(tot(x))}</b><span class="nat"><span class="u" title="${T('the client sent')}">↑ ${fmtB(x.up)}</span> <span class="d" title="${T('the server answered')}">↓ ${fmtB(x.dn)}</span></span></div>` : fmtB(tot(x))}</td></tr>`).join('')}</tbody></table></div>`; });
   document.getElementById('convBox').addEventListener('click', e => { const tr = e.target.closest('tr[data-conv]'); if (!tr) return;

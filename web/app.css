@@ -839,3 +839,22 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
   .nav button{padding:5px 12px;font-size:13.5px}
   .ingest .v{font-size:17px}
 }
+/* (2.0.0 build 4) Flows: Ingest under the Inspector */
+.chart.ing{height:210px}
+#ingSec .note{margin-top:6px;font-size:12px;color:var(--ink3)}
+/* (2.0.0 build 4) Flows: no empty space on either side of the top row — the river grows with the row (a host chosen
+   makes the Inspector tall: more pairs fit) and Ingest takes what the column has left (nothing chosen) */
+@media (min-width:1281px){
+  #flowRiverSec{display:flex;flex-direction:column}
+  #flowRiverSec > .river.big{flex:1 1 auto;height:auto;min-height:600px}
+  #flowSide{display:flex;flex-direction:column}
+  #flowSide > #ingSec:not(.is-max){flex:1 1 auto;display:flex;flex-direction:column}
+  #ingSec:not(.is-max) > .chart.ing{flex:1 1 auto;height:auto;min-height:210px}
+}
+/* under 1,281 px the column goes under the river at full width: the two cards, then Inspector and Ingest side by side
+   (as a half-width column it left the other half empty) */
+@media (max-width:1280px) and (min-width:901px){
+  #flowSide{grid-column:span 12;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
+  #ingSec:not(.is-max){display:flex;flex-direction:column}
+  #ingSec:not(.is-max) > .chart.ing{flex:1 1 auto;height:auto;min-height:210px}
+}

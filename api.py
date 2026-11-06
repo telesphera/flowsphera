@@ -1252,6 +1252,45 @@ def sflow_counters():
     return out
 
 
+INGEST_STEPS = (60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400)
+
+
+def api_ingest(q):
+    """(2.0.0 build 4) Records/s the devices sent over the period, from the per-minute exporter_stats (never the
+    records themselves): the average per device and step, the busiest minute of each step, and the steps in which the
+    edition's records/s limit dropped records (collector_stats, all devices). Only the device filter applies."""
+    t0, t1, _ = period(q)
+    step = next((s for s in INGEST_STEPS if (t1 - t0) / s <= 360), INGEST_STEPS[-1])
+    t0 = t0 // step * step
+    try:
+        flt = json.loads(q.get('f', ['[]'])[0])
+    except ValueError:
+        flt = []
+    flt = [f for f in (flt if isinstance(flt, list) else []) if isinstance(f, dict) and f.get('k') == 'device']
+    inc = [str(f.get('v')) for f in flt if not f.get('neg')]
+    exc = [str(f.get('v')) for f in flt if f.get('neg')]
+    cond = (' AND exporter IN {inc:Array(String)}' if inc else '') + (' AND exporter NOT IN {exc:Array(String)}' if exc else '')
+    p = {'t0': t0, 't1': t1, 'step': step, 'inc': inc, 'exc': exc}
+    win = 'ts >= toDateTime({t0:UInt32}) AND ts < toDateTime({t1:UInt32})'
+    bucket = 'toUnixTimestamp(toStartOfInterval({c}, toIntervalSecond({{step:UInt32}})))'
+    rows = ch(f"""SELECT {bucket.format(c='ts')} AS t, exporter, sum(records) AS r FROM exporter_stats
+        WHERE {win}{cond} GROUP BY t, exporter ORDER BY t, exporter""", p, fmt='JSON')
+    peaks = ch(f"""SELECT {bucket.format(c='m')} AS t, max(r) AS r FROM (SELECT toStartOfMinute(ts) AS m, sum(records) AS r
+        FROM exporter_stats WHERE {win}{cond} GROUP BY m) GROUP BY t ORDER BY t""", p, fmt='JSON')
+    try:
+        drops = ch(f"""SELECT {bucket.format(c='ts')} AS t, sum(license_drops) AS n FROM collector_stats WHERE {win}
+            GROUP BY t HAVING n > 0 ORDER BY t""", p, fmt='JSON')
+    except CHError:
+        drops = []
+    now = int(time.time())
+    # the seconds each step covers: the period's own edges and the step still running count only their part
+    span = lambda t: max(60, min(t + step, t1, now) - max(t, t0))  # noqa: E731
+    return {'from': t0, 'to': t1, 'step': step, 'limit': common.edition().get('rps'),
+            'rows': [[int(r['t']), r['exporter'], round(int(r['r']) / span(int(r['t'])), 2)] for r in rows],
+            'peak': [[int(r['t']), round(int(r['r']) / 60, 1)] for r in peaks],
+            'drops': [[int(r['t']), int(r['n'])] for r in drops]}
+
+
 def collector_health(minutes=15):
     """Receiver totals for the last minutes (None before the collector wrote any)."""
     try:
@@ -2718,7 +2757,7 @@ class Cache:
 CACHE = Cache()
 ROUTES = {'/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
           '/api/flows': api_flows, '/api/paths': api_paths, '/api/devmap': api_devmap, '/api/topology': api_topology, '/api/path': api_path, '/api/live': api_live, '/api/ports': api_ports, '/api/hosts/names': api_host_names, '/api/networks': api_networks, '/api/geo': api_geo, '/api/devices': api_devices, '/api/host': api_host,
-          '/api/alerts': api_alerts, '/api/ifload': api_ifload,
+          '/api/alerts': api_alerts, '/api/ifload': api_ifload, '/api/ingest': api_ingest,
           '/api/capacity': api_capacity, '/api/capacity/iface': api_capacity_iface, '/api/usage': api_usage, '/api/qos': api_qos, '/api/conversations': api_conversations}
 STATIC = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.json': 'application/json; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2'}
 

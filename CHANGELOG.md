@@ -6,6 +6,18 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
 
 ## Unreleased
 
+### Added
+- **Ingest over time on the Flows page** — under the Inspector: records/s from each device for the chosen period
+  (stacked), the busiest minute of every step, the license limit once traffic comes near it and red bands where records
+  over the limit were not stored. Drag across it to zoom the period; full screen from its button. Built from the
+  per-minute device statistics, so even 30 days open at once (forum request).
+
+### Changed
+- **Flows: no empty space in the top row** — choosing a host made the Inspector tall and left a big empty area under
+  the exchange river. The river now grows with the row and shows as many pairs as fit (at least 10, up to 20), and
+  Ingest fills the column when the Inspector is short. On windows under 1,281 px the Inspector and Ingest sit side by
+  side under the river instead of a half-width column.
+
 ### Fixed
 - **Palo Alto: downloads showed 0 B** — PAN-OS exports only the traffic entering an interface, so with the NetFlow
   profile on the inside interfaces alone the replies from the Internet never arrive. The setup steps in Settings →
