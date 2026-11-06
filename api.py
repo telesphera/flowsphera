@@ -126,6 +126,11 @@ def app_sql(p):
     return "transform(app, {appf:Array(String)}, {appt:Array(String)}, app)" if ids else 'app'
 
 
+def device_ips(ip):
+    """(2.4.0) a device's address now and its earlier ones (the records from those are its own too)."""
+    return [ip] + [str(a) for a in (exporters_cfg().get(ip, {}).get('aliases') or [])]
+
+
 # filter key -> (column, ClickHouse type)
 FILTERS = {
     'ip': ('int_ip', 'String'), 'dst': ('ext_ip', 'String'), 'service': ('service', 'String'), 'l7': ('l7', 'String'),
@@ -306,10 +311,14 @@ def scope(q):
                 hits = ifaces_named(v)
                 if not hits:
                     raise BadRequest(tr('no interface named {name}', name=v[:50]))
+                parts = []
                 for n, (dev, idx) in enumerate(hits):
-                    params[f'f{i}d{n}'], params[f'f{i}i{n}'] = dev, idx
-                cond = '(' + ' OR '.join(f'(exporter = {{f{i}d{n}:String}} AND (in_if = {{f{i}i{n}:UInt32}} OR out_if = {{f{i}i{n}:UInt32}}))'
-                                         for n in range(len(hits))) + ')'
+                    ips = device_ips(dev)          # (2.4.0) a device's earlier addresses too
+                    params[f'f{i}d{n}'], params[f'f{i}i{n}'] = (ips if ips[1:] else dev), idx
+                    one = f'{{f{i}d{n}:Array(String)}}' if ips[1:] else ''
+                    parts.append(f'(exporter IN {one} AND (in_if = {{f{i}i{n}:UInt32}} OR out_if = {{f{i}i{n}:UInt32}}))' if one
+                                 else f'(exporter = {{f{i}d{n}:String}} AND (in_if = {{f{i}i{n}:UInt32}} OR out_if = {{f{i}i{n}:UInt32}}))')
+                cond = '(' + ' OR '.join(parts) + ')'
                 fcols |= {'exporter', 'in_if', 'out_if'}
         elif k in FILTERS:
             col, typ = FILTERS[k]
@@ -317,6 +326,9 @@ def scope(q):
                 raise BadRequest(f'bad value for {k}')
             # (2.3.0) an application by its name also finds the records stored before the name was known («#<id>»)
             cond = f"{app_sql(params) if k == 'app' else col} = {{f{i}:{typ}}}"
+            if k == 'device' and device_ips(v)[1:]:       # (2.4.0) and the records from its earlier addresses
+                params[f'f{i}a'] = device_ips(v)
+                cond = f'exporter IN {{f{i}a:Array(String)}}'
             fcols.add(col)
         else:
             continue
@@ -446,12 +458,15 @@ def listen_info():
 def api_meta(q):
     exp = exporters_cfg()
     seen = ch("SELECT exporter, max(ts) AS last FROM exporter_stats GROUP BY exporter", fmt='JSON')
-    devices = []
+    devices, alias = [], common.device_aliases(exp)
     for r in seen:
+        if r['exporter'] in alias:       # (2.4.0) an earlier address of a device: its records are that device's
+            continue
         c = exp.get(r['exporter'], {})
         devices.append({'ip': r['exporter'], 'name': c.get('name', r['exporter']), 'vendor': c.get('vendor', ''), 'model': c.get('model', ''),
                         'if_names': c.get('if_names', {}), 'local_if': c.get('local_if'),
-                        'city': c.get('city', ''), 'country': c.get('country', ''), 'lat': c.get('lat'), 'lon': c.get('lon'), 'last': r['last']})
+                        'city': c.get('city', ''), 'country': c.get('country', ''), 'lat': c.get('lat'), 'lon': c.get('lon'), 'last': r['last'],
+                        'aliases': c.get('aliases') or []})
     # (1.17.0) the first record in time order (min() under a WHERE read every record of the period)
     oldest = ch("SELECT toUnixTimestamp(ts) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16}) ORDER BY ts LIMIT 1", {'d': view_days()}, fmt='JSON')
     return {'devices': devices, 'now': int(time.time()), 'oldest': int(oldest[0]['t']) if oldest else 0, 'listen': listen_info(),
@@ -864,7 +879,8 @@ def live_end(q):
         flt = json.loads(q.get('f', ['[]'])[0])
     except ValueError:
         flt = []
-    devs = [str(f.get('v')) for f in (flt if isinstance(flt, list) else []) if isinstance(f, dict) and f.get('k') == 'device' and not f.get('neg')]
+    devs = [a for f in (flt if isinstance(flt, list) else []) if isinstance(f, dict) and f.get('k') == 'device' and not f.get('neg')
+            for a in device_ips(str(f.get('v')))]                  # (2.4.0) its earlier addresses too
     cond = ' AND exporter IN {devs:Array(String)}' if devs else ''
     last = ch(f"SELECT toUnixTimestamp(max(ts)) AS t FROM flows WHERE ts >= now() - INTERVAL 15 MINUTE{cond}", {'devs': devs}, fmt='JSON')
     return int(last[0]['t']) if last and int(last[0]['t']) else int(time.time())
@@ -1369,8 +1385,8 @@ def api_ingest(q):
     except ValueError:
         flt = []
     flt = [f for f in (flt if isinstance(flt, list) else []) if isinstance(f, dict) and f.get('k') == 'device']
-    inc = [str(f.get('v')) for f in flt if not f.get('neg')]
-    exc = [str(f.get('v')) for f in flt if f.get('neg')]
+    inc = [a for f in flt if not f.get('neg') for a in device_ips(str(f.get('v')))]      # (2.4.0) earlier addresses too
+    exc = [a for f in flt if f.get('neg') for a in device_ips(str(f.get('v')))]
     cond = (' AND exporter IN {inc:Array(String)}' if inc else '') + (' AND exporter NOT IN {exc:Array(String)}' if exc else '')
     p = {'t0': t0, 't1': t1, 'step': step, 'inc': inc, 'exc': exc}
     win = 'ts >= toDateTime({t0:UInt32}) AND ts < toDateTime({t1:UInt32})'
@@ -1512,6 +1528,8 @@ def api_devices(q):
     # about a minute, so until its stats cover that time show the configured one (changed in the UI -> shown at once)
     cfg_changed = max(exporters_mtime())
     out = []
+    alias = common.device_aliases(exp)      # (2.4.0) an earlier address still sending a while: no row of its own
+    stats = [s for s in stats if s['exporter'] not in alias]
     seen = {s['exporter'] for s in stats}
     for ip in exp:
         if ip not in seen:
@@ -2803,6 +2821,30 @@ def post_device_interfaces(body, user):
     return {'ok': True}
 
 
+def post_device_move(body, user):
+    """(2.4.0) The device now exports from another address: its description, interfaces, capacities and SNMP move
+    there; the old address becomes an alias, so its records still count as the device's."""
+    old = device_ip(body)
+    try:
+        new = str(ipaddress.ip_address(str(body.get('new_ip', '')).strip()))
+    except ValueError:
+        raise BadRequest(tr('Invalid device IP address'))
+    cfg = exporters_cfg()
+    if old not in cfg:
+        raise BadRequest(tr('The device is not configured'))
+    if new == old:
+        raise BadRequest(tr('That is the address it has'))
+    if new in cfg:
+        raise BadRequest(tr('{ip} is already a device of its own', ip=new))
+    common.move_ui_exporter(old, new)
+    st = snmp.load_settings()
+    if old in st:
+        snmp.save_settings(new, st[old])
+        snmp.save_settings(old, None)
+    NAMES.reload()
+    return {'ok': True, 'ip': new}
+
+
 def post_device_delete(body, user):
     ip = str(body.get('ip', ''))
     if ip not in exporters_cfg():
@@ -3107,6 +3149,7 @@ class H(BaseHTTPRequestHandler):
                 '/api/tokens/delete': lambda: (AUTH.delete_token(body.get('id')), {'tokens': AUTH.list_tokens()})[1],
                 '/api/devices/save': lambda: post_device_save(body, user),
                 '/api/devices/delete': lambda: post_device_delete(body, user),
+                '/api/devices/move': lambda: post_device_move(body, user),
                 '/api/devices/interfaces': lambda: post_device_interfaces(body, user),
                 '/api/devices/snmp_test': lambda: post_snmp_test(body, user),
                 '/api/devices/snmp_poll': lambda: post_snmp_poll(body, user),

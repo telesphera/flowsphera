@@ -128,8 +128,10 @@ function setPeriod(t0, t1){
   state.range = 'custom'; state.from = Math.floor(t0 / 60) * 60; state.to = Math.ceil(t1 / 60) * 60; state.sel = null; render();
 }
 const rangeLabel = () => isCustom() ? periodText(state.from, state.to) : ({'15m':T('inline::Last 15 minutes'), '1h':T('inline::Last hour'), '6h':T('inline::Last 6 hours'), '24h':T('inline::Last 24 hours'), '7d':T('inline::Last 7 days'), '30d':T('inline::Last 30 days')})[state.range];
-const devName = ip => (META.devices.find(d => d.ip === ip) || {}).name || ip;
-const ifLabel = (ip, idx) => { const d = META.devices.find(x => x.ip === ip) || {}, n = (d.if_names || {})[String(idx)] || (d.local_if === idx ? 'local' : ''); return n ? `${n} (${idx})` : String(idx); };
+// (2.4.0) a device is also found by an earlier address (its records from there are its own)
+const devOf = ip => META.devices.find(d => d.ip === ip) || META.devices.find(d => (d.aliases || []).includes(ip));
+const devName = ip => (devOf(ip) || {}).name || ip;
+const ifLabel = (ip, idx) => { const d = devOf(ip) || {}, n = (d.if_names || {})[String(idx)] || (d.local_if === idx ? 'local' : ''); return n ? `${n} (${idx})` : String(idx); };
 const hostLabel = h => h.name ? `${esc(h.name)}` : esc(h.ip);
 
 // ===================== lifecycle =====================
@@ -4275,7 +4277,9 @@ function openDevice(dev){
       ${protoSeg()}
       <div class="cols"><div><h4>${T('1. Configuration on the device')}</h4>${codeBox(code(), 'devCode')}</div>
       <form class="form" id="devForm" autocomplete="off"><h4 style="margin:0">${T('2. Description for FlowSphera')}</h4>
-        <div class="two"><label>${T('IP the export comes from')}<input id="fIp" required value="${esc(editing ? dev.ip : '')}" ${editing ? 'readonly' : ''} placeholder="192.0.2.1"></label><label>${T('Name')}<input id="fName" value="${esc(c.name || '')}" placeholder="branch-fw01"></label></div>
+        <div class="two"><label>${T('IP the export comes from')}<input id="fIp" required value="${esc(editing ? dev.ip : '')}" ${editing ? 'readonly' : ''} placeholder="192.0.2.1">${editing && dev.configured ? `<button type="button" class="lnk" id="fMove">${T('Change address…')}</button>
+          <span id="fMoveBox" hidden><input id="fNewIp" placeholder="192.0.2.2" aria-label="${T('New address')}"> <button type="button" class="btn sm" id="fMoveOk">${T('Move')}</button>
+          <span class="nat">${T('Everything set here moves to the new address; the records from the old one stay this device\'s.')}</span></span>` : ''}</label><label>${T('Name')}<input id="fName" value="${esc(c.name || '')}" placeholder="branch-fw01"></label></div>
         <div class="two"><label>${T('Model')}<input id="fModel" value="${esc(c.model || '')}" placeholder="FortiGate 60F"></label><label>${T('form::Sampling')}<input id="fSamp" value="${esc(c.sampling || '1:1')}"></label></div>
         <p class="note warn" id="fSampNote" hidden></p>
         <div class="two"><label>${T('snmp-index of WAN interfaces (comma-separated)')}<input id="fWan" value="${esc((c.wan_ifs || []).join(', '))}" placeholder="1"></label><label>${T('Index of «the device itself» (FortiOS: 0)')}<input id="fLocal" value="${c.local_if ?? ''}" placeholder="0"></label></div>
@@ -4326,6 +4330,12 @@ function openDevice(dev){
           snmp:sn});
         m.close(); META = await fetch('api/meta').then(r => r.json()); render();
       } catch (err) { formErr('fErr', err.message); } });
+    // (2.4.0) the export now comes from another address: the description moves, the old address becomes an alias
+    const mv = document.getElementById('fMove');
+    if (mv) { mv.onclick = () => { document.getElementById('fMoveBox').hidden = false; mv.hidden = true; document.getElementById('fNewIp').focus(); };
+      document.getElementById('fMoveOk').onclick = async () => { formErr('fErr');
+        try { await apiPost('devices/move', {ip:dev.ip, new_ip:document.getElementById('fNewIp').value.trim()}); m.close(); META = await fetch('api/meta').then(r => r.json()); render(); }
+        catch (err) { formErr('fErr', err.message); } }; }
     const del = document.getElementById('fDel');
     if (del) { del.onclick = () => { document.getElementById('fDelAsk').hidden = false; del.hidden = true; };
       document.getElementById('fDelYes').onclick = async () => { try { await apiPost('devices/delete', {ip:dev.ip}); m.close(); render(); } catch (err) { formErr('fErr', err.message); } }; }

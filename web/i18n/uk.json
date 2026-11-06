@@ -2058,5 +2058,11 @@
  "No categories yet: FortiGate sends them with the application names; Palo Alto sends none": "Категорій ще немає: FortiGate надсилає їх разом із назвами застосунків; Palo Alto їх не надсилає",
  "FortiGate can name the application of every flow: turn on Application Control in the firewall policies (a profile, even monitor-only).": "FortiGate може називати застосунок кожного потоку: увімкніть Application Control у правилах фаєрвола (профіль, хоча б лише для моніторингу).",
  "Palo Alto can name the application and the user of every flow: tick PAN-OS Field Types in its NetFlow server profile.": "Palo Alto може називати застосунок і користувача кожного потоку: позначте PAN-OS Field Types у його профілі NetFlow-сервера.",
- "applications: off": "застосунки: вимкнено"
+ "applications: off": "застосунки: вимкнено",
+ "Change address…": "Змінити адресу…",
+ "New address": "Нова адреса",
+ "Move": "Перенести",
+ "Everything set here moves to the new address; the records from the old one stay this device's.": "Усе, що тут налаштовано, переходить на нову адресу; записи зі старої лишаються записами цього пристрою.",
+ "That is the address it has": "Це його поточна адреса",
+ "{ip} is already a device of its own": "{ip} уже є окремим пристроєм"
 }
