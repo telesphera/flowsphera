@@ -543,6 +543,10 @@ class Collector:
             with open(tmp, 'w') as f:
                 f.write(text)
             os.replace(tmp, APP_NAMES_FILE)
+            n = sum(len(x) for x in json.loads(text).values())
+            if n != getattr(self, '_saved_apps_n', 0):
+                log(f'application names known: {n}')
+                self._saved_apps_n = n
             self._saved_apps = text
         except OSError as ex:
             log(f'WARN cannot save application names: {ex}')

@@ -1345,7 +1345,8 @@ def api_apps(q):
     categories = sorted(([c, b] for c, b in by_cat.items()), key=lambda x: -x[1])
     new, looks = [], False
     t0, back = p['_t0'], APPS_NEW_DAYS * 86400
-    oldest = ch("SELECT toUnixTimestamp(min(ts)) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16})", {'d': view_days()}, fmt='JSON')
+    # new = none like it before, so the applications must have been named that long already: since the first named one
+    oldest = ch("SELECT toUnixTimestamp(min(ts)) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16}) AND app != ''", {'d': view_days()}, fmt='JSON')
     if oldest and int(oldest[0]['t']) and int(oldest[0]['t']) <= t0 - back:
         looks = True
         before, _ = rollups.source(['app'], t0 - back, t0, set(), use=USE_ROLLUPS)

@@ -232,7 +232,7 @@ function stackChart(el, series, label, onPick){
   for (const [t, k, b] of series.rows) { if (!keys.has(k)) keys.set(k, new Map()); keys.get(k).set(t, b); }
   const order = [...keys.keys()].sort((a, b) => (a === '__other') - (b === '__other'));
   const c = mkChart(el);
-  c.setOption({animation:false, grid:{left:14, right:10, top:36, bottom:4, containLabel:true}, legend:{top:0, left:0, icon:'roundRect', itemWidth:10, itemHeight:10, textStyle:{color:C.ink2, fontFamily:'Manrope'}},
+  c.setOption({animation:false, grid:{left:14, right:10, top:36, bottom:4, containLabel:true}, legend:{type:'scroll', top:0, left:0, right:0, icon:'roundRect', itemWidth:10, itemHeight:10, textStyle:{color:C.ink2, fontFamily:'Manrope'}, pageTextStyle:{color:C.ink3}, pageIconColor:C.ink2, pageIconInactiveColor:C.hair},
     tooltip:{...tipBase(), trigger:'axis', order:'valueDesc', valueFormatter:v => fmtR(v)}, xAxis:axisX(ts), yAxis:axisY(v => fmtR(v)),
     series:order.map(k => { const col = k === '__other' ? C.other : keyColor(k); return {name:k === '__other' ? T('Others') : label(k), id:k, type:'line', stack:'a', smooth:.25, showSymbol:false,
       lineStyle:{width:1.4, color:col}, itemStyle:{color:col}, areaStyle:{opacity:k === '__other' ? .2 : .35}, emphasis:{focus:'series'}, data:ts.map(t => [t * 1000, (keys.get(k).get(t) || 0) * 8 / step])}; })});
@@ -2532,6 +2532,9 @@ function moreToggle(id, key, all, hasMore){
 }
 // (2.3.0) Applications: what the devices named (Palo Alto App-ID / User-ID, FortiGate's application table); in the
 // menu only when any device named one. Visual first: cards, applications over time + categories, users, new, table
+// (2.3.0) a FortiGate application whose name has not arrived yet is stored as «#<id>»: say so instead of a bare number
+const appLabel = k => String(k).startsWith('#') ? T('Application {id}', {id: k}) : k;
+const appCell = k => String(k).startsWith('#') ? `${esc(appLabel(k))} <span class="nat">${T('name not received yet')}</span>` : esc(k);
 function vApplications(){
   const v = document.getElementById('view');
   v.innerHTML = `<div class="grid">
@@ -2541,29 +2544,36 @@ function vApplications(){
     <section class="glass panel kcard gcard s3"><span class="ico">${icon(ICO.chart, 22)}</span><span class="k">${T('Top category')}</span><span class="v" id="kCat" style="font-size:18px">—</span><span class="nat" id="kCatSub"></span></section>
     <section class="glass panel s8" id="appSec">${ph('chart', T('Applications over time'), T('named by the firewall'))}<div class="chart" id="cAppT" data-wait="line"></div></section>
     <section class="glass panel s4">${ph('pie', T('Categories'), T('FortiGate application categories'))}<div id="catBox" class="loading"></div></section>
-    <section class="glass panel s6">${ph('spark', T('New applications'), T('none like them in the days before'))}<div id="newBox" class="loading"></div></section>
+    <section class="glass panel s6" id="newSec">${ph('pulse', T('New applications'), T('none like them in the days before'))}<div id="newBox" class="loading"></div></section>
     <section class="glass panel s6" id="userSec">${ph(USER_ICON, T('Users'), T('named by the firewall (User-ID)'))}<div id="userBox" class="loading"></div></section>
     <section class="glass panel s12">${ph('grid', T('Applications'), T('click to filter every page by the application'))}<div id="appBox" class="loading"></div></section></div>`;
-  api('series', {by:'app', top:7}).then(sr => { const el = document.getElementById('cAppT'); if (el) { delete el.dataset.wait; stackChart(el, sr, k => k, k => addFilter('app', k)); } }).catch(e => fill('cAppT', errBox(e)));
+  api('series', {by:'app', top:7}).then(sr => { const el = document.getElementById('cAppT'); if (el) { delete el.dataset.wait; stackChart(el, sr, appLabel, k => addFilter('app', k)); } }).catch(e => fill('cAppT', errBox(e)));
   api('apps').then(d => {
     fill('kApps', fmtN(d.apps)); fill('kIdent', d.naming_bytes ? pct(d.named_bytes, d.naming_bytes) : '—');
     const cats = d.categories.filter(c => c[0]), all = d.categories.reduce((a, c) => a + c[1], 0);
     fill('kCat', cats.length ? esc(cats[0][0]) : '—'); fill('kCatSub', cats.length ? pct(cats[0][1], all) : T('this device sends no categories'));
-    const rows = d.categories.slice(0, 8).map(([k, b]) => ({k: k || T('no category'), up: 0, dn: b}));
+    const rows = cats.length ? d.categories.slice(0, 8).map(([k, b]) => ({k: k || T('no category'), up: 0, dn: b})) : [];
     setTimeout(() => { const el = document.getElementById('cCats'); if (el && rows.length) donut(el, rows, k => PAL[rows.findIndex(r => r.k === k) % PAL.length], [String(d.categories.length), T('categories')]); });
-    fill('catBox', rows.length ? `<div class="chart donut" id="cCats"></div><div class="dl">${rows.map((r, i) => `<i class="idot" style="background:${PAL[i % PAL.length]}"></i><span>${esc(r.k)}</span><span class="p">${pct(r.dn, all)}</span><span class="t">${fmtB(r.dn)}</span>`).join('')}</div>` : `<div class="empty">${T('No categories')}</div>`);
+    ['catBox', 'newBox'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('loading'); });
+    fill('catBox', rows.length ? `<div class="chart donut" id="cCats"></div><div class="dl">${rows.map((r, i) => `<i class="idot" style="background:${PAL[i % PAL.length]}"></i><span>${esc(r.k)}</span><span class="p">${pct(r.dn, all)}</span><span class="t">${fmtB(r.dn)}</span>`).join('')}</div>` : `<div class="empty">${T('No categories yet: FortiGate sends them with the application names; Palo Alto sends none')}</div>`);
     const nmax = d.new.length ? d.new[0][1] : 1;
-    fill('newBox', !d.new_looks ? `<div class="empty">${T('The records do not reach {n} days back yet', {n: d.new_days})}</div>` : !d.new.length ? `<div class="empty">${T('No new applications')}</div>`
-      : `<div class="blist">${d.new.map(([k, b]) => `<button class="brow" data-f="app" data-v="${esc(k)}"><span class="n">${esc(k)} <span class="pill warn">${T('new')}</span></span><span class="t">${fmtB(b)}</span><span class="p"></span><span class="bar2" style="width:${(100 * b / nmax).toFixed(1)}%"><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
+    // before the devices have named applications for new_days there is nothing to compare with: no panel of one line
+    if (!d.new_looks) { const ns = document.getElementById('newSec'); if (ns) ns.hidden = true; }
+    fill('newBox', !d.new_looks ? '' : !d.new.length ? `<div class="empty">${T('No new applications')}</div>`
+      : `<div class="blist">${d.new.map(([k, b]) => `<button class="brow" data-f="app" data-v="${esc(k)}"><span class="n">${appCell(k)} <span class="pill warn">${T('new')}</span></span><span class="t">${fmtB(b)}</span><span class="p"></span><span class="bar2" style="width:${(100 * b / nmax).toFixed(1)}%"><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
     wireFilters(document.getElementById('newBox'));
     section('appBox', async () => { const t = await api('top', {dim:'app', limit:50}), tot2 = t.total || 1, max = tot(t.rows[0] || {}) || 1;
-      return `<div class="tw"><table><thead><tr><th>${T('Application')}</th><th>${T('Category')}</th><th>${T('Share')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th><th class="num">${T('Users')}</th></tr></thead><tbody>
-        ${t.rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${esc(r.k)}</button></td><td class="nat">${esc(d.cats[r.k] || '—')}</td>
+      const hasU = t.rows.some(r => r.users);      // FortiGate names no users: no column of zeros
+      return `<div class="tw"><table><thead><tr><th>${T('Application')}</th><th>${T('Category')}</th><th>${T('Share')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th>${hasU ? `<th class="num">${T('Users')}</th>` : ''}</tr></thead><tbody>
+        ${t.rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${appCell(r.k)}</button></td><td class="nat">${esc(d.cats[r.k] || '—')}</td>
           <td style="width:22%"><span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%;display:flex"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></td>
-          <td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), tot2)}</td><td class="num mono">${fmtN(r.hosts || 0)}</td><td class="num mono">${fmtN(r.users || 0)}</td></tr>`).join('')}</tbody></table></div>`; });
+          <td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), tot2)}</td><td class="num mono">${fmtN(r.hosts || 0)}</td>${hasU ? `<td class="num mono">${fmtN(r.users || 0)}</td>` : ''}</tr>`).join('')}</tbody></table></div>`; });
   }).catch(e => fill('catBox', errBox(e)));
-  api('top', {dim:'user_name', limit:10}).then(t => { fill('kUsers', fmtN(t.count || 0)); const box = document.getElementById('userBox'); if (!box) return; box.classList.remove('loading');
-    if (!t.rows.length) { box.innerHTML = `<div class="empty">${T('The devices name no users')}</div>`; return; }
+  api('top', {dim:'user_name', limit:10}).then(t => { const box = document.getElementById('userBox'); if (!box) return; box.classList.remove('loading');
+    if (!t.rows.length) {           // FortiGate names no users: no empty panel — the new applications take the row
+      fill('kUsers', '—'); const c = document.getElementById('kUsers'); if (c && c.nextElementSibling) c.nextElementSibling.textContent = T('The devices name no users');
+      document.getElementById('userSec').hidden = true; const ns = document.getElementById('newSec'); if (ns) ns.classList.replace('s6', 's12'); return; }
+    fill('kUsers', fmtN(t.count || 0));
     const max = tot(t.rows[0]) || 1;
     box.innerHTML = `<div class="blist">${t.rows.map(r => `<button class="brow" data-f="user" data-v="${esc(r.k)}"><span class="n">${esc(r.k)}<span class="nat"> · ${Tn(r.hosts || 0, '{n} host', '{n} hosts', {n: r.hosts || 0})}</span></span><span class="t">${fmtB(tot(r))}</span><span class="p">${pct(tot(r), t.total)}</span>
       <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`;
