@@ -94,10 +94,11 @@ FILTERS = {
     'ip': ('int_ip', 'String'), 'dst': ('ext_ip', 'String'), 'service': ('service', 'String'), 'l7': ('l7', 'String'),
     'country': ('country', 'String'), 'city': ('city', 'String'), 'port': ('ext_port', 'UInt16'), 'device': ('exporter', 'String'),
     'dir': ('dir', 'String'), 'proto': ('proto', 'UInt8'), 'in_if': ('in_if', 'UInt32'), 'out_if': ('out_if', 'UInt32'),
+    'app': ('app', 'String'), 'user': ('user_name', 'String'),       # (2.2.0) named by the exporter (Palo Alto App-ID / User-ID)
 }
 DIR_VALUES = ('up', 'down', 'internal', 'transit', 'internal_back')
 DIMS = {'int_ip': 'int_ip', 'ext_ip': 'ext_ip', 'service': 'service', 'l7': 'l7', 'country': 'country', 'city': 'city',
-        'asn': 'asn', 'ext_port': 'ext_port', 'exporter': 'exporter', 'dir': 'dir', 'proto': 'proto'}
+        'asn': 'asn', 'ext_port': 'ext_port', 'exporter': 'exporter', 'dir': 'dir', 'proto': 'proto', 'app': 'app', 'user_name': 'user_name'}
 
 
 # (1.16.0) DSCP classes (RFC 4594 names); 255 = the exporter did not send the marking
@@ -725,9 +726,13 @@ def api_top(q):
             extra, cols = ', any(country) AS country, any(lat) AS la, any(lon) AS lo', [col, 'country', 'lat', 'lon']
         elif dim == 'ext_port':     # its hosts and peers: below, for the ports shown
             extra, cols = ', any(l7) AS l7, any(proto) AS proto_n, any(service) AS service', [col, 'l7', 'proto', 'service']
+        elif dim in ('app', 'user_name'):   # (2.2.0) what the exporter named, with its inside hosts (agg_app_host per hour)
+            extra, cols = ', uniqExact(cityHash64(int_ip)) AS hosts', [col, 'int_ip']
+        # (2.2.0) an application / user the exporter did not name is no row of its own (most exporters name none)
+        named = f" AND {col} != ''" if dim in ('app', 'user_name') else ''
         rows, totals = ch_totals(f"""SELECT toString({col}) AS k, sumIf(bytes, dir IN ('up', 'internal')) AS up, sumIf(bytes, dir NOT IN ('up', 'internal')) AS dn,
                 sum(flows) AS fl, sum(packets) AS pk {extra}
-            FROM {src(p, cols)} GROUP BY k WITH TOTALS ORDER BY up + dn DESC LIMIT {{lim:UInt32}}""", p)
+            FROM {src(p, cols)}{named} GROUP BY k WITH TOTALS ORDER BY up + dn DESC LIMIT {{lim:UInt32}}""", p)
         if dim == 'ext_port' and rows:
             p['ports'] = [int(r['k']) for r in rows]
             # (1.17.0) exact, from the hosts and the addresses of each port per hour (agg_port_host / agg_port_peer);
@@ -1124,7 +1129,7 @@ def api_flows(q):
     where, p, rng, step = scope(q)
     p['lim'] = max(1, min(q1(q, 'limit', '50', int), 1000))
     rows = ch(f"""SELECT toUnixTimestamp(ts) AS t, toFloat64(ts_start) AS t0, exporter, in_if, out_if, toString(dir) AS dir, int_ip, int_port, ext_ip, ext_port,
-            proto, nat_ip, nat_port, bytes, packets, l7, service, country, city, asn, as_org, sampling, dscp, dscp_out
+            proto, nat_ip, nat_port, bytes, packets, l7, service, country, city, asn, as_org, sampling, dscp, dscp_out, app, user_name
         FROM {p['_flows']} WHERE {where} ORDER BY ts DESC LIMIT {{lim:UInt16}}""", p, fmt='JSON')
     for r in rows:
         r['name'] = NAMES.get(r['int_ip'])

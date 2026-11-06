@@ -2025,5 +2025,15 @@
  "{id}: {t} holds {n} rows, {want} when it was made.": "{id}: у {t} {n} рядків, під час створення було {want}.",
  "unrecognized arguments: {args}": "невідомі аргументи: {args}",
  "{pct}% of the records of the last 5 minutes arrive twice. The device monitors both directions on several interfaces but sends no direction field, so the copies cannot be told apart: add the flow direction field to the exported record, or monitor ingress only.": "{pct}% записів за останні 5 хвилин надходять двічі. Пристрій стежить за обома напрямками на кількох інтерфейсах, але не надсилає поле напрямку, тож копії не розрізнити: додайте поле напрямку потоку до записів експорту або стежте лише за вхідним трафіком.",
- "{pct}% of the records of the last 5 minutes arrive twice, the same in every field, the direction too: the device exports the same flows more than once. Both copies are stored, so the traffic of these flows counts twice — check where and how often the device sends its flow export.": "{pct}% записів за останні 5 хвилин надходять двічі, однакові в кожному полі, зокрема в напрямку: пристрій експортує ті самі потоки більше одного разу. Зберігаються обидві копії, тож трафік цих потоків рахується двічі — перевірте, куди й як часто пристрій надсилає експорт потоків."
+ "{pct}% of the records of the last 5 minutes arrive twice, the same in every field, the direction too: the device exports the same flows more than once. Both copies are stored, so the traffic of these flows counts twice — check where and how often the device sends its flow export.": "{pct}% записів за останні 5 хвилин надходять двічі, однакові в кожному полі, зокрема в напрямку: пристрій експортує ті самі потоки більше одного разу. Зберігаються обидві копії, тож трафік цих потоків рахується двічі — перевірте, куди й як часто пристрій надсилає експорт потоків.",
+ "Application": "Застосунок",
+ "Application · user (from the firewall)": "Застосунок · користувач (з фаєрвола)",
+ "Applications": "Застосунки",
+ "application": "застосунок",
+ "application named by the firewall": "застосунок, який назвав фаєрвол",
+ "application named by the firewall (Palo Alto App-ID)": "застосунок, який назвав фаєрвол (Palo Alto App-ID)",
+ "named by the firewall (Palo Alto App-ID) · click to filter": "назви від фаєрвола (Palo Alto App-ID) · клік — фільтр",
+ "named by the firewall (User-ID)": "імена від фаєрвола (User-ID)",
+ "user": "користувач",
+ "user named by the firewall (Palo Alto User-ID)": "користувач, якого назвав фаєрвол (Palo Alto User-ID)"
 }

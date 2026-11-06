@@ -98,6 +98,9 @@ ALTER TABLE flows ADD COLUMN IF NOT EXISTS keep_days UInt16 DEFAULT 30;
 -- (1.16.0) QoS marking: records from before it are «not sent» (255)
 ALTER TABLE flows ADD COLUMN IF NOT EXISTS dscp UInt8 DEFAULT 255;
 ALTER TABLE flows ADD COLUMN IF NOT EXISTS dscp_out UInt8 DEFAULT 255;
+-- (2.2.0, core 1.8.0) the application and the user the exporter named (Palo Alto App-ID / User-ID); '' = not sent
+ALTER TABLE flows ADD COLUMN IF NOT EXISTS app LowCardinality(String) DEFAULT '';
+ALTER TABLE flows ADD COLUMN IF NOT EXISTS user_name LowCardinality(String) DEFAULT '';
 -- egress copies dropped because the same traffic was already reported on ingress
 ALTER TABLE exporter_stats ADD COLUMN IF NOT EXISTS dup_dropped UInt64 DEFAULT 0;
 -- packets the exporter sent again (identical except the sequence number), dropped by the receiver

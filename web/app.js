@@ -41,8 +41,8 @@ const isAdmin = () => ME && ME.role === 'admin';
 const isInternal = () => state.traffic === 'internal';
 // a record whose packets went to int_ip: from the internet, or a server's answer to an inside client
 const isBack = f => f.dir === 'down' || f.dir === 'internal_back';
-const FILTER_KEYS = ['ip', 'net', 'dst', 'service', 'l7', 'country', 'city', 'port', 'device', 'asn', 'dir', 'proto', 'in_if', 'out_if', 'iface', 'dscp'];
-const FILTER_LABEL = {net:T('network'), iface:T('interface'), dscp:'DSCP', in_if:T('in via'), out_if:T('out via'), ip:T('host'), dst:T('ext. IP'), service:T('service'), l7:T('protocol'), country:T('country'), city:T('city'), port:T('port'), device:T('device'), asn:'ASN', dir:T('direction'), proto:'L4'};
+const FILTER_KEYS = ['ip', 'net', 'dst', 'service', 'l7', 'country', 'city', 'port', 'device', 'asn', 'dir', 'proto', 'in_if', 'out_if', 'iface', 'dscp', 'app', 'user'];
+const FILTER_LABEL = {app:T('application'), user:T('user'), net:T('network'), iface:T('interface'), dscp:'DSCP', in_if:T('in via'), out_if:T('out via'), ip:T('host'), dst:T('ext. IP'), service:T('service'), l7:T('protocol'), country:T('country'), city:T('city'), port:T('port'), device:T('device'), asn:'ASN', dir:T('direction'), proto:'L4'};
 let renderSeq = 0;
 
 // widgets of one page often ask the same thing (Overview: the trend and the KPI sparklines, the map overlay and the
@@ -2373,9 +2373,9 @@ function recTable(rows){
   return `<div class="tw"><table><thead><tr><th>${T('Time')}</th><th>${T('Exporter')}</th><th>${T('Inside address')}</th><th></th><th>${T('Outside address')}</th><th>${T('Protocol')}</th><th>${T('Service')}</th><th>${T('Country')}</th><th class="num">${T('Bytes')}</th><th class="num">${T('Packets')}</th><th class="num">${T('Dur.')}</th></tr></thead><tbody>
     ${rows.map((f, i) => `<tr class="click" data-rec="${i}"><td class="mono">${hms(f.t)}</td><td class="ipl">${esc(devName(f.exporter))}</td>
       <td class="ipl"><button class="link" data-f="ip" data-v="${esc(f.int_ip)}">${esc(f.name || f.int_ip)}</button> <span class="nat">:${f.int_port}</span></td><td class="${isBack(f) ? 'd' : 'u'}">${isBack(f) ? '←' : f.dir === 'transit' ? '↔' : '→'}</td>
-      <td class="ipl"><button class="link" data-f="dst" data-v="${esc(f.ext_ip)}">${esc(f.ext_ip)}</button> <span class="nat">:${f.ext_port}</span></td><td><span class="tag">${esc(dv(f.l7))}</span></td><td>${svcBadge(f.service)}</td>
+      <td class="ipl"><button class="link" data-f="dst" data-v="${esc(f.ext_ip)}">${esc(f.ext_ip)}</button> <span class="nat">:${f.ext_port}</span></td><td><span class="tag">${esc(dv(f.l7))}</span>${f.app ? ` <button class="link" data-f="app" data-v="${esc(f.app)}" title="${T('application named by the firewall')}">${esc(f.app)}</button>` : ''}</td><td>${svcBadge(f.service)}</td>
       <td>${f.country ? `<button class="link" data-f="country" data-v="${esc(f.country)}">${esc(f.country)}</button>` : '—'}</td><td class="num mono">${fmtB(f.bytes)}</td><td class="num mono">${fmtN(f.packets)}</td><td class="num mono">${Math.max(0, f.t - f.t0).toFixed(0)} ${T('s')}</td></tr>
-      ${state.openFlow === i ? `<tr class="detail"><td colspan="11"><div class="kv"><div><span>${T('Host')}</span><b>${esc(f.name || '—')} · ${esc(f.int_ip)}</b></div><div><span>${T('NAT (after translation)')}</span><b>${f.nat_ip ? esc(f.nat_ip) + ':' + f.nat_port : '—'}</b></div>
+      ${state.openFlow === i ? `<tr class="detail"><td colspan="11"><div class="kv"><div><span>${T('Host')}</span><b>${esc(f.name || '—')} · ${esc(f.int_ip)}</b></div><div><span>${T('NAT (after translation)')}</span><b>${f.nat_ip ? esc(f.nat_ip) + ':' + f.nat_port : '—'}</b></div>${f.app || f.user_name ? `<div><span>${T('Application · user (from the firewall)')}</span><b>${esc(f.app || '—')} · ${esc(f.user_name || '—')}</b></div>` : ''}
         <div><span>ASN</span><b>${f.asn ? 'AS' + f.asn + ' ' + esc(f.as_org) : '—'}</b></div><div><span>${T('City')}</span><b>${esc([f.city, ccName(f.country)].filter(Boolean).join(', ') || '—')}</b></div>
         <div><span>${T('Interfaces')}</span><b>${esc(ifLabel(f.exporter, f.in_if))} → ${esc(ifLabel(f.exporter, f.out_if))}</b></div><div><span>DSCP</span><b>${f.dscp == null || f.dscp === 255 ? T('not reported') : esc(DSCP_NAME(f.dscp)) + (f.dscp_out != null && f.dscp_out !== 255 && f.dscp_out !== f.dscp ? ' → ' + esc(DSCP_NAME(f.dscp_out)) + ' ' + T('(re-marked)') : '')}</b></div><div><span>${T('Sampling')}</span><b>${f.sampling > 1 ? '1:' + f.sampling + T(' (volume scaled up)') : T('1:1 (not sampled)')}</b></div><div><span>L4</span><b>${({1:'ICMP', 6:'TCP', 17:'UDP', 50:'ESP', 47:'GRE'})[f.proto] || f.proto}</b></div></div></td></tr>` : ''}`).join('') || `<tr><td colspan="11"><div class="empty">${T('No records for this filter')}</div></td></tr>`}
     </tbody></table></div>`;
@@ -2534,12 +2534,27 @@ function vApps(){
   const v = document.getElementById('view'), all = !!state.appsAll;
   v.innerHTML = `<div class="grid"><section class="glass panel s12">${ph('chart', T('Services over time'), T('the service comes from the destination ASN and port'))}<div class="chart" id="cApps"></div></section>
     <section class="glass panel s8">${ph('grid', T('Services'), T('click to filter by service'), '<button class="lnk" id="aMore"></button>')}<div id="aBox" class="loading"></div></section>
-    <section class="glass panel s4">${ph('pie', T('Protocols'), T('L7 by port'))}<div id="pBox" class="loading"></div></section></div>`;
+    <section class="glass panel s4">${ph('pie', T('Protocols'), T('L7 by port'))}<div id="pBox" class="loading"></div></section>
+    <section class="glass panel s8" id="appSec" hidden>${ph('grid', T('Applications'), T('named by the firewall (Palo Alto App-ID) · click to filter'))}<div id="appBox"></div></section>
+    <section class="glass panel s4" id="userSec" hidden>${ph(USER_ICON, T('Users'), T('named by the firewall (User-ID)'))}<div id="userBox"></div></section></div>`;
   api('series', {by:'service', top:7}).then(s => { const el = document.getElementById('cApps'); if (el) stackChart(el, s, k => k, k => addFilter('service', k)); }).catch(e => fill('cApps', errBox(e)));
   section('aBox', async () => { const t = await api('top', {dim:'service', limit:all ? 100 : 11}), rows = all ? t.rows : t.rows.slice(0, 10);
     moreToggle('aMore', 'appsAll', all, t.rows.length > 10);
     return `<div class="tw"><table><thead><tr><th>${T('Service')}</th><th>${T('Protocol')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="click" data-f="service" data-v="${esc(r.k)}"><td><button class="link" data-f="service" data-v="${esc(r.k)}">${svcBadge(r.k)}</button></td><td class="ipl">${esc(dv(r.l7))}</td><td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono"><b>${fmtB(tot(r))}</b></td><td class="num mono">${pct(tot(r), t.total)}</td><td class="num mono">${r.hosts}</td></tr>`).join('')}</tbody></table></div>`; });
+  // (2.2.0) applications and users the exporter named: shown only when a device sent them in the period
+  api('top', {dim:'app', limit:12}).then(t => { const sec = document.getElementById('appSec'); if (!sec || !t.rows.length) return; sec.hidden = false;
+    const all = tot(t.totals || {}) || t.rows.reduce((a, r) => a + tot(r), 0), max = tot(t.rows[0]) || 1;
+    fill('appBox', `<div class="tw"><table><thead><tr><th>${T('Application')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th></tr></thead><tbody>
+      ${t.rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${esc(r.k)}</button>
+        <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%;display:block;margin-top:4px"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></td>
+        <td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), all)}</td><td class="num mono">${fmtN(r.hosts || 0)}</td></tr>`).join('')}</tbody></table></div>`);
+    wireFilters(document.getElementById('appBox')); }).catch(() => {});
+  api('top', {dim:'user_name', limit:12}).then(t => { const sec = document.getElementById('userSec'); if (!sec || !t.rows.length) return; sec.hidden = false;
+    const max = tot(t.rows[0]) || 1;
+    fill('userBox', `<div class="blist">${t.rows.map(r => `<button class="brow" data-f="user" data-v="${esc(r.k)}"><span class="n">${esc(r.k)}<span class="nat"> · ${Tn(r.hosts || 0, '{n} host', '{n} hosts', {n: r.hosts || 0})}</span></span><span class="t">${fmtB(tot(r))}</span><span class="p"></span>
+      <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
+    wireFilters(document.getElementById('userBox')); }).catch(() => {});
   section('pBox', async () => { const t = await api('top', {dim:'l7', limit:10});
     setTimeout(() => { const el = document.getElementById('cL7'); if (el) donut(el, t.rows.slice(0, 8), k => PAL[t.rows.findIndex(r => r.k === k) % PAL.length], [String(t.rows.length), T('protocols')]); });
     return `<div class="chart" id="cL7" style="height:220px"></div><div class="dl">${t.rows.slice(0, 8).map((r, i) => `<i class="idot" style="background:${PAL[i % PAL.length]}"></i><button class="link" data-f="l7" data-v="${esc(r.k)}">${esc(dv(r.k))}</button><span class="p">${pct(tot(r), t.total)}</span><span class="t">${fmtB(tot(r))}</span>`).join('')}</div>`; });
@@ -4756,9 +4771,11 @@ const DSCP_NAME = n => Object.keys(DSCP_BY_NAME).find(k => DSCP_BY_NAME[k] === n
 const DSCP_BY_NAME = {BE:0, DEFAULT:0, CS0:0, CS1:8, AF11:10, AF12:12, AF13:14, CS2:16, AF21:18, AF22:20, AF23:22, CS3:24, AF31:26, AF32:28, AF33:30, CS4:32, AF41:34, AF42:36, AF43:38, CS5:40, VA:44, EF:46, CS6:48, CS7:56};
 const QHELP = () => [
   [T('Who'), [['ip', T('inside host or network'), '10.0.0.5 · 172.16.0.0/24'], ['net', T('named network'), (META.networks || []).slice(0, 2).map(n => netTyped(n.name)).join(' · ') || T('Office')], ['dst', T('outside address or network'), '8.8.8.8 · 203.0.113.0/24'],
-    ['asn', T('network owner: AS number or name'), 'AS15169 · Google'], ['country', T('country: two letters'), 'US · UA'], ['city', T('city'), 'Kyiv']]],
+    ['asn', T('network owner: AS number or name'), 'AS15169 · Google'], ['country', T('country: two letters'), 'US · UA'], ['city', T('city'), 'Kyiv'],
+    ['user', T('user named by the firewall (Palo Alto User-ID)'), 'corp\\anna']]],
   [T('What'), [['service', T('service by address'), 'Telegram · YouTube'], ['l7', T('protocol by port'), 'HTTPS · DNS'], ['port', T('port of the server'), '443 · 3389'],
-    ['proto', T('L4 protocol number'), T('6 = TCP · 17 = UDP · 1 = ICMP')], ['dscp', T('QoS class: name or number'), 'EF · AF41 · 46']]],
+    ['proto', T('L4 protocol number'), T('6 = TCP · 17 = UDP · 1 = ICMP')], ['dscp', T('QoS class: name or number'), 'EF · AF41 · 46'],
+    ['app', T('application named by the firewall (Palo Alto App-ID)'), 'ssl · ms-teams']]],
   [T('Where'), [['device', T('device: name or address'), (META.devices && META.devices[0] || {}).name || 'fw-main'], ['iface', T('interface: name or number, in or out'), 'wan'],
     ['in_if', T('input interface number'), '5'], ['out_if', T('output interface number'), '1'], ['dir', T('direction: up · down · internal'), 'up']]]];
 const QKEY_INFO = () => Object.fromEntries(QHELP().flatMap(([, rows]) => rows.map(r => [r[0], r])));

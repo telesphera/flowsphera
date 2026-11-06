@@ -386,6 +386,11 @@ def web_query(tag, settings):
         _WEB.tag, _WEB.settings = None, None
 
 
+def _ch_escape(v):
+    """A query parameter's value in ClickHouse's escaped format (backslash, tab, newline, carriage return)."""
+    return v.replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n').replace('\r', '\\r')
+
+
 def ch(query, params=None, data=None, fmt=None, timeout=30, raw=False, settings=None):
     """Run a query over the ClickHouse HTTP interface.
     params: {name: value} bound to {name:Type} placeholders (server-side, no string interpolation).
@@ -407,6 +412,11 @@ def ch(query, params=None, data=None, fmt=None, timeout=30, raw=False, settings=
             continue
         if isinstance(v, (list, tuple)):     # Array(String) literal, or Array(UInt64) for numbers
             v = '[' + ','.join(str(x) if isinstance(x, int) else "'" + str(x).replace('\\', '\\\\').replace("'", "\\'") + "'" for x in v) + ']'
+        elif isinstance(v, str):
+            # (2.2.0) ClickHouse reads a scalar parameter in its escaped format: a backslash starts an escape, so
+            # «corp\\anna» (a User-ID) arrived as «corp» + backspace + «nna», and a tab broke the query
+            # (BAD_QUERY_PARAMETER). An array is read as a literal, already quoted above
+            v = _ch_escape(v)
         qs['param_' + k] = v if isinstance(v, str) else str(v)
     if fmt:
         query = f'{query} FORMAT {fmt}'

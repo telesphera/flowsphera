@@ -83,6 +83,13 @@ ROLLUPS = {
                       ('service', 'LowCardinality(String)', 'service'), ('country', 'LowCardinality(String)', 'country'),
                       ('city', 'LowCardinality(String)', 'city'), ('in_if', 'UInt32', 'in_if'), ('out_if', 'UInt32', 'out_if'),
                       ('nat_ip', 'String', 'nat_ip')], 'attrs': []},
+    # (2.2.0) applications the exporter named (Palo Alto App-ID): the totals per 5 minutes for Services, and per hour
+    # each application's inside hosts and users (User-ID) for app: / user: / ip: filters over long periods. Every
+    # record goes in (app '' = not named): a table that held only the named ones could answer another page's question
+    # with part of the traffic; for exporters that never name one they are a row per 5 minutes / per host and hour
+    'agg_app': {'bucket': 300, 'keys': [('app', 'LowCardinality(String)', 'app')], 'attrs': []},
+    'agg_app_host': {'bucket': 3600, 'keys': [('app', 'LowCardinality(String)', 'app'), ('int_ip', 'String', 'int_ip'),
+                     ('user_name', 'LowCardinality(String)', 'user_name')], 'attrs': []},
     'agg_iface': {'bucket': 300, 'keys': [('in_if', 'UInt32', 'in_if'), ('out_if', 'UInt32', 'out_if'), ('service', 'LowCardinality(String)', 'service')],
                   'attrs': []},
     'agg_iface_host': {'bucket': 3600, 'keys': [('in_if', 'UInt32', 'in_if'), ('out_if', 'UInt32', 'out_if'), ('int_ip', 'String', 'int_ip'),
@@ -504,7 +511,7 @@ def ready_from(name=None):
 # (1.17.0) the QoS tables (built since 1.16.0 but never read) and the per-port tables go last: they hold columns no
 # other table has, and only queries that need those land on them
 PREFER = ['agg_geo', 'agg_traffic', 'agg_ports', 'agg_iface', 'agg_host', 'agg_host_svc', 'agg_iface_host', 'agg_ext', 'agg_iface_ext', 'agg_conv',
-          'agg_dscp', 'agg_dscp_svc', 'agg_port_host', 'agg_port_peer', 'agg_conv_port']
+          'agg_dscp', 'agg_dscp_svc', 'agg_port_host', 'agg_port_peer', 'agg_app', 'agg_app_host', 'agg_conv_port']
 RAW_EXPR = {'has_ll': 'lat != 0', 'peer_ip': "if(dir IN ('internal', 'internal_back'), ext_ip, '')",
             'out_ip': "if(dir IN ('up', 'down'), ext_ip, '')"}       # rollup key columns that are expressions over the records
 _TYPES = {c: t for r in ROLLUPS.values() for c, t, *_ in r['keys'] + r['attrs']}

@@ -381,6 +381,7 @@ class Collector:
         (src, dst, nbytes, npkts, proto, sport, dport, in_if, out_if, obs,
          nat_src, nat_sport, nat_dst, nat_dport, start, end, app_tag, rate) = f[:18]
         dscp, dscp_out = f[18:20] if len(f) >= 20 else (255, 255)      # (1.16.0, core 1.6.0) 255 = not sent
+        app, user_name = f[20:22] if len(f) >= 22 else ('', '')         # (2.2.0, core 1.8.0) Palo Alto App-ID / User-ID
         if rate <= 1:
             rate = e.cfg_sampling
         if rate > 1:                    # sampled exporters report 1 of every N packets: scale up
@@ -436,6 +437,7 @@ class Collector:
             'l7': l7, 'service': service_name(port_service, asn, as_org, ei[0]),
             'country': country, 'city': city, 'lat': lat, 'lon': lon, 'asn': asn, 'as_org': as_org,
             'app_tag': app_tag, 'obs': obs, 'keep_days': self.keep_days, 'dscp': dscp, 'dscp_out': dscp_out,
+            'app': app, 'user_name': user_name,
         })
 
     def handle_packet(self, data, addr, learn_only=False):
