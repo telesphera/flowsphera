@@ -730,6 +730,11 @@ def make(full=False, log=print):
              'places': {'local': 'ok'}, 'errors': {}, 'encrypted': False}
         m['size'] = m['data_size'] + m['settings_size']
         _save_manifest(m)
+        try:                   # (2.0.0 build 4) the rows it holds, exactly: a later full check compares them one to one
+            m['rows'] = _backup_rows(bid)
+            _save_manifest(m)
+        except (OSError, ValueError, SyntaxError):
+            pass
         log(tr('Backup {id} made: {size} in {s} s.', id=bid, size=_fmt(m['size']), s=round(m['took'])))
         return m
     except BaseException:
@@ -999,8 +1004,29 @@ def next_run(cfg, now=None):
 
 def verify(bid, deep=False, log=print, settings=True):
     """Check a backup here: every file ClickHouse listed has its size, the settings their checksum, the full backup a
-    differential one needs is there. deep: restore the data into a scratch database and count the rows."""
+    differential one needs is there. deep: also the rows each table holds (exactly as recorded when it was made; older
+    backups: within the counts before/after it, for the tables whose rows do not merge) and a restore into a scratch
+    database (ClickHouse checks every file's checksum on the way) with every table back.
+    (2.0.0 build 4) A quick check that passes does not clear what an earlier full check found: the quick one cannot see
+    rows, so the backup stays damaged until a full check passes. A check that could not run is recorded as such
+    (ok None), never as damage, and the web page stops waiting for it."""
     m = _manifest(bid)
+    prev = m.get('verified') or {}
+    try:
+        problems = _verify(m, bid, deep, log, settings)
+    except (BackupError, CHError, OSError, ValueError) as ex:
+        m['verified'] = {'t': int(time.time()), 'ok': None, 'deep': deep, 'problems': [], 'error': str(ex)[:300]}
+        _save_manifest(m)
+        raise
+    held = []
+    if not deep and not problems and prev.get('deep') and prev.get('ok') is False:
+        held = prev.get('problems', [])[:4] + [tr('Found by the full check of {when}; a full check that passes clears it.', when=time.strftime('%Y-%m-%d %H:%M', time.localtime(prev['t'])))]
+    m['verified'] = {'t': int(time.time()), 'ok': not (problems or held), 'deep': deep or bool(held), 'problems': (problems or held)[:5]}
+    _save_manifest(m)
+    return problems or held
+
+
+def _verify(m, bid, deep, log, settings):
     folder = os.path.join(DIR, bid)
     problems = []
     for b in [m] + ([_manifest(m['base'])] if m.get('base') else []):
@@ -1015,24 +1041,57 @@ def verify(bid, deep=False, log=print, settings=True):
     elif settings:               # a backup of the data alone (its settings left out on purpose) restores --only-data
         problems.append(tr('{id}: the settings archive is missing.', id=bid))
     if deep and not problems:
+        try:
+            held = _backup_rows(bid)
+        except (OSError, ValueError, SyntaxError) as ex:
+            return [tr('{id}: the row counts of the backup cannot be read: {err}', id=bid, err=str(ex)[:120])]
         scratch = f'{DB}_verify'
-        log(tr('Restoring {id} into a scratch database to count the rows…', id=bid))
+        log(tr('Restoring {id} into a scratch database to check it…', id=bid))
         _sys(f'DROP DATABASE IF EXISTS {scratch} SYNC')
         try:
             _sys(f"RESTORE DATABASE {backup_db(m)} AS {scratch} FROM File('{bid}/data')", timeout=24 * 3600)
-            rows = {r['name']: int(r['rows']) for r in ch("SELECT name, toUInt64(ifNull(total_rows, 0)) AS rows FROM system.tables WHERE database = {db:String} AND engine LIKE '%MergeTree'",
-                                                      {'db': scratch}, fmt='JSON')}
-            for t, (lo, hi) in m['tables'].items():
-                n = rows.get(t)
-                if n is None:
-                    problems.append(tr('{id}: the table {t} is missing.', id=bid, t=t))
-                elif not min(lo, hi) <= n <= max(lo, hi) and not (n and lo == hi == 0):
-                    problems.append(tr('{id}: {t} has {n} rows, {lo}–{hi} expected.', id=bid, t=t, n=n, lo=lo, hi=hi))
+            back = {r['name']: r['engine'] for r in ch("SELECT name, engine FROM system.tables WHERE database = {db:String} AND engine LIKE '%MergeTree'",
+                                                     {'db': scratch}, fmt='JSON')}
         finally:
             _sys(f'DROP DATABASE IF EXISTS {scratch} SYNC')
-    m['verified'] = {'t': int(time.time()), 'ok': not problems, 'deep': deep, 'problems': problems[:5]}
-    _save_manifest(m)
+        for t, (lo, hi) in m['tables'].items():
+            n = held.get(t, 0)
+            if t not in back:
+                problems.append(tr('{id}: the table {t} is missing.', id=bid, t=t))
+            elif m.get('rows') is not None:
+                if n != m['rows'].get(t, 0):
+                    problems.append(tr('{id}: {t} holds {n} rows, {want} when it was made.', id=bid, t=t, n=n, want=m['rows'].get(t, 0)))
+            elif back[t] == 'MergeTree' and not min(lo, hi) <= n <= max(lo, hi) and not (n and lo == hi == 0):
+                problems.append(tr('{id}: {t} has {n} rows, {lo}–{hi} expected.', id=bid, t=t, n=n, lo=lo, hi=hi))
     return problems
+
+
+COUNT_RE = re.compile(r'data/[^/]+/([^/]+)/[^/]+/count\.txt')
+
+
+def _backup_rows(bid):
+    """(2.0.0 build 4) {table: rows} the backup HOLDS, summed from each part's count.txt — exact, unlike a restored
+    copy (ClickHouse merges the aggregating tables and drops records past their TTL as soon as they are back). A file
+    kept whole in the base backup is read there under the name the base gave it (it stores equal files once)."""
+    import xml.etree.ElementTree as ET
+    m = _manifest(bid)
+    base_files = {}
+    if m.get('base'):
+        for f in ET.parse(os.path.join(DIR, m['base'], 'data', '.backup')).getroot().iter('file'):
+            base_files[f.findtext('name')] = f.findtext('data_file') or f.findtext('name')
+    out = {}
+    for f in ET.parse(os.path.join(DIR, bid, 'data', '.backup')).getroot().iter('file'):
+        name = f.findtext('name') or ''
+        k = COUNT_RE.fullmatch(name)
+        if not k:
+            continue
+        if f.findtext('use_base') == 'true':
+            path = os.path.join(DIR, m['base'], 'data', base_files.get(name, name).lstrip('/'))
+        else:
+            path = os.path.join(DIR, bid, 'data', (f.findtext('data_file') or name).lstrip('/'))
+        with open(path) as fh:
+            out[k.group(1)] = out.get(k.group(1), 0) + int(fh.read().strip() or 0)
+    return out
 
 
 def _check_files(bid, meta):
@@ -1344,7 +1403,7 @@ def service():
                 os.remove(REQUEST)
         if req:
             if req.get('do') == 'verify' and ID_RE.match(str(req.get('id'))):
-                with contextlib.suppress(BackupError, CHError):
+                with contextlib.suppress(BackupError, CHError, OSError, ValueError):   # recorded in the manifest
                     verify(req['id'], deep=bool(req.get('deep')))
             elif req.get('do') == 'copy':
                 copy_out(cfg)
@@ -1416,7 +1475,13 @@ def main(argv=None):
     r.add_argument('--yes', action='store_true')
     r.add_argument('--force', action='store_true')
     r.add_argument('--undo', action='store_true')
-    a = ap.parse_args(argv)
+    # (2.0.0 build 4) the backup's id may also follow the options: `backup verify --deep ID` (argparse stops taking
+    # positionals once an option came, so a lone id left over is taken as the id)
+    a, rest = ap.parse_known_args(argv)
+    if len(rest) == 1 and ID_RE.match(rest[0]) and getattr(a, 'id', '') is None:
+        a.id = rest[0]
+    elif rest:
+        ap.error(tr('unrecognized arguments: {args}', args=' '.join(rest)))
     if os.geteuid() != 0:
         print(tr('Run it as root: sudo flowsphera {cmd} …', cmd=a.cmd or 'backup'), file=sys.stderr)
         return 1

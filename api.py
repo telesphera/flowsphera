@@ -3350,10 +3350,11 @@ def _backup_request(req):
     if os.path.exists(backup.REQUEST):
         raise BadRequest(tr('A backup task is already waiting to start.'))
     tmp = backup.REQUEST + '.tmp'
+    t = int(time.time())
     with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
-        json.dump({**req, 't': int(time.time())}, f)
+        json.dump({**req, 't': t}, f)
     os.replace(tmp, backup.REQUEST)
-    return {'ok': True}
+    return {'ok': True, 't': t}      # (2.0.0 build 4) the server's clock: the page waits for results newer than this
 
 
 def post_backups_run(body):

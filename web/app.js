@@ -3836,12 +3836,12 @@ function vBackups(){
       if (s === 'error') return `<span class="pill crit" title="${esc((m.errors || {})[k] || T('failed'))}">${l} ✕</span>`;
       return c[k].on ? `<span class="pill" style="opacity:.6" title="${T('not copied yet — with the next backup')}">${l} …</span>` : ''; };
     const vf = m => { const x = m.verified; if (checking === m.id) return T('Checking…');
-      return x ? (x.ok ? `✓ ${T('intact')}` : `✕ ${T('damaged')}`) : T('Check'); };
+      return x ? (x.ok ? `✓ ${T('intact')}` : x.ok === null ? `⚠ ${T('check failed')}` : `✕ ${T('damaged')}`) : T('Check'); };
     const rows = d.backups.slice(0, state.bkAll ? 999 : 8);
     const el = box('bkList', (d.backups.length ? `<div class="tw"><table class="compact"><thead><tr><th>${T('Time')}</th><th>${T('Type')}</th><th class="num">${T('Size')}</th><th>${T('Version')}</th><th>${T('Where')}</th><th></th><th></th></tr></thead><tbody>
       ${rows.map(m => `<tr data-id="${esc(m.id)}"><td class="mono">${when(m.t)}<div class="nat">${ago(m.t)}</div></td><td>${m.kind === 'full' ? `<b>${T('Full')}</b>` : T('Changes')}${m.encrypted ? ` <span title="${T('the copies are encrypted')}">🔒</span>` : ''}</td>
         <td class="num mono">${fmtB(m.size)}</td><td class="mono">${esc(verText(m.version, m.build))}</td><td>${[`<span class="pill ok">${T('here')}</span>`, ...on.map(([k, l]) => place(m, k, l))].join(' ')}</td>
-        <td class="nat">${Math.round(m.took)} s</td><td style="white-space:nowrap"><button class="btn" data-a="restore">${T('Restore…')}</button> <button class="btn" data-a="verify" ${busy() ? 'disabled' : ''} title="${esc(m.verified && !m.verified.ok ? m.verified.problems.join('\n') : m.verified ? T('checked {when}', {when:when(m.verified.t)}) : T('Check that every file of the backup is in place'))}">${vf(m)}</button> <button class="btn danger" data-a="del" ${busy() ? 'disabled' : ''}>${T('Delete…')}</button></td></tr>`).join('')}</tbody></table></div>
+        <td class="nat">${Math.round(m.took)} s</td><td style="white-space:nowrap"><button class="btn" data-a="restore">${T('Restore…')}</button> <button class="btn" data-a="verify" ${busy() ? 'disabled' : ''} title="${esc(m.verified && m.verified.ok === null ? T('The check could not run: {err}', {err:m.verified.error || ''}) : m.verified && !m.verified.ok ? m.verified.problems.join('\n') : m.verified ? T('checked {when}', {when:when(m.verified.t)}) + (m.verified.deep ? ' · ' + T('full check: restored and counted') : '') : T('Check that every file of the backup is in place'))}">${vf(m)}</button> <button class="btn danger" data-a="del" ${busy() ? 'disabled' : ''}>${T('Delete…')}</button></td></tr>`).join('')}</tbody></table></div>
       ${d.backups.length > 8 ? `<p style="margin:8px 0 0"><button class="btn" id="bkMore">${state.bkAll ? T('Show the last 8') : T('Show all ({n})', {n:d.backups.length})}</button></p>` : ''}
       <p class="note">${T('A backup of the changes needs the full one before it; the keeping rule deletes a full backup together with the changes after it. A failed copy is tried again with the next backup.')}</p>`
       : `<div class="empty">${d.next ? T('No backups yet — the first one runs {when}, or press Back up now.', {when:when(d.next)}) : T('No backups yet — press Back up now.')}</div>`) + delNote());
@@ -3850,7 +3850,7 @@ function vBackups(){
     el.querySelectorAll('button[data-a="restore"]').forEach(b => b.onclick = () => openRestore(d.backups.find(x => x.id === b.closest('tr').dataset.id)));
     el.querySelectorAll('button[data-a="del"]').forEach(b => b.onclick = () => openDelete(d.backups.find(x => x.id === b.closest('tr').dataset.id)));
     el.querySelectorAll('button[data-a="verify"]').forEach(b => b.onclick = async () => { const id = b.closest('tr').dataset.id;
-      try { await apiPost('backups/verify', {id}); checking = id; asked = Math.floor(Date.now() / 1000); draw(); poll(); } catch (e) { formErr('bkErr', e.message); } });
+      try { const r = await apiPost('backups/verify', {id}); checking = id; asked = r.t || Math.floor(Date.now() / 1000); draw(); poll(); } catch (e) { formErr('bkErr', e.message); } });
     const nb = document.getElementById('bkNow'), r = d.running;
     nb.disabled = busy();
     nb.textContent = !r ? (d.pending ? T('Starting…') : T('Back up now'))
@@ -3878,8 +3878,8 @@ function vBackups(){
     document.getElementById('bdNo').onclick = md.close;
     document.getElementById('bdForm').onsubmit = async e => { e.preventDefault(); if (ok.disabled) return; ok.disabled = true; formErr('bdErr', '');
       const cp = document.getElementById('bdCopies');
-      try { await apiPost('backups/delete', {ids:[m.id], password:pw.value, copies:!!(cp && cp.checked)}); md.close();
-        deleting = asked = Math.floor(Date.now() / 1000); d.pending = true; draw(); poll(); }
+      try { const r = await apiPost('backups/delete', {ids:[m.id], password:pw.value, copies:!!(cp && cp.checked)}); md.close();
+        deleting = asked = r.t || Math.floor(Date.now() / 1000); d.pending = true; draw(); poll(); }
       catch (err) { formErr('bdErr', err.message); pw.select(); ok.disabled = false; } }; };
   const openRestore = m => openModal(T('Restore a backup'), when(m.t), `<div class="form" style="padding:4px 2px">
       <p class="note" style="margin:0">${T('Restoring stops collecting and the web interface for a few minutes, replaces the flow data and the settings with the backup, and starts them again. Records that arrive meanwhile are lost. The current data is set aside until the backup is in place and comes back if the restore fails.')}</p>
@@ -3981,7 +3981,7 @@ function vBackups(){
       forms(); bkMark(); draw(); document.getElementById('bkOk').hidden = false;
     } catch (e) { formErr('bkErr', e.message); } };
   document.getElementById('bkNow').onclick = async () => { formErr('bkErr', '');
-    try { await apiPost('backups/run', {full:document.getElementById('bkFull').checked}); d.pending = true; asked = Math.floor(Date.now() / 1000); draw(); poll(); }
+    try { const r = await apiPost('backups/run', {full:document.getElementById('bkFull').checked}); d.pending = true; asked = r.t || Math.floor(Date.now() / 1000); draw(); poll(); }
     catch (e) { formErr('bkErr', e.message); } };
   // ---- while a backup or a check runs: ask every 2 s; it ends when the service has written its result
   let polling = false;

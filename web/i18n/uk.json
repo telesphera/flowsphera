@@ -1082,7 +1082,6 @@
  "Restoring stops collecting and the web interface for a few minutes, replaces the flow data and the settings with the backup, and starts them again. Records that arrive meanwhile are lost. The current data is set aside until the backup is in place and comes back if the restore fails.": "Відновлення на кілька хвилин зупиняє збирання і вебінтерфейс, замінює дані потоків і налаштування вмістом бекапу та запускає їх знову. Записи, що надійдуть у цей час, буде втрачено. Поточні дані відкладаються, доки бекап не стане на місце, і повертаються, якщо відновлення не вдасться.",
  "Restoring the flow data of {id}…": "Відновлення даних потоків з {id}…",
  "Restoring the settings…": "Відновлення налаштувань…",
- "Restoring {id} into a scratch database to count the rows…": "Відновлення {id} у тимчасову базу для підрахунку рядків…",
  "Run it as root: sudo flowsphera {cmd} …": "Запускайте від root: sudo flowsphera {cmd} …",
  "S3: the bucket, the access key ID and the secret key are needed.": "S3: потрібні бакет, access key ID і secret key.",
  "S3: the endpoint is an address like https://s3.eu-central-1.amazonaws.com.": "S3: endpoint — це адреса на кшталт https://s3.eu-central-1.amazonaws.com.",
@@ -2017,5 +2016,13 @@
  "Keep fewer days": "Зберігати менше днів",
  "Flow details older than {n} days are deleted within a minute, the totals of long periods too. About {size} is freed. It cannot be undone; a backup made before keeps them.": "Деталі потоків, старші за {n} днів, буде видалено протягом хвилини, разом із підсумками для довгих періодів. Звільниться приблизно {size}. Це не можна скасувати; резервна копія, зроблена раніше, їх зберігає.",
  "Keep {n} days": {"one": "Зберігати {n} день", "few": "Зберігати {n} дні", "many": "Зберігати {n} днів", "other": "Зберігати {n} дня"},
- "Days must be a whole number": "Кількість днів має бути цілим числом"
+ "Days must be a whole number": "Кількість днів має бути цілим числом",
+ "Found by the full check of {when}; a full check that passes clears it.": "Знайдено повною перевіркою {when}; знімається лише повною перевіркою, яка пройде успішно.",
+ "Restoring {id} into a scratch database to check it…": "Відновлюю {id} у тимчасову базу для перевірки…",
+ "The check could not run: {err}": "Перевірку не вдалося виконати: {err}",
+ "check failed": "перевірка не вдалася",
+ "full check: restored and counted": "повна перевірка: відновлено й пораховано",
+ "{id}: the row counts of the backup cannot be read: {err}": "{id}: не вдалося прочитати кількість рядків у бекапі: {err}",
+ "{id}: {t} holds {n} rows, {want} when it was made.": "{id}: у {t} {n} рядків, під час створення було {want}.",
+ "unrecognized arguments: {args}": "невідомі аргументи: {args}"
 }

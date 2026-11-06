@@ -31,6 +31,15 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
 - **The sidebar cut off «Collector online» and Ingest on short windows** (e.g. Edge on Windows with display scaling):
   the menu now tightens on windows under 1,000 px tall and scrolls by itself when even that is not enough; the collector
   status always stays in view.
+- **Backups: a backup showed «damaged» and then «intact»** — the full check counted the rows of a restored copy, which
+  ClickHouse merges and trims by age as soon as it is back, so healthy backups were called damaged; a later quick
+  check (files only) then said intact. The full check now counts the rows the backup itself holds (exactly, for new
+  backups), restores it to prove every file and table, and a quick check no longer clears what a full check found. A
+  check that cannot run says so instead of «damaged».
+- **Backups: «Checking…» could stay until the page was reloaded** — the page waited for a result newer than the
+  browser's clock; a quick check finishes within a second, so a computer whose clock is a little ahead never saw it
+  end. The page now waits by the server's clock (also for Back up now and Delete).
+- `flowsphera backup verify --deep ID` takes the id after the options too.
 - **Loss was too high when a device sends some export packets twice** — FlowSphera drops such copies («repeated
   packets dropped»), but when the device numbered a copy as its next packet (seen on a Palo Alto cluster), the gap
   that copy left was also counted as lost. Devices → Loss now counts only packets that really did not arrive.
