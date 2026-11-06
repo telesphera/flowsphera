@@ -4,6 +4,19 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## Unreleased
+
+### Added
+- **Applications and users from a Palo Alto** — with *PAN-OS Field Types* on in the NetFlow profile, PAN-OS names the
+  application (App-ID) and the user (User-ID) of every flow. Services shows the applications over time, the users and a
+  table of applications with their hosts; `app:` and `user:` filter every page (the search suggests them), and the
+  records show both. Long periods come from two new summary tables. Needs core 1.8.0. Settings → Devices → Connect a
+  device → Palo Alto has the step. (GitHub issue #1)
+
+### Fixed
+- **Filters with a backslash or a tab** (e.g. a user `corp\anna`) found nothing or failed: such values now reach the
+  database unchanged.
+
 ## 2.1.1 — 2026-11-06
 
 ### Fixed
