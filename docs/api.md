@@ -25,6 +25,8 @@ JSON over HTTP — with the session cookie of the UI, or with an **API token** (
 | `GET /api/path?src=&dst=` | the hops from a source to a destination (address or network) across the devices |
 | `GET /api/alerts` | events of the period and filters: `alerts` (every event, priority first) and `stats` — `total`, `sev` {crit, warn, info}, `kinds` {kind: {n, sev, title}}, `series` {from, to, step, rows [[t, kind, n]] = events that began in each step}, `before` (began before the period), `truncated`; (1.16.1) with `limit` (0–500) a part instead: the newest first, `offset`, `sev`, `kind`, `q` (text / address), `matched`; `tz` (IANA zone) for whole local days |
 | `GET /api/devices`, `GET /api/meta` | exporters and interfaces; metadata |
+| `GET /api/ingest` | records/s per device over the period (per-minute device statistics): `rows` [t, device, rec/s], `peak` (busiest minute), `drops` (records over the license limit), `limit`; only the `device` filter applies |
+| `GET/POST /api/retention` | admin, no API tokens: days kept, the license's most, the choice, sizes; POST `{days, password}` (password when fewer days) |
 | `GET /api/top?dim=net`, `GET /api/series?by=net` | traffic by your named networks |
 | `GET /api/networks`, `GET /api/hosts/names`, `GET /api/ports` | your names of networks, hosts and ports |
 | `GET /api/backups` | backups, their schedule and the last result |

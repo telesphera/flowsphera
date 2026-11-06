@@ -15,8 +15,10 @@
 - **Encryption** of the copies with a passphrase (AES-256-GCM, key from scrypt). Without the passphrase an encrypted
   copy cannot be restored. The folder on the server is readable by root only and not encrypted (the next backup of
   the changes is made against it).
-- **Check**: *Check* (or `flowsphera backup verify ID`) compares every file with ClickHouse's list; `--deep` restores the
-  backup into a scratch database and counts the rows.
+- **Check**: *Check* (or `flowsphera backup verify ID`) compares every file with ClickHouse's list; `--deep` also counts
+  the rows the backup holds (each part's own count — exactly as recorded when it was made, for backups from 2.0.0 build 4
+  on) and restores it into a scratch database to prove every file and table. A quick check never clears what a full
+  check found; a check that could not run says so instead of «damaged».
 - **Restore** (`sudo flowsphera restore [ID]`): collecting stops for the time of it, the current flow data is set aside
   until the backup is in place and comes back if the restore fails (`flowsphera restore --undo` after an interruption).
   `--only-settings`, `--only-data`; the license files only with `--with-license` (a license is bound to its server).

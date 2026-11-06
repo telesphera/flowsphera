@@ -86,7 +86,11 @@ full screen.
 The busiest inside hosts and outside addresses as a living diagram: width is volume, colour is direction. Click to
 inspect, Shift+click to filter, down to the raw records with NAT, ASN and interfaces.
 
-<p align="center"><img src="docs/media/en/flows.webp" alt="Flows page" width="100%"></p>
+Beside it, **Ingest** shows what every device sends over the chosen period: records per second, the busiest minute,
+your license limit as soon as traffic comes near it and the moments records went over it — so a scan from the Internet
+or a device that stopped exporting stands out at once. Drag across it to zoom, open it full screen for detail.
+
+<p align="center"><img src="docs/media/en/flows.webp" alt="Flows: the exchange between inside hosts and outside addresses; on the right the Inspector and Ingest — records per second from each device over the last 24 hours" width="100%"></p>
 
 ### Conversations — who talks to whom
 
@@ -170,8 +174,8 @@ a device or a service like any page; the full list of hosts downloads as a CSV f
 ### Find anything by typing
 
 `ip:10.0.0.5 service:Telegram -country:US port:443 net:Office` — the search box guides you through every filter, and
-every value on every page is a click-to-filter. Any period, down to the minute; the link keeps it, so an incident view
-can be shared.
+every value on every page is a click-to-filter. Any period from the last 15 minutes to a month, or your own down to
+the minute; the link keeps it, so an incident view can be shared.
 
 <p align="center"><img src="docs/media/en/search.webp" alt="Search box with filter guide" width="80%"></p>
 
@@ -239,6 +243,14 @@ when the server stopped, what is missing, what was summed again.
 
 <p align="center"><img src="docs/media/en/backups.webp" alt="Settings → Backups: a week of verified, encrypted backups kept here and on S3" width="100%"></p>
 
+### Data retention — as much history as your disk holds
+
+Keep flow details as long as your license allows — or fewer days on a small disk. Settings → General shows what the
+data takes now, about a day, and what it will take with your choice before you save it. Fewer days free the space at
+once and are confirmed with your password; the license only sets the most you can choose.
+
+<p align="center"><img src="docs/media/en/retention.webp" alt="Settings → General → Data retention: kept now 30 days, on disk now, about a day, and the estimate with 14 days chosen" width="100%"></p>
+
 ### Fast on a busy network, over days
 
 A day of a busy network is hundreds of millions of flow records. FlowSphera keeps summary tables — per 5 minutes and
@@ -283,7 +295,7 @@ Unattended install, upgrades, all server commands: [docs/install.md](docs/instal
 |---|---|---|
 | Every feature, now and in future versions | ✓ | ✓ |
 | Flow records per second | up to **5,000** | no limit (or per license) |
-| Data kept (flows and every total built from them) | **30 days** | per license, e.g. 90 days |
+| Data kept (flows and every total built from them) | **30 days**, or fewer of your choice | per license, e.g. 90 days, or fewer of your choice |
 | Activation | — | a license key, activated in a minute in Settings → License |
 
 5,000 records/s covers homes, small and medium offices; a busy 1 Gbit/s internet edge typically exports a few thousand.

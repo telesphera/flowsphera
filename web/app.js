@@ -204,7 +204,8 @@ function ingestChart(el, d){
   for (const [t, k, r] of d.rows) { if (!keys.has(k)) keys.set(k, new Map()); keys.get(k).set(t, r); }
   const order = [...keys.keys()].sort((a, b) => devName(a).localeCompare(devName(b)));
   const top = Math.max(0, ...d.peak.map(x => x[1])), near = d.limit && top >= d.limit / 2;
-  const rate = v => T('{n} rec/s', {n: fmtN(v)});
+  // small rates keep a decimal: whole numbers made a quiet network's axis read 2, 1, 1, 1, 0, 0 and its hints 0 rec/s
+  const num = v => v > 0 && v < 10 ? (Math.round(v * 10) / 10).toLocaleString(LOC) : fmtN(v), rate = v => T('{n} rec/s', {n: num(v)});
   // a step without any row = the collector was not running (e.g. a power cut): a gap, not 0 rec/s
   const seen = new Set([...d.rows.map(r => r[0]), ...d.peak.map(r => r[0])]), at = (t, v) => [t * 1000, seen.has(t) ? v : null];
   const c = mkChart(el);
@@ -216,7 +217,7 @@ function ingestChart(el, d){
       return `<b>${esc(dMon(t) + " " + hhmm(t))}</b><br>` + ps.map(x => `${x.marker}${esc(x.seriesName)}: <b>${rate(x.value[1] || 0)}</b>`).join('<br>')
         + (order.length > 1 ? `<br>${T('All devices')}: <b>${rate(sum)}</b>` : '')
         + (n ? `<br><span style="color:${RED}">${T('{n} records over the license limit were not stored', {n: fmtN(n)})}</span>` : ''); }},
-    xAxis:axisX(ts), yAxis:{...axisY(v => fmtN(v)), max:near ? (v => Math.max(v.max, d.limit) * 1.08) : null},
+    xAxis:axisX(ts), yAxis:{...axisY(num), max:near ? (v => Math.max(v.max, d.limit) * 1.08) : null},
     series:[...order.map(k => { const col = keyColor(k); return {name:devName(k), id:k, type:'line', stack:'a', smooth:.25, showSymbol:false,
         lineStyle:{width:1.4, color:col}, itemStyle:{color:col}, areaStyle:{opacity:.3}, data:ts.map(t => at(t, keys.get(k).get(t) || 0))}; }),
       {name:T('Busiest minute'), id:'__peak', type:'line', showSymbol:false, step:'middle', lineStyle:{width:1, type:'dashed', color:C.ink2}, itemStyle:{color:C.ink2},
@@ -1008,7 +1009,7 @@ function vFlows(){
   const ingest = () => api('ingest').then(d => { const el = document.getElementById('cIng'); if (!el) return; el.classList.remove('loading'); delete el.dataset.wait;
     const c = echarts.getInstanceByDom(el); if (c) c.dispose(); ingestChart(el, d);
     const n = d.drops.reduce((a, x) => a + x[1], 0), top = Math.max(0, ...d.peak.map(x => x[1]));
-    fill('ingNote', (top ? T('dashed: the busiest minute (top {n} rec/s) · drag to zoom', {n: fmtN(top)}) : T('No records from the devices in this period'))
+    fill('ingNote', (top ? T('dashed: the busiest minute (top {n} rec/s) · drag to zoom', {n: top < 10 ? (Math.round(top * 10) / 10).toLocaleString(LOC) : fmtN(top)}) : T('No records from the devices in this period'))
       + (d.limit ? ' · ' + T('license limit {n}/s', {n: fmtN(d.limit)}) : '') + (n ? ` · <span style="color:${RED}">${T('{n} records over the limit not stored', {n: fmtN(n)})}</span>` : '')); })
     .catch(e => fill('cIng', errBox(e)));
   ingest(); if (!isCustom()) every(60000, ingest);

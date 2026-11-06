@@ -5,7 +5,7 @@
 | | **FlowSphera Community** (free) | **FlowSphera Pro** (license for one server) |
 |---|---|---|
 | Records per second | up to **5,000** (averaged over a minute, so bursts pass) | no limit, or per license |
-| Data kept (flows and every total built from them) | **30 days** | per license, e.g. 90 days |
+| Data kept (flows and every total built from them) | **30 days**, or fewer of your choice | per license, e.g. 90 days, or fewer of your choice |
 | Term | — | subscription with an end date; afterwards the Community limits apply again |
 | Every feature, now and in future versions | ✓ | ✓ |
 
@@ -15,6 +15,13 @@ Every flow record is kept for the days of the edition it was received under, and
 license ends, new records are kept 30 days, records received under the license keep their days but only the last
 30 days are shown — older records show again with the next license. A new license keeps the stored records as long
 as its own term (records are raised, never lowered), and while it is active everything stored is shown.
+
+**Fewer days on a small disk (2.0.0 build 4).** Settings → General → Data retention: an administrator keeps flow details
+for any number of days from 1 up to the edition's (never more). New records get that many days; stored ones are
+shortened to it and whole older days are deleted within a minute, so the disk is freed at once — confirmed with the
+administrator's password, because it cannot be undone. The panel shows the size now, about a day and the estimate for
+the choice. An ended license still deletes nothing: a choice above the new limit keeps the edition's days and applies
+again with the next license. Long-period pages (Capacity, Usage, the learning of Events) see only what is kept.
 
 **Activation takes a minute.** After the purchase you receive a **license key** (`FTK-…`). Activate it on the server
 where FlowSphera runs, in any of three ways:
