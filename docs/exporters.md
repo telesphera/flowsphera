@@ -42,6 +42,12 @@ crosses two sampled interfaces is still reported once. Wi-Fi SSID (VAP) interfac
 traffic between two SSIDs is not visible; traffic between an SSID and a sampled interface is.
 FortiOS starts exporting sessions created after the sampler was enabled.
 
+**FortiGate application names.** With Application Control in the firewall policies (a profile, even monitor-only),
+FortiOS puts the application id into every record and sends the names with their categories in an options table —
+slowly, a few at a time. FlowSphera keeps the names it has learned (state `app_names.json`) and shows a record stored
+before its name arrived under that name as soon as it is known. Settings → Devices says «applications: off» for a
+FortiGate or a Palo Alto that sends none.
+
 **Cisco IOS-XE** (Flexible NetFlow) — a record with `flow direction`, so egress copies can be removed:
 
 ```

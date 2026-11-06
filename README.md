@@ -171,13 +171,15 @@ a device or a service like any page; the full list of hosts downloads as a CSV f
 </tr>
 </table>
 
-### Applications and users from your Palo Alto
+### Applications — what your firewall knows about every session
 
-A Palo Alto firewall knows what each session really is — Microsoft 365, Zoom, YouTube, SSH — and who opened it. With
-*PAN-OS Field Types* on in its NetFlow profile, FlowSphera shows both: applications over time, who uses how much, and
-`app:` / `user:` filters that work on every page, down to the records.
+FortiGate (with Application Control) and Palo Alto (with *PAN-OS Field Types*) know what each session really is —
+Microsoft 365, Zoom, YouTube, SSH, a VPN proxy — and Palo Alto also who opened it. FlowSphera shows it on a page of
+its own, in the menu as soon as a device names applications: applications over time, their categories, the users,
+and **the applications that appeared only lately** — a proxy on a laptop or a new AI service is visible the same day.
+`app:` and `user:` filter every page, down to the records.
 
-<p align="center"><img src="docs/media/en/applications.webp" alt="Services: applications over time and the users named by a Palo Alto firewall, ranked; below, every application with its download, upload, share and hosts" width="100%"></p>
+<p align="center"><img src="docs/media/en/applications.webp" alt="Applications: 20 named in a week, applications over time, ten categories with Collaboration first, and two new ones — Hotspot.Shield (Proxy) and Claude (GenAI)" width="100%"></p>
 
 ### Find anything by typing
 

@@ -4,6 +4,23 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.3.0 — 2026-11-06
+
+### Added
+- **Applications — a page of its own** (in the menu as soon as a device names applications): applications over time,
+  their categories, the users, the applications new in the period (none like them in the 7 days before) and every
+  application with its category, hosts and users.
+- **FortiGate application names** — with Application Control on, FortiOS sends the application id in every record and
+  the names with their categories in an options table; FlowSphera learns and keeps them (core 1.9.0). Records stored
+  before a name arrived count under that name as soon as it is known, filters included.
+- Settings → Devices: **«applications: off»** for a FortiGate or a Palo Alto that sends none, with how to turn it on.
+
+### Changed
+- Services shows the services and protocols again; the applications moved to their own page.
+
+### Fixed
+- The legend of stacked charts scrolls instead of covering the chart when it has many entries.
+
 ## 2.2.0 — 2026-11-06
 
 ### Added

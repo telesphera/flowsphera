@@ -2560,7 +2560,7 @@ function vApplications(){
     // before the devices have named applications for new_days there is nothing to compare with: no panel of one line
     if (!d.new_looks) { const ns = document.getElementById('newSec'); if (ns) ns.hidden = true; }
     fill('newBox', !d.new_looks ? '' : !d.new.length ? `<div class="empty">${T('No new applications')}</div>`
-      : `<div class="blist">${d.new.map(([k, b]) => `<button class="brow" data-f="app" data-v="${esc(k)}"><span class="n">${appCell(k)} <span class="pill warn">${T('new')}</span></span><span class="t">${fmtB(b)}</span><span class="p"></span><span class="bar2" style="width:${(100 * b / nmax).toFixed(1)}%"><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
+      : `<div class="blist">${d.new.map(([k, b]) => `<button class="brow" data-f="app" data-v="${esc(k)}"><span class="n">${appCell(k)}${d.cats[k] ? `<span class="nat"> · ${esc(d.cats[k])}</span>` : ''} <span class="pill warn">${T('new')}</span></span><span class="t">${fmtB(b)}</span><span class="p"></span><span class="bar2" style="width:${(100 * b / nmax).toFixed(1)}%"><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
     wireFilters(document.getElementById('newBox'));
     section('appBox', async () => { const t = await api('top', {dim:'app', limit:50}), tot2 = t.total || 1, max = tot(t.rows[0] || {}) || 1;
       const hasU = t.rows.some(r => r.users);      // FortiGate names no users: no column of zeros
