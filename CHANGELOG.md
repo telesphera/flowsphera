@@ -4,7 +4,10 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
-## Unreleased
+## 2.1.0 — 2026-11-06
+
+New: Ingest over time on the Flows page, data retention of your choice, «Last 15 minutes»; fixes collected as
+build 4 of 2.0.0 (Loss over-count, backups check, Palo Alto setup, sidebar on short windows).
 
 ### Added
 - **Data retention of your choice** — Settings → General → Data retention: keep flow details for fewer days than the

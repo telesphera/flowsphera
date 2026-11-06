@@ -16,7 +16,7 @@
   copy cannot be restored. The folder on the server is readable by root only and not encrypted (the next backup of
   the changes is made against it).
 - **Check**: *Check* (or `flowsphera backup verify ID`) compares every file with ClickHouse's list; `--deep` also counts
-  the rows the backup holds (each part's own count — exactly as recorded when it was made, for backups from 2.0.0 build 4
+  the rows the backup holds (each part's own count — exactly as recorded when it was made, for backups from 2.1.0
   on) and restores it into a scratch database to prove every file and table. A quick check never clears what a full
   check found; a check that could not run says so instead of «damaged».
 - **Restore** (`sudo flowsphera restore [ID]`): collecting stops for the time of it, the current flow data is set aside

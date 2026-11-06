@@ -12,8 +12,12 @@ sys.path.insert(0, ROOT)
 class Build(unittest.TestCase):
     def test_build_read_from_its_file(self):
         import common
-        with open(os.path.join(ROOT, 'BUILD')) as f:
-            self.assertEqual(common.BUILD, int(f.read().strip()))
+        path = os.path.join(ROOT, 'BUILD')
+        if os.path.exists(path):          # (2.1.0) a release without builds has no BUILD file: build 1
+            with open(path) as f:
+                self.assertEqual(common.BUILD, int(f.read().strip()))
+        else:
+            self.assertEqual(common.BUILD, 1)
         self.assertIsInstance(common.BUILD, int)
 
     def test_no_file_or_garbage_is_build_1(self):

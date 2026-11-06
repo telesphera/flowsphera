@@ -16,7 +16,7 @@ license ends, new records are kept 30 days, records received under the license k
 30 days are shown — older records show again with the next license. A new license keeps the stored records as long
 as its own term (records are raised, never lowered), and while it is active everything stored is shown.
 
-**Fewer days on a small disk (2.0.0 build 4).** Settings → General → Data retention: an administrator keeps flow details
+**Fewer days on a small disk (2.1.0).** Settings → General → Data retention: an administrator keeps flow details
 for any number of days from 1 up to the edition's (never more). New records get that many days; stored ones are
 shortened to it and whole older days are deleted within a minute, so the disk is freed at once — confirmed with the
 administrator's password, because it cannot be undone. The panel shows the size now, about a day and the estimate for
