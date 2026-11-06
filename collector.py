@@ -47,6 +47,8 @@ ALLOW = {x.strip() for x in os.environ.get('FT_EXPORTERS', '').split(',') if x.s
 MAX_NEW = int(os.environ.get('FT_MAX_NEW_EXPORTERS', '16'))
 NEW_IDLE = 900
 TEMPLATES_FILE = os.path.join(STATE_DIR, 'templates.json')
+APP_NAMES_FILE = os.path.join(STATE_DIR, 'app_names.json')   # (2.3.0) application id -> name (FortiGate options)
+FORTINET_PEN = 12356        # (2.3.0) FortiGate's APPLICATION_ID: engine 20 + Fortinet's enterprise number + the app
 # exporters found to send running totals of long sessions (ftcore, 1.4.1): {ip: first seen (unix s)}. The receiver
 # writes it when a worker finds one; the workers read it, and the receiver sends all of such an exporter's packets to
 # one worker, which then sees every export of a session.
@@ -365,6 +367,7 @@ class Collector:
         self.dropped = 0
         self.last_sflow = 0
         self._saved_templates = None
+        self._saved_apps = None
         self.last_flush = self.last_tick = time.time()
 
     def exporter(self, ip):
@@ -382,6 +385,10 @@ class Collector:
          nat_src, nat_sport, nat_dst, nat_dport, start, end, app_tag, rate) = f[:18]
         dscp, dscp_out = f[18:20] if len(f) >= 20 else (255, 255)      # (1.16.0, core 1.6.0) 255 = not sent
         app, user_name = f[20:22] if len(f) >= 22 else ('', '')         # (2.2.0, core 1.8.0) Palo Alto App-ID / User-ID
+        if not app and app_tag >> 32 == FORTINET_PEN and app_tag & 0xffffffff:
+            # (2.3.0) FortiGate identified the application but has not sent its name yet (they come slowly): its id as
+            # «#<id>»; the pages show the name as soon as the options table gives it (api.app_label)
+            app = f'#{app_tag & 0xffffffff}'
         if rate <= 1:
             rate = e.cfg_sampling
         if rate > 1:                    # sampled exporters report 1 of every N packets: scale up
@@ -523,6 +530,46 @@ class Collector:
         except OSError as ex:
             log(f'WARN cannot save templates: {ex}')
 
+    def save_app_names(self):
+        """(2.3.0, core 1.9.0) the application names the exporters' options records gave (FortiGate sends them slowly,
+        one now and then): kept across restarts so records are named at once after one."""
+        if not hasattr(self.dec, 'app_names_json'):
+            return
+        text = self.dec.app_names_json()
+        if text == self._saved_apps or text == '{}':
+            return
+        try:
+            tmp = APP_NAMES_FILE + '.tmp'
+            with open(tmp, 'w') as f:
+                f.write(text)
+            os.replace(tmp, APP_NAMES_FILE)
+            self._saved_apps = text
+        except OSError as ex:
+            log(f'WARN cannot save application names: {ex}')
+
+    def load_app_names(self):
+        if not hasattr(self.dec, 'load_app_names'):
+            return
+        try:
+            with open(APP_NAMES_FILE) as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError) as ex:
+            log(f'WARN cannot read saved application names: {ex}')
+            return
+        n = 0
+        for ip, names in (data.items() if isinstance(data, dict) else []):
+            if ALLOW and ip not in ALLOW and ip not in self.cfg:
+                continue
+            self.exporter(ip)
+            try:
+                n += self.dec.load_app_names(ip, json.dumps(names))
+            except ValueError as ex:
+                log(f'WARN skipping saved application names of {ip}: {ex}')
+        if n:
+            log(f'restored {n} application names for {len(data)} exporter(s)')
+
     def load_templates(self):
         try:
             with open(TEMPLATES_FILE) as f:
@@ -575,6 +622,7 @@ class Collector:
             self.last_tick = now
             if self.worker == 0:            # every worker sees every template; one of them saves them
                 self.save_templates()
+                self.save_app_names()       # (2.3.0) the same for the application names (options packets reach all)
             self.reload_config()
             self.forget_idle()
             self.load_running()
@@ -593,6 +641,7 @@ def worker_main(n, q, results, ppid, workers=1):
     reload_port_names()
     c = Collector(worker=n, accounting=False, workers=workers)
     c.load_templates()
+    c.load_app_names()
     c.load_running()
     last_report = time.time()
     while True:
@@ -621,6 +670,7 @@ def worker_main(n, q, results, ppid, workers=1):
             break
     if n == 0:
         c.save_templates()
+        c.save_app_names()
     results.put((n, c.take_stats()))
 
 

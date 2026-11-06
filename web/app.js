@@ -541,7 +541,7 @@ const USAGE_ICON = 'M3 15V9M7 15V5M11 15V8M15 15V3M2 15.5h14';
 const CAP_ICON = 'M2.5 13.5a6.5 6.5 0 1 1 13 0M9 13.5l3.2-4.2M4.6 9.6l.9.6M13.4 9.6l-.9.6M9 7v1';
 const NAV = [
   ['overview',T('Overview'),'M3 9.5L9 4l6 5.5V15H3z'], ['flows',T('Flows'),'M2 6c4 0 5 6 9 6h5M2 12c4 0 5-6 9-6h5'], ['conversations',T('Conversations'),'M3 5h8l-2-2M15 13H7l2 2'], ['paths',T('Through device'),'M2 4h4M2 9h4M2 14h4M12 4h4M12 9h4M12 14h4M6 4c3 0 3 10 6 10M6 14c3 0 3-10 6-10M6 9h6'], ['network',T('Path analysis'),'M6.9 4a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0 -4.2 0M1.9 14a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0 -4.2 0M11.9 14a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0 -4.2 0M7.57 6.86L5.43 11.14M10.43 6.86L12.57 11.14M7.2 14L10.8 14'], ['talkers',T('Top hosts'),'M4 6a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0M2 15.5c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5M11 7a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M12.6 11.2c.4-.1.9-.2 1.4-.2 1.9 0 3 1.5 3 4'],
-  ['usage',T('Usage'),USAGE_ICON], ['apps',T('Services'),'M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z'], ['ports',T('Ports'),'M6 2v4M12 2v4M4 6h10v3a5 5 0 0 1-10 0zM9 14v3'], ['geo',T('Geolocation'),'M9 16.2s5.2-4.6 5.2-8.7A5.2 5.2 0 0 0 3.8 7.5c0 4.1 5.2 8.7 5.2 8.7zM7.2 7.4a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0 -3.6 0'],
+  ['usage',T('Usage'),USAGE_ICON], ['apps',T('Services'),'M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z'], ['applications',T('Applications'),'M4 2h10v14H4zM7 5h4M7 8h4M7 11h2','apps'], ['ports',T('Ports'),'M6 2v4M12 2v4M4 6h10v3a5 5 0 0 1-10 0zM9 14v3'], ['geo',T('Geolocation'),'M9 16.2s5.2-4.6 5.2-8.7A5.2 5.2 0 0 0 3.8 7.5c0 4.1 5.2 8.7 5.2 8.7zM7.2 7.4a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0 -3.6 0'],
   ['capacity',T('page::Capacity'),CAP_ICON], ['qos',T('QoS'),QOS_ICON],
   ['threats',T('Events'),'M9 2l6 2.5V9c0 3.5-2.6 6-6 7-3.4-1-6-3.5-6-7V4.5z'],
   ['settings',T('Settings'),'M14.29 7.93L16.15 8.14L16.15 9.86L14.29 10.07L13.5 11.98L14.66 13.45L13.45 14.66L11.98 13.5L10.07 14.29L9.86 16.15L8.14 16.15L7.93 14.29L6.02 13.5L4.55 14.66L3.34 13.45L4.5 11.98L3.71 10.07L1.85 9.86L1.85 8.14L3.71 7.93L4.5 6.02L3.34 4.55L4.55 3.34L6.02 4.5L7.93 3.71L8.14 1.85L9.86 1.85L10.07 3.71L11.98 4.5L13.45 3.34L14.66 4.55L13.5 6.02zM6.7 9a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0 -4.6 0'],
@@ -2530,38 +2530,55 @@ function moreToggle(id, key, all, hasMore){
   b.hidden = !all && !hasMore; b.textContent = all ? T('Show top 10') : T('Show all');
   b.onclick = () => { state[key] = !all; render(); };
 }
+// (2.3.0) Applications: what the devices named (Palo Alto App-ID / User-ID, FortiGate's application table); in the
+// menu only when any device named one. Visual first: cards, applications over time + categories, users, new, table
+function vApplications(){
+  const v = document.getElementById('view');
+  v.innerHTML = `<div class="grid">
+    <section class="glass panel kcard gcard s3"><span class="ico">${icon(ICO.grid || ICO.list, 22)}</span><span class="k">${T('Applications')}</span><span class="v" id="kApps">—</span><span class="nat">${T('named in the period')}</span></section>
+    <section class="glass panel kcard gcard s3"><span class="ico">${icon(USER_ICON, 22)}</span><span class="k">${T('Users')}</span><span class="v" id="kUsers">—</span><span class="nat">${T('named by the firewall (User-ID)')}</span></section>
+    <section class="glass panel kcard gcard s3"><span class="ico">${icon(ICO.pie, 22)}</span><span class="k">${T('Identified')}</span><span class="v" id="kIdent">—</span><span class="nat">${T('of the traffic of the devices that name applications')}</span></section>
+    <section class="glass panel kcard gcard s3"><span class="ico">${icon(ICO.chart, 22)}</span><span class="k">${T('Top category')}</span><span class="v" id="kCat" style="font-size:18px">—</span><span class="nat" id="kCatSub"></span></section>
+    <section class="glass panel s8" id="appSec">${ph('chart', T('Applications over time'), T('named by the firewall'))}<div class="chart" id="cAppT" data-wait="line"></div></section>
+    <section class="glass panel s4">${ph('pie', T('Categories'), T('FortiGate application categories'))}<div id="catBox" class="loading"></div></section>
+    <section class="glass panel s6">${ph('spark', T('New applications'), T('none like them in the days before'))}<div id="newBox" class="loading"></div></section>
+    <section class="glass panel s6" id="userSec">${ph(USER_ICON, T('Users'), T('named by the firewall (User-ID)'))}<div id="userBox" class="loading"></div></section>
+    <section class="glass panel s12">${ph('grid', T('Applications'), T('click to filter every page by the application'))}<div id="appBox" class="loading"></div></section></div>`;
+  api('series', {by:'app', top:7}).then(sr => { const el = document.getElementById('cAppT'); if (el) { delete el.dataset.wait; stackChart(el, sr, k => k, k => addFilter('app', k)); } }).catch(e => fill('cAppT', errBox(e)));
+  api('apps').then(d => {
+    fill('kApps', fmtN(d.apps)); fill('kIdent', d.naming_bytes ? pct(d.named_bytes, d.naming_bytes) : '—');
+    const cats = d.categories.filter(c => c[0]), all = d.categories.reduce((a, c) => a + c[1], 0);
+    fill('kCat', cats.length ? esc(cats[0][0]) : '—'); fill('kCatSub', cats.length ? pct(cats[0][1], all) : T('this device sends no categories'));
+    const rows = d.categories.slice(0, 8).map(([k, b]) => ({k: k || T('no category'), up: 0, dn: b}));
+    setTimeout(() => { const el = document.getElementById('cCats'); if (el && rows.length) donut(el, rows, k => PAL[rows.findIndex(r => r.k === k) % PAL.length], [String(d.categories.length), T('categories')]); });
+    fill('catBox', rows.length ? `<div class="chart donut" id="cCats"></div><div class="dl">${rows.map((r, i) => `<i class="idot" style="background:${PAL[i % PAL.length]}"></i><span>${esc(r.k)}</span><span class="p">${pct(r.dn, all)}</span><span class="t">${fmtB(r.dn)}</span>`).join('')}</div>` : `<div class="empty">${T('No categories')}</div>`);
+    const nmax = d.new.length ? d.new[0][1] : 1;
+    fill('newBox', !d.new_looks ? `<div class="empty">${T('The records do not reach {n} days back yet', {n: d.new_days})}</div>` : !d.new.length ? `<div class="empty">${T('No new applications')}</div>`
+      : `<div class="blist">${d.new.map(([k, b]) => `<button class="brow" data-f="app" data-v="${esc(k)}"><span class="n">${esc(k)} <span class="pill warn">${T('new')}</span></span><span class="t">${fmtB(b)}</span><span class="p"></span><span class="bar2" style="width:${(100 * b / nmax).toFixed(1)}%"><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
+    wireFilters(document.getElementById('newBox'));
+    section('appBox', async () => { const t = await api('top', {dim:'app', limit:50}), tot2 = t.total || 1, max = tot(t.rows[0] || {}) || 1;
+      return `<div class="tw"><table><thead><tr><th>${T('Application')}</th><th>${T('Category')}</th><th>${T('Share')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th><th class="num">${T('Users')}</th></tr></thead><tbody>
+        ${t.rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${esc(r.k)}</button></td><td class="nat">${esc(d.cats[r.k] || '—')}</td>
+          <td style="width:22%"><span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%;display:flex"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></td>
+          <td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), tot2)}</td><td class="num mono">${fmtN(r.hosts || 0)}</td><td class="num mono">${fmtN(r.users || 0)}</td></tr>`).join('')}</tbody></table></div>`; });
+  }).catch(e => fill('catBox', errBox(e)));
+  api('top', {dim:'user_name', limit:10}).then(t => { fill('kUsers', fmtN(t.count || 0)); const box = document.getElementById('userBox'); if (!box) return; box.classList.remove('loading');
+    if (!t.rows.length) { box.innerHTML = `<div class="empty">${T('The devices name no users')}</div>`; return; }
+    const max = tot(t.rows[0]) || 1;
+    box.innerHTML = `<div class="blist">${t.rows.map(r => `<button class="brow" data-f="user" data-v="${esc(r.k)}"><span class="n">${esc(r.k)}<span class="nat"> · ${Tn(r.hosts || 0, '{n} host', '{n} hosts', {n: r.hosts || 0})}</span></span><span class="t">${fmtB(tot(r))}</span><span class="p">${pct(tot(r), t.total)}</span>
+      <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`;
+    wireFilters(box); }).catch(e => fill('userBox', errBox(e)));
+}
 function vApps(){
   const v = document.getElementById('view'), all = !!state.appsAll;
   v.innerHTML = `<div class="grid"><section class="glass panel s12">${ph('chart', T('Services over time'), T('the service comes from the destination ASN and port'))}<div class="chart" id="cApps"></div></section>
     <section class="glass panel s8">${ph('grid', T('Services'), T('click to filter by service'), '<button class="lnk" id="aMore"></button>')}<div id="aBox" class="loading"></div></section>
-    <section class="glass panel s4">${ph('pie', T('Protocols'), T('L7 by port'))}<div id="pBox" class="loading"></div></section>
-    <section class="glass panel s8" id="appSec" hidden>${ph('chart', T('Applications over time'), T('named by the firewall (Palo Alto App-ID)'))}<div class="chart" id="cAppT" data-wait="line"></div></section>
-    <section class="glass panel s4" id="userSec" hidden>${ph(USER_ICON, T('Users'), T('named by the firewall (User-ID)'))}<div id="userBox"></div></section>
-    <section class="glass panel s12" id="appTblSec" hidden>${ph('grid', T('Applications'), T('click to filter every page by the application'))}<div id="appBox"></div></section></div>`;
+    <section class="glass panel s4">${ph('pie', T('Protocols'), T('L7 by port'))}<div id="pBox" class="loading"></div></section></div>`;
   api('series', {by:'service', top:7}).then(s => { const el = document.getElementById('cApps'); if (el) stackChart(el, s, k => k, k => addFilter('service', k)); }).catch(e => fill('cApps', errBox(e)));
   section('aBox', async () => { const t = await api('top', {dim:'service', limit:all ? 100 : 11}), rows = all ? t.rows : t.rows.slice(0, 10);
     moreToggle('aMore', 'appsAll', all, t.rows.length > 10);
     return `<div class="tw"><table><thead><tr><th>${T('Service')}</th><th>${T('Protocol')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="click" data-f="service" data-v="${esc(r.k)}"><td><button class="link" data-f="service" data-v="${esc(r.k)}">${svcBadge(r.k)}</button></td><td class="ipl">${esc(dv(r.l7))}</td><td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono"><b>${fmtB(tot(r))}</b></td><td class="num mono">${pct(tot(r), t.total)}</td><td class="num mono">${r.hosts}</td></tr>`).join('')}</tbody></table></div>`; });
-  // (2.2.0) applications and users the exporter named (Palo Alto App-ID / User-ID): shown only when a device named any
-  // in the period. Visual first: the applications over time and the users' ring, the table of applications below
-  api('top', {dim:'app', limit:12}).then(t => { if (!t.rows.length || !document.getElementById('appSec')) return;
-    ['appSec', 'appTblSec'].forEach(id => { document.getElementById(id).hidden = false; });
-    api('series', {by:'app', top:7}).then(sr => { const el = document.getElementById('cAppT'); if (el) { delete el.dataset.wait; stackChart(el, sr, k => k, k => addFilter('app', k)); } }).catch(e => fill('cAppT', errBox(e)));
-    const all = t.total || t.rows.reduce((a, r) => a + tot(r), 0), max = tot(t.rows[0]) || 1;
-    fill('appBox', `<div class="tw"><table><thead><tr><th>${T('Application')}</th><th>${T('Share')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th></tr></thead><tbody>
-      ${t.rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${esc(r.k)}</button></td>
-        <td style="width:30%"><span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%;display:flex"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></td>
-        <td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), all)}</td><td class="num mono">${fmtN(r.hosts || 0)}</td></tr>`).join('')}</tbody></table></div>`);
-    wireFilters(document.getElementById('appBox')); }).catch(() => {});
-  // users: a ranked list, not a ring — a network has 5 or 10,000 of them; the count says how many there are in all and
-  // what share the ten shown carry
-  api('top', {dim:'user_name', limit:10}).then(t => { const sec = document.getElementById('userSec'); if (!sec || !t.rows.length) return; sec.hidden = false;
-    const max = tot(t.rows[0]) || 1, shown = t.rows.reduce((a, r) => a + tot(r), 0), n = t.count || t.rows.length;
-    fill('userBox', `<div class="ucount"><b class="mono">${n.toLocaleString(LOC)}</b> <span>${Tn(n, 'user', 'users')}</span>${n > t.rows.length ? `<span class="nat"> · ${T('the top {k} carry {p}', {k: t.rows.length, p: pct(shown, t.total)})}</span>` : ''}</div>
-      <div class="blist">${t.rows.map(r => `<button class="brow" data-f="user" data-v="${esc(r.k)}"><span class="n">${esc(r.k)}<span class="nat"> · ${Tn(r.hosts || 0, '{n} host', '{n} hosts', {n: r.hosts || 0})}</span></span><span class="t">${fmtB(tot(r))}</span><span class="p">${pct(tot(r), t.total)}</span>
-        <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
-    wireFilters(document.getElementById('userBox')); }).catch(() => {});
   section('pBox', async () => { const t = await api('top', {dim:'l7', limit:10});
     setTimeout(() => { const el = document.getElementById('cL7'); if (el) donut(el, t.rows.slice(0, 8), k => PAL[t.rows.findIndex(r => r.k === k) % PAL.length], [String(t.rows.length), T('protocols')]); });
     return `<div class="chart" id="cL7" style="height:220px"></div><div class="dl">${t.rows.slice(0, 8).map((r, i) => `<i class="idot" style="background:${PAL[i % PAL.length]}"></i><button class="link" data-f="l7" data-v="${esc(r.k)}">${esc(dv(r.k))}</button><span class="p">${pct(tot(r), t.total)}</span><span class="t">${fmtB(tot(r))}</span>`).join('')}</div>`; });
@@ -4687,9 +4704,9 @@ function vConversations(){
   })();
 }
 
-const VIEWS = {overview:vOverview, flows:vFlows, conversations:vConversations, paths:vPaths, network:vNetwork, capacity:vCapacity, usage:vUsage, qos:vQos, talkers:vTalkers, apps:vApps, ports:vPorts, geo:vGeo, threats:vThreats, events:vEvents, settings:vSettings};
+const VIEWS = {overview:vOverview, flows:vFlows, conversations:vConversations, paths:vPaths, network:vNetwork, capacity:vCapacity, usage:vUsage, qos:vQos, talkers:vTalkers, apps:vApps, applications:vApplications, ports:vPorts, geo:vGeo, threats:vThreats, events:vEvents, settings:vSettings};
 function renderShell(){
-  document.getElementById('nav').innerHTML = NAV.filter(n => n[3] !== 'admin' || isAdmin()).map(([k, l, d]) => `<button data-view="${k}" ${state.view === k || (k === 'threats' && state.view === 'events') ? 'aria-current="page"' : ''}>${icon(d)}${l}</button>`).join('');
+  document.getElementById('nav').innerHTML = NAV.filter(n => (n[3] !== 'admin' || isAdmin()) && (n[3] !== 'apps' || (META && META.apps))).map(([k, l, d]) => `<button data-view="${k}" ${state.view === k || (k === 'threats' && state.view === 'events') ? 'aria-current="page"' : ''}>${icon(d)}${l}</button>`).join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { state.view = b.dataset.view; state.sel = null; state.openFlow = null; render(); });
   // on narrow screens the menu is a scrolling row: keep the current page in sight
   const cur = document.querySelector('#nav [aria-current="page"]'), navEl = document.getElementById('nav');

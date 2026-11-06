@@ -2040,5 +2040,22 @@
  "Applications over time": "Застосунки в часі",
  "click to filter every page by the application": "клік — фільтр усіх сторінок за застосунком",
  "users": {"one": "користувач", "few": "користувачі", "many": "користувачів", "other": "користувача"},
- "the top {k} carry {p}": "топ-{k} — це {p}"
+ "the top {k} carry {p}": "топ-{k} — це {p}",
+ "named in the period": "названі за період",
+ "Identified": "Розпізнано",
+ "of the traffic of the devices that name applications": "трафіку пристроїв, що називають застосунки",
+ "Top category": "Головна категорія",
+ "this device sends no categories": "пристрій не надсилає категорій",
+ "Categories": "Категорії",
+ "FortiGate application categories": "категорії застосунків FortiGate",
+ "New applications": "Нові застосунки",
+ "none like them in the days before": "таких не було в попередні дні",
+ "Category": "Категорія",
+ "no category": "без категорії",
+ "categories": "категорій",
+ "No categories": "Категорій немає",
+ "The records do not reach {n} days back yet": "Записи ще не сягають {n} днів назад",
+ "No new applications": "Нових застосунків немає",
+ "The devices name no users": "Пристрої не називають користувачів",
+ "named by the firewall": "назви від фаєрвола"
 }

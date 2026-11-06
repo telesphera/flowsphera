@@ -89,6 +89,43 @@ def period(q):
         return t0, t1, True
     return now - RANGES.get(q.get('range', ['24h'])[0], 86400), now, False
 
+# (2.3.0) application names of FortiGate ids, from the collector's app_names.json (its options table, learned slowly):
+# a record stored before its name arrived holds «#<id>», shown and filtered by the name once it is known
+FORTINET_PEN_HEX = '1400003044'      # engine 20 + Fortinet's enterprise number 12356: the start of its 9-byte ids
+_app_names = {'mt': None, 'map': {}, 'cat': {}}
+
+
+def app_names():
+    """-> ({'#<id>': name}, {name: category}) of every exporter's FortiGate application names (cached by mtime)."""
+    path = os.path.join(common.STATE_DIR, 'app_names.json')
+    try:
+        mt = os.stat(path).st_mtime
+    except OSError:
+        return {}, {}
+    if mt != _app_names['mt']:
+        ids, cats = {}, {}
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            for names in data.values():
+                for hexid, (name, cat) in names.items():
+                    if hexid.startswith(FORTINET_PEN_HEX) and len(hexid) == 18 and name:
+                        ids[f'#{int(hexid[10:], 16)}'] = name
+                        if cat:
+                            cats[name] = cat
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+        _app_names.update(mt=mt, map=ids, cat=cats)
+    return _app_names['map'], _app_names['cat']
+
+
+def app_sql(p):
+    """SQL of the application's name: «#<id>» turned into the name when it is known (params appf / appt added)."""
+    ids, _ = app_names()
+    p['appf'], p['appt'] = list(ids), list(ids.values())
+    return "transform(app, {appf:Array(String)}, {appt:Array(String)}, app)" if ids else 'app'
+
+
 # filter key -> (column, ClickHouse type)
 FILTERS = {
     'ip': ('int_ip', 'String'), 'dst': ('ext_ip', 'String'), 'service': ('service', 'String'), 'l7': ('l7', 'String'),
@@ -278,7 +315,8 @@ def scope(q):
             col, typ = FILTERS[k]
             if typ != 'String' and not (v.isascii() and v.isdigit()) or k == 'dir' and v not in DIR_VALUES:
                 raise BadRequest(f'bad value for {k}')
-            cond = f'{col} = {{f{i}:{typ}}}'
+            # (2.3.0) an application by its name also finds the records stored before the name was known («#<id>»)
+            cond = f"{app_sql(params) if k == 'app' else col} = {{f{i}:{typ}}}"
             fcols.add(col)
         else:
             continue
@@ -419,7 +457,7 @@ def api_meta(q):
     return {'devices': devices, 'now': int(time.time()), 'oldest': int(oldest[0]['t']) if oldest else 0, 'listen': listen_info(),
             'ranges': list(RANGES), 'geo_attribution': 'IP Geolocation by DB-IP (db-ip.com), CC BY 4.0', 'edition': edition_info(), 'version': VERSION, 'build': BUILD,
             'langs': languages(), 'networks': [{'net': x['net'], 'name': x['name']} for x in common.load_networks()],
-            'l7': common.l7_names()}
+            'l7': common.l7_names(), 'apps': has_apps()}      # (2.3.0) the menu shows Applications only when any device named one
 
 
 def edition_info(admin=False):
@@ -584,6 +622,8 @@ def api_series(q):
             pairs = src(p, ['int_ip', 'ext_ip'], bucketed=True)
             s = (f"(SELECT ts, int_ip, bytes FROM {pairs} UNION ALL "
                  f"SELECT ts, ext_ip AS int_ip, bytes FROM {pairs})")
+        if by == 'app':                     # (2.3.0) a FortiGate «#<id>» under its name once known
+            col = app_sql(p)
         rows = ch(f"""WITH (SELECT groupArray(k) FROM (SELECT toString({col}) AS k FROM {s} GROUP BY k ORDER BY sum(bytes) DESC, k LIMIT {{top:UInt8}})) AS tops
             SELECT {bucket} AS t, if(has(tops, toString({col})), toString({col}), '__other') AS k, sum(bytes) AS b
             FROM {s} GROUP BY t, k ORDER BY t, k""", p, fmt='JSON')
@@ -728,15 +768,18 @@ def api_top(q):
             extra, cols = ', any(country) AS country, any(lat) AS la, any(lon) AS lo', [col, 'country', 'lat', 'lon']
         elif dim == 'ext_port':     # its hosts and peers: below, for the ports shown
             extra, cols = ', any(l7) AS l7, any(proto) AS proto_n, any(service) AS service', [col, 'l7', 'proto', 'service']
-        elif dim in ('app', 'user_name'):   # (2.2.0) what the exporter named, with its inside hosts (agg_app_host per hour)
+        elif dim == 'app':                  # (2.2.0) with its inside hosts (agg_app_host per hour); (2.3.0) and users
+            extra, cols = ", uniqExact(cityHash64(int_ip)) AS hosts, uniqExactIf(user_name, user_name != '') AS users", [col, 'int_ip', 'user_name']
+        elif dim == 'user_name':            # (2.2.0) with its inside hosts
             extra, cols = ', uniqExact(cityHash64(int_ip)) AS hosts', [col, 'int_ip']
         # (2.2.0) an application / user the exporter did not name is no row of its own (most exporters name none)
         named = f" AND {col} != ''" if dim in ('app', 'user_name') else ''
-        rows, totals = ch_totals(f"""SELECT toString({col}) AS k, sumIf(bytes, dir IN ('up', 'internal')) AS up, sumIf(bytes, dir NOT IN ('up', 'internal')) AS dn,
+        expr = app_sql(p) if dim == 'app' else col      # (2.3.0) a FortiGate «#<id>» counts under its name once known
+        rows, totals = ch_totals(f"""SELECT toString({expr}) AS k, sumIf(bytes, dir IN ('up', 'internal')) AS up, sumIf(bytes, dir NOT IN ('up', 'internal')) AS dn,
                 sum(flows) AS fl, sum(packets) AS pk {extra}
             FROM {src(p, cols)}{named} GROUP BY k WITH TOTALS ORDER BY up + dn DESC LIMIT {{lim:UInt32}}""", p)
         if named:               # (2.2.0) how many there are in all, not only the top shown (10,000 users: a ring of 8 lied)
-            count = int(ch(f"SELECT uniqExact({col}) AS n FROM {src(p, [col])}{named}", p, fmt='JSON')[0]['n'])
+            count = int(ch(f"SELECT uniqExact({expr}) AS n FROM {src(p, [col])}{named}", p, fmt='JSON')[0]['n'])
         if dim == 'ext_port' and rows:
             p['ports'] = [int(r['k']) for r in rows]
             # (1.17.0) exact, from the hosts and the addresses of each port per hour (agg_port_host / agg_port_peer);
@@ -762,7 +805,7 @@ def api_top(q):
     else:                       # up + dn of all groups, computed in the same pass (WITH TOTALS; no 2nd scan)
         tot = int(totals.get('up') or 0) + int(totals.get('dn') or 0)
     for r in rows:
-        for k in ('up', 'dn', 'fl', 'pk', 'hosts', 'asn', 'peers', 'proto_n', 'calls', 'callers'):
+        for k in ('up', 'dn', 'fl', 'pk', 'hosts', 'users', 'asn', 'peers', 'proto_n', 'calls', 'callers'):
             if k in r:
                 r[k] = int(r[k])
     out = {'total': int(tot), 'rows': rows}
@@ -1137,8 +1180,10 @@ def api_flows(q):
     rows = ch(f"""SELECT toUnixTimestamp(ts) AS t, toFloat64(ts_start) AS t0, exporter, in_if, out_if, toString(dir) AS dir, int_ip, int_port, ext_ip, ext_port,
             proto, nat_ip, nat_port, bytes, packets, l7, service, country, city, asn, as_org, sampling, dscp, dscp_out, app, user_name
         FROM {p['_flows']} WHERE {where} ORDER BY ts DESC LIMIT {{lim:UInt16}}""", p, fmt='JSON')
+    ids, _ = app_names()
     for r in rows:
         r['name'] = NAMES.get(r['int_ip'])
+        r['app'] = ids.get(r.get('app', ''), r.get('app', ''))     # (2.3.0) a FortiGate «#<id>» under its name once known
         for k in ('t', 'in_if', 'out_if', 'int_port', 'ext_port', 'proto', 'nat_port', 'bytes', 'packets', 'asn', 'sampling'):
             r[k] = int(r[k])
     return {'rows': rows}
@@ -1265,6 +1310,50 @@ def sflow_counters():
 
 
 INGEST_STEPS = (60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400)
+
+
+APPS_NEW_DAYS = 7      # (2.3.0) an application is new when the devices named none like it in the days before the period
+
+
+def has_apps():
+    """(2.3.0) did any device name an application within the days kept? (the menu shows Applications only then)"""
+    for sql in ("SELECT 1 FROM agg_app WHERE app != '' AND ts >= now() - toIntervalDay({d:UInt16}) LIMIT 1",
+                "SELECT 1 FROM flows WHERE app != '' AND ts >= now() - toIntervalDay({d:UInt16}) LIMIT 1"):
+        try:
+            return bool(ch(sql, {'d': view_days()}, fmt='JSON'))
+        except CHError:
+            continue
+    return False
+
+
+def api_apps(q):
+    """(2.3.0) the Applications page besides the top lists: how many applications, which share of the traffic the
+    devices that name applications named, the categories (FortiGate's options table; Palo Alto names none), and the
+    applications new in the period (none like it in the APPS_NEW_DAYS before, when the records reach back that far)."""
+    where, p, rng, step = scope(q)
+    expr = app_sql(p)
+    _, cats = app_names()
+    s = src(p, ['app'])
+    per = ch(f"SELECT exporter, sum(bytes) AS b, sumIf(bytes, app != '') AS named FROM {s} GROUP BY exporter", p, fmt='JSON')
+    naming = [r for r in per if int(r['named'])]
+    total, named = sum(int(r['b']) for r in naming), sum(int(r['named']) for r in naming)
+    rows = ch(f"SELECT toString({expr}) AS k, sum(bytes) AS b FROM {s} AND app != '' GROUP BY k", p, fmt='JSON')
+    by_cat = {}
+    for r in rows:
+        c = '' if r['k'].startswith('#') else cats.get(r['k'], '')
+        by_cat[c] = by_cat.get(c, 0) + int(r['b'])
+    categories = sorted(([c, b] for c, b in by_cat.items()), key=lambda x: -x[1])
+    new, looks = [], False
+    t0, back = p['_t0'], APPS_NEW_DAYS * 86400
+    oldest = ch("SELECT toUnixTimestamp(min(ts)) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16})", {'d': view_days()}, fmt='JSON')
+    if oldest and int(oldest[0]['t']) and int(oldest[0]['t']) <= t0 - back:
+        looks = True
+        before, _ = rollups.source(['app'], t0 - back, t0, set(), use=USE_ROLLUPS)
+        seen = {r['k'] for r in ch(f"SELECT DISTINCT toString({expr}) AS k FROM {before} WHERE app != ''", p, fmt='JSON')}
+        new = sorted(([r['k'], int(r['b'])] for r in rows if r['k'] not in seen), key=lambda x: -x[1])[:20]
+    return {'apps': len(rows), 'named_bytes': named, 'naming_bytes': total, 'categories': categories,
+            'new': new, 'new_looks': looks, 'new_days': APPS_NEW_DAYS,
+            'cats': {r['k']: cats.get(r['k'], '') for r in rows}}
 
 
 def api_ingest(q):
@@ -2770,7 +2859,7 @@ class Cache:
 CACHE = Cache()
 ROUTES = {'/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
           '/api/flows': api_flows, '/api/paths': api_paths, '/api/devmap': api_devmap, '/api/topology': api_topology, '/api/path': api_path, '/api/live': api_live, '/api/ports': api_ports, '/api/hosts/names': api_host_names, '/api/networks': api_networks, '/api/geo': api_geo, '/api/devices': api_devices, '/api/host': api_host,
-          '/api/alerts': api_alerts, '/api/ifload': api_ifload, '/api/ingest': api_ingest,
+          '/api/alerts': api_alerts, '/api/ifload': api_ifload, '/api/ingest': api_ingest, '/api/apps': api_apps,
           '/api/capacity': api_capacity, '/api/capacity/iface': api_capacity_iface, '/api/usage': api_usage, '/api/qos': api_qos, '/api/conversations': api_conversations}
 STATIC = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.json': 'application/json; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2'}
 
