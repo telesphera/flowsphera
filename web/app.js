@@ -2525,9 +2525,9 @@ function vPorts(){
     return `<div class="chart" id="cPL7" style="height:200px"></div><div class="dl">${t.rows.map((r, i) => `<i class="idot" style="background:${PAL[i % PAL.length]}"></i><button class="link" data-f="l7" data-v="${esc(r.k)}">${esc(dv(r.k))}</button><span class="p">${pct(tot(r), t.total)}</span><span class="t">${fmtB(tot(r))}</span>`).join('')}</div>`; });
 }
 // "show all" / "top 10" link in a panel header; hidden when there is nothing more to show
-function moreToggle(id, key, all, hasMore){
+function moreToggle(id, key, all, hasMore, less = T('Show top 10')){
   const b = document.getElementById(id); if (!b) return;
-  b.hidden = !all && !hasMore; b.textContent = all ? T('Show top 10') : T('Show all');
+  b.hidden = !all && !hasMore; b.textContent = all ? less : T('Show all');
   b.onclick = () => { state[key] = !all; render(); };
 }
 // (2.3.0) Applications: what the devices named (Palo Alto App-ID / User-ID, FortiGate's application table); in the
@@ -2546,7 +2546,7 @@ function vApplications(){
     <section class="glass panel s4">${ph('pie', T('Categories'), T('FortiGate application categories'))}<div id="catBox" class="loading"></div></section>
     <section class="glass panel s6" id="newSec">${ph('pulse', T('New applications'), T('none like them in the days before'))}<div id="newBox" class="loading"></div></section>
     <section class="glass panel s6" id="userSec">${ph(USER_ICON, T('Users'), T('named by the firewall (User-ID)'))}<div id="userBox" class="loading"></div></section>
-    <section class="glass panel s12">${ph('grid', T('Applications'), T('click to filter every page by the application'))}<div id="appBox" class="loading"></div></section></div>`;
+    <section class="glass panel s12">${ph('grid', T('Applications'), T('click to filter every page by the application'), '<button class="lnk" id="appMore"></button>')}<div id="appBox" class="loading"></div></section></div>`;
   api('series', {by:'app', top:7}).then(sr => { const el = document.getElementById('cAppT'); if (el) { delete el.dataset.wait; stackChart(el, sr, appLabel, k => addFilter('app', k)); } }).catch(e => fill('cAppT', errBox(e)));
   api('apps').then(d => {
     fill('kApps', fmtN(d.apps)); fill('kIdent', d.naming_bytes ? pct(d.named_bytes, d.naming_bytes) : '—');
@@ -2562,10 +2562,12 @@ function vApplications(){
     fill('newBox', !d.new_looks ? '' : !d.new.length ? `<div class="empty">${T('No new applications')}</div>`
       : `<div class="blist">${d.new.map(([k, b]) => `<button class="brow" data-f="app" data-v="${esc(k)}"><span class="n">${appCell(k)}${d.cats[k] ? `<span class="nat"> · ${esc(d.cats[k])}</span>` : ''} <span class="pill warn">${T('new')}</span></span><span class="t">${fmtB(b)}</span><span class="p"></span><span class="bar2" style="width:${(100 * b / nmax).toFixed(1)}%"><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`);
     wireFilters(document.getElementById('newBox'));
-    section('appBox', async () => { const t = await api('top', {dim:'app', limit:50}), tot2 = t.total || 1, max = tot(t.rows[0] || {}) || 1;
-      const hasU = t.rows.some(r => r.users);      // FortiGate names no users: no column of zeros
+    section('appBox', async () => { const every = !!state.appListAll, t = await api('top', {dim:'app', limit:every ? 500 : 51}), tot2 = t.total || 1, max = tot(t.rows[0] || {}) || 1;
+      // (2.3.0) more than 50 applications: the rest behind «Show all» instead of cut off without a word
+      moreToggle('appMore', 'appListAll', every, t.rows.length > 50, T('Show top 50')); const rows = every ? t.rows : t.rows.slice(0, 50);      // a copy: api() answers are cached
+      const hasU = rows.some(r => r.users);      // FortiGate names no users: no column of zeros
       return `<div class="tw"><table><thead><tr><th>${T('Application')}</th><th>${T('Category')}</th><th>${T('Share')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th><th class="num">${T('Hosts')}</th>${hasU ? `<th class="num">${T('Users')}</th>` : ''}</tr></thead><tbody>
-        ${t.rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${appCell(r.k)}</button></td><td class="nat">${esc(d.cats[r.k] || '—')}</td>
+        ${rows.map(r => `<tr class="click" data-f="app" data-v="${esc(r.k)}"><td><button class="link" data-f="app" data-v="${esc(r.k)}">${appCell(r.k)}</button></td><td class="nat">${esc(d.cats[r.k] || '—')}</td>
           <td style="width:22%"><span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%;display:flex"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></td>
           <td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), tot2)}</td><td class="num mono">${fmtN(r.hosts || 0)}</td>${hasU ? `<td class="num mono">${fmtN(r.users || 0)}</td>` : ''}</tr>`).join('')}</tbody></table></div>`; });
   }).catch(e => fill('catBox', errBox(e)));
