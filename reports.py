@@ -727,7 +727,7 @@ def render(r, data, t0, t1, version='', now=None):
         if not a.get('apps'):
             first = int(a.get('first') or 0)
             if first >= t1:          # a monthly report of the month before the devices began: say when they did
-                text = tr('The devices began naming applications on {when}, after this period: the next reports will have them.',
+                text = tr('The devices began sending application data on {when}, after this period: the next reports will have it.',
                           when=datetime.datetime.fromtimestamp(first, tz).strftime('%Y-%m-%d %H:%M'))
             elif first:
                 text = tr('No application was named in this period.')

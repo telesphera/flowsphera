@@ -462,7 +462,7 @@ class Parts240(unittest.TestCase):
         # a monthly report of October while the FortiGate began naming applications on 6 November (Yegor, 2026-11-07)
         r = reports.validate({'name': 'R', 'every': 'month', 'tz': 'Europe/Kyiv', 'lang': 'en', 'sections': ['applications']})
         t0, t1 = reports.period(r, ts(2026, 11, 7))
-        for first, want in ((ts(2026, 11, 6, 20, 55), 'The devices began naming applications on {when}, after this period: the next reports will have them.'),
+        for first, want in ((ts(2026, 11, 6, 20, 55), 'The devices began sending application data on {when}, after this period: the next reports will have it.'),
                             (ts(2026, 10, 2), 'No application was named in this period.'),
                             (0, 'No device named applications in this period. A FortiGate (Application Control) or a Palo Alto (PAN-OS Field Types) can.')):
             def call(path, q, first=first):
