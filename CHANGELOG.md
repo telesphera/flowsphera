@@ -28,6 +28,9 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
   made before get the new parts switched on once.
 
 ### Fixed
+- **Applications: «identified» counted the traffic from before the devices began naming applications** — over a month
+  with three days of names it said 2.3 %; now the share starts with the first application named. A report of a period
+  before that says when the devices began, instead of «no device named applications».
 - The documentation pointed to `/etc/flowsphera/exporters.json` for devices described in the UI; they are kept in
   `/var/lib/flowsphera/exporters.json`.
 

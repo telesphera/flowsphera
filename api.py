@@ -1350,7 +1350,12 @@ def api_apps(q):
     expr = app_sql(p)
     _, cats = app_names()
     s = src(p, ['app'])
-    per = ch(f"SELECT exporter, sum(bytes) AS b, sumIf(bytes, app != '') AS named FROM {s} GROUP BY exporter", p, fmt='JSON')
+    # (2.4.0) the first application named (within what is kept): the identified share counts only the traffic since then —
+    # a month with three days of names said «2.3 % identified» (the weeks before counted as not identified)
+    oldest = ch("SELECT toUnixTimestamp(min(ts)) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16}) AND app != ''", {'d': view_days()}, fmt='JSON')
+    first = int(oldest[0]['t']) if oldest else 0
+    per = ch(f"""SELECT exporter, sum(bytes) AS b, sumIf(bytes, app != '') AS named FROM {s}
+        AND ts >= toDateTime({{appfirst:UInt32}}) GROUP BY exporter""", dict(p, appfirst=first // 300 * 300), fmt='JSON')
     naming = [r for r in per if int(r['named'])]
     total, named = sum(int(r['b']) for r in naming), sum(int(r['named']) for r in naming)
     rows = ch(f"SELECT toString({expr}) AS k, sum(bytes) AS b FROM {s} AND app != '' GROUP BY k", p, fmt='JSON')
@@ -1362,14 +1367,14 @@ def api_apps(q):
     new, looks = [], False
     t0, back = p['_t0'], APPS_NEW_DAYS * 86400
     # new = none like it before, so the applications must have been named that long already: since the first named one
-    oldest = ch("SELECT toUnixTimestamp(min(ts)) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16}) AND app != ''", {'d': view_days()}, fmt='JSON')
-    if oldest and int(oldest[0]['t']) and int(oldest[0]['t']) <= t0 - back:
+    if first and first <= t0 - back:
         looks = True
         before, _ = rollups.source(['app'], t0 - back, t0, set(), use=USE_ROLLUPS)
         seen = {r['k'] for r in ch(f"SELECT DISTINCT toString({expr}) AS k FROM {before} WHERE app != ''", p, fmt='JSON')}
         new = sorted(([r['k'], int(r['b'])] for r in rows if r['k'] not in seen), key=lambda x: -x[1])[:20]
     return {'apps': len(rows), 'named_bytes': named, 'naming_bytes': total, 'categories': categories,
             'new': new, 'new_looks': looks, 'new_days': APPS_NEW_DAYS,
+            'first': first,      # (2.4.0) when the devices began naming them (reports say so)
             'cats': {r['k']: cats.get(r['k'], '') for r in rows}}
 
 

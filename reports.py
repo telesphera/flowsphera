@@ -725,7 +725,15 @@ def render(r, data, t0, t1, version='', now=None):
         ap = data.get('applications') or {}
         a = ap.get('summary') or {}
         if not a.get('apps'):
-            section(tr('Applications'), Paragraph(esc(tr('No device named applications in this period. A FortiGate (Application Control) or a Palo Alto (PAN-OS Field Types) can.')), PM))
+            first = int(a.get('first') or 0)
+            if first >= t1:          # a monthly report of the month before the devices began: say when they did
+                text = tr('The devices began naming applications on {when}, after this period: the next reports will have them.',
+                          when=datetime.datetime.fromtimestamp(first, tz).strftime('%Y-%m-%d %H:%M'))
+            elif first:
+                text = tr('No application was named in this period.')
+            else:
+                text = tr('No device named applications in this period. A FortiGate (Application Control) or a Palo Alto (PAN-OS Field Types) can.')
+            section(tr('Applications'), Paragraph(esc(text), PM))
         else:
             cats = a.get('cats') or {}
 

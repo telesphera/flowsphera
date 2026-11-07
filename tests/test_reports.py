@@ -457,3 +457,22 @@ class Parts240(unittest.TestCase):
         pdf, data = reports.make(r, t0, t1, call, '2.4.0')
         self.assertTrue(pdf.startswith(b'%PDF'))
         self.assertEqual(data['applications']['top'], {'rows': []})      # no rows asked for when nothing is named
+
+    def test_a_period_before_the_first_application_says_when_they_began(self):
+        # a monthly report of October while the FortiGate began naming applications on 6 November (Yegor, 2026-11-07)
+        r = reports.validate({'name': 'R', 'every': 'month', 'tz': 'Europe/Kyiv', 'lang': 'en', 'sections': ['applications']})
+        t0, t1 = reports.period(r, ts(2026, 11, 7))
+        for first, want in ((ts(2026, 11, 6, 20, 55), 'The devices began naming applications on {when}, after this period: the next reports will have them.'),
+                            (ts(2026, 10, 2), 'No application was named in this period.'),
+                            (0, 'No device named applications in this period. A FortiGate (Application Control) or a Palo Alto (PAN-OS Field Types) can.')):
+            def call(path, q, first=first):
+                if path == '/api/apps':
+                    return {'apps': 0, 'named_bytes': 0, 'naming_bytes': 0, 'categories': [], 'new': [], 'new_looks': False, 'cats': {}, 'first': first}
+                return fake_call()(path, q)
+            seen, real = [], reports.tr
+            def spy(s, **kw):
+                seen.append(s)
+                return real(s, **kw)
+            with mock.patch.object(reports, 'tr', spy):
+                reports.make(r, t0, t1, call, '2.4.0')
+            self.assertIn(want, seen)

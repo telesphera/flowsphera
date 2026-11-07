@@ -2110,5 +2110,7 @@
  "Usage by host": "Споживання за хостами",
  "earlier: {addrs}": "раніше: {addrs}",
  "{pct}% of the traffic of the devices that name applications identified": "розпізнано {pct}% трафіку пристроїв, які називають застосунки",
- "{n} applications named in this period": {"one": "{n} застосунок названо за цей період", "few": "{n} застосунки названо за цей період", "many": "{n} застосунків названо за цей період", "other": "{n} застосунку названо за цей період"}
+ "{n} applications named in this period": {"one": "{n} застосунок названо за цей період", "few": "{n} застосунки названо за цей період", "many": "{n} застосунків названо за цей період", "other": "{n} застосунку названо за цей період"},
+ "The devices began naming applications on {when}, after this period: the next reports will have them.": "Пристрої почали називати застосунки {when}, уже після цього періоду: вони будуть у наступних звітах.",
+ "No application was named in this period.": "За цей період не названо жодного застосунку."
 }
