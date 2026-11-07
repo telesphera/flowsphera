@@ -261,6 +261,21 @@ once and are confirmed with your password; the license only sets the most you ca
 
 <p align="center"><img src="docs/media/en/retention.webp" alt="Settings → General → Data retention: kept now 30 days, on disk now, about a day, and the estimate with 14 days chosen" width="100%"></p>
 
+### Devices and names — move, copy, import
+
+When a firewall starts exporting from another address, **Change address…** moves everything set for it — interface
+names, roles, capacities, SNMP — and keeps the old address as its alias, so its history continues as one device on every
+page. Devices go to another server as a JSON file (checked device by device, all or nothing, no SNMP secrets), and a
+source that sends but is not described can be **ignored**. Port, host and network names come and go as **CSV** — straight
+from Excel in any language — with a preview of what is new, changed or unreadable before anything is saved.
+
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/media/en/device-move.webp" alt="Settings → Devices → Edit: a new address for a device — everything set for it moves there, the records from the old one stay this device's"></td>
+<td width="50%" valign="top"><img src="docs/media/en/names-csv.webp" alt="Settings → Flow configuration: a CSV import previewed — new, changed and unreadable rows with their line numbers"></td>
+</tr>
+</table>
+
 ### Fast on a busy network, over days
 
 A day of a busy network is hundreds of millions of flow records. FlowSphera keeps summary tables — per 5 minutes and
