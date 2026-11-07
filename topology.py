@@ -359,22 +359,35 @@ def path_query(ch, where, p, src, dst, table='flows'):
     sender, receiver = "if(dir IN ('down', 'internal_back'), ext_ip, int_ip)", "if(dir IN ('down', 'internal_back'), int_ip, ext_ip)"
     records = 'count()' if table == 'flows' else 'sum(flows)'
     p = dict(p, src=str(ipaddress.ip_network(src, strict=False)), dst=str(ipaddress.ip_network(dst, strict=False)))
-    return ch(f"""SELECT exporter, in_if, out_if, sum(bytes) AS b, {records} AS records, uniqExact(int_ip, ext_ip) AS convs,
+    E, p = _dev(p)
+    return ch(f"""SELECT {E} AS exporter, in_if, out_if, sum(bytes) AS b, {records} AS records, uniqExact(int_ip, ext_ip) AS convs,
             groupUniqArray(5)(nat_ip) AS nat
         FROM {table} WHERE {where}
             AND (isIPAddressInRange({sender}, {{src:String}}) OR (dir = 'up' AND nat_ip != '' AND isIPAddressInRange(nat_ip, {{src:String}})))
             AND isIPAddressInRange({receiver}, {{dst:String}})
-        GROUP BY exporter, in_if, out_if ORDER BY b DESC LIMIT 500""", p, fmt='JSON')
+        GROUP BY {E}, in_if, out_if ORDER BY b DESC LIMIT 500""", p, fmt='JSON')
+
+
+def _dev(p):
+    """(2.4.0) -> (SQL of the device of a record, params): a device whose export moved to another address keeps its
+    earlier addresses as aliases (exporters.json 'aliases'); their records are that device's, so maps and paths
+    group them under its address now — in the query, so the counts stay exact."""
+    import common
+    alias = common.device_aliases()
+    if not alias:
+        return 'exporter', p
+    return 'transform(exporter, {devf:Array(String)}, {devt:Array(String)}, exporter)', dict(p, devf=list(alias), devt=list(alias.values()))
 
 
 def iface_volumes(ch, where, p, table='flows'):
     """Bytes out of and into every interface of every exporter, also split by direction (build() rows `ifaces`).
     `table`: where the rows come from — the records, or the 5-minute totals per interface pair (api: agg_iface)."""
+    E, p = _dev(p)
     return ch(f"""SELECT exporter, iface, sum(o) AS out_bytes, sum(i) AS in_bytes, sum(u) AS up, sum(dn) AS down, sum(it) AS internal FROM (
-            SELECT exporter, out_if AS iface, bytes AS o, 0 AS i, if(dir = 'up', bytes, 0) AS u, if(dir = 'down', bytes, 0) AS dn,
+            SELECT {E} AS exporter, out_if AS iface, bytes AS o, 0 AS i, if(dir = 'up', bytes, 0) AS u, if(dir = 'down', bytes, 0) AS dn,
                    if(dir NOT IN ('up', 'down'), bytes, 0) AS it FROM {table} WHERE {where}
             UNION ALL
-            SELECT exporter, in_if, 0, bytes, if(dir = 'up', bytes, 0), if(dir = 'down', bytes, 0), if(dir NOT IN ('up', 'down'), bytes, 0)
+            SELECT {E}, in_if, 0, bytes, if(dir = 'up', bytes, 0), if(dir = 'down', bytes, 0), if(dir NOT IN ('up', 'down'), bytes, 0)
                 FROM {table} WHERE {where})
         GROUP BY exporter, iface""", p, fmt='JSON')
 
@@ -403,6 +416,7 @@ def query(ch, where, p, known, volumes=True):
     src = "if(dir IN ('down', 'internal_back'), ext_ip, int_ip)"     # who sent the packet
     dst = "if(dir IN ('down', 'internal_back'), int_ip, ext_ip)"     # who received it
     p = dict(p, known=sorted(known))
+    E, p = _dev(p)
     # (1.17.0) one pass over the records (each gives its in-interface and sender, its out-interface and receiver) and
     # the private ranges as numbers: isIPAddressInRange parsed the address string again for every range — an hour of
     # a 5,000 records/s firewall took 9 s. Ranges: 10/8, 172.16/12, 192.168/16, 100.64/10 and fc00::/7.
@@ -410,12 +424,12 @@ def query(ch, where, p, known, volumes=True):
     keep = (f"(has({{known:Array(String)}}, e.2) OR bitAnd({n}, 4278190080) = 167772160 OR bitAnd({n}, 4293918720) = 2886729728"
             f" OR bitAnd({n}, 4294901760) = 3232235520 OR bitAnd({n}, 4290772992) = 1681915904"
             " OR match(lower(e.2), '^f[cd][0-9a-f]{2}:'))")
-    near = ch(f"""SELECT exporter, e.1 AS iface, e.2 AS addr, count() AS records FROM flows
+    near = ch(f"""SELECT {E} AS exporter, e.1 AS iface, e.2 AS addr, count() AS records FROM flows
             ARRAY JOIN [(in_if, {src}), (out_if, {dst})] AS e
-        WHERE {where} AND {keep} GROUP BY exporter, iface, addr ORDER BY records DESC LIMIT 50000""", p, fmt='JSON')
+        WHERE {where} AND {keep} GROUP BY {E}, iface, addr ORDER BY records DESC LIMIT 50000""", p, fmt='JSON')
     ifaces = iface_volumes(ch, where, p) if volumes else []
     # the devices that export and how many records there are, in one look
-    per = {r['exporter']: int(r['n']) for r in ch(f"SELECT exporter, count() AS n FROM flows WHERE {where} GROUP BY exporter", p, fmt='JSON')}
+    per = {r['exporter']: int(r['n']) for r in ch(f"SELECT {E} AS exporter, count() AS n FROM flows WHERE {where} GROUP BY {E}", p, fmt='JSON')}
     exporting = {r['exporter'] for r in ifaces} if volumes else set(per)
     total = sum(per.values()) if exporting else 0
     # conversations recorded by more than one device (a busy network: a sample of them, chosen by the conversation,
@@ -426,8 +440,8 @@ def query(ch, where, p, known, volumes=True):
     key = ("cityHash64(if(dir IN ('down', 'internal_back'), ext_ip, int_ip), if(dir IN ('down', 'internal_back'), int_ip, ext_ip), if(dir IN ('down', 'internal_back'), ext_port, int_port), "
            "if(dir IN ('down', 'internal_back'), int_port, ext_port), proto)")
     pairs = ch(f"""SELECT h1.1 AS a, h1.2 AS ai, h1.3 AS ao, h2.1 AS b, h2.2 AS bi, h2.3 AS bo, count() AS n FROM (
-            SELECT groupUniqArray((exporter, in_if, out_if)) AS hops FROM flows WHERE {where} AND {key} % {{every:UInt32}} = 0
-            GROUP BY {key} HAVING uniqExact(exporter) > 1 LIMIT 200000)
+            SELECT groupUniqArray(({E}, in_if, out_if)) AS hops FROM flows WHERE {where} AND {key} % {{every:UInt32}} = 0
+            GROUP BY {key} HAVING uniqExact({E}) > 1 LIMIT 200000)
         ARRAY JOIN hops AS h1 ARRAY JOIN hops AS h2 WHERE h1.1 < h2.1
         GROUP BY a, ai, ao, b, bi, bo ORDER BY n DESC LIMIT 5000""", p, fmt='JSON',
         settings={'max_threads': 2, 'max_bytes_before_external_group_by': 200_000_000}) if len(exporting) > 1 else []

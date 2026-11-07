@@ -128,8 +128,10 @@ function setPeriod(t0, t1){
   state.range = 'custom'; state.from = Math.floor(t0 / 60) * 60; state.to = Math.ceil(t1 / 60) * 60; state.sel = null; render();
 }
 const rangeLabel = () => isCustom() ? periodText(state.from, state.to) : ({'15m':T('inline::Last 15 minutes'), '1h':T('inline::Last hour'), '6h':T('inline::Last 6 hours'), '24h':T('inline::Last 24 hours'), '7d':T('inline::Last 7 days'), '30d':T('inline::Last 30 days')})[state.range];
-const devName = ip => (META.devices.find(d => d.ip === ip) || {}).name || ip;
-const ifLabel = (ip, idx) => { const d = META.devices.find(x => x.ip === ip) || {}, n = (d.if_names || {})[String(idx)] || (d.local_if === idx ? 'local' : ''); return n ? `${n} (${idx})` : String(idx); };
+// (2.4.0) a device is also found by an earlier address (its records from there are its own)
+const devOf = ip => META.devices.find(d => d.ip === ip) || META.devices.find(d => (d.aliases || []).includes(ip));
+const devName = ip => (devOf(ip) || {}).name || ip;
+const ifLabel = (ip, idx) => { const d = devOf(ip) || {}, n = (d.if_names || {})[String(idx)] || (d.local_if === idx ? 'local' : ''); return n ? `${n} (${idx})` : String(idx); };
 const hostLabel = h => h.name ? `${esc(h.name)}` : esc(h.ip);
 
 // ===================== lifecycle =====================
@@ -3711,12 +3713,55 @@ async function openPortName(proto, port){
 }
 // ===================== Settings → Flow configuration: how FlowSphera names and treats the traffic =====================
 // (1.8.4) own port names (a table, added with a form) and the roles of our services (from the Events tab)
+// (2.4.0, GitHub issue #2) the Flow configuration tables as CSV and back. Read: a UTF-8 BOM, «,» «;» or a tab (the
+// first line decides — a Ukrainian Excel saves «;»), quotes, an optional header; written: «,» + BOM so Excel shows the
+// names right. An import adds and replaces rows by their key and keeps the rest; the server checks every row as before.
+function csvParse(text){
+  text = String(text).replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0], d = [';', '\t', ','].sort((a, b) => first.split(b).length - first.split(a).length)[0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) { const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === d) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c; }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.map(r => r.map(x => x.trim())).filter(r => r.some(Boolean));
+}
+const csvCell = v => /[",;\n\r]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+const csvBtns = id => `<span class="csvbtns"><button type="button" class="btn sm" id="${id}CsvOut">${T('Export CSV')}</button><button type="button" class="btn sm" id="${id}CsvIn">${T('Import CSV…')}</button><input type="file" id="${id}CsvFile" accept=".csv,text/csv,text/plain" hidden></span>`;
+// o: {id, file, header: [..], toRow(item) -> cells, fromRow(cells) -> item | {err}, key(item), items() -> current, save(list)}
+function csvTools(o){
+  const out = document.getElementById(`${o.id}CsvOut`), inp = document.getElementById(`${o.id}CsvIn`), file = document.getElementById(`${o.id}CsvFile`);
+  if (!out || !inp || !file) return;
+  out.onclick = () => { const text = '﻿' + [o.header, ...o.items().map(o.toRow)].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'text/csv;charset=utf-8'}));
+    a.download = `flowsphera-${o.file}-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+  inp.onclick = () => { file.value = ''; file.click(); };
+  file.onchange = async () => { const f = file.files[0]; if (!f) return;
+    let rows = csvParse(await f.text()), skip = 0;
+    if (rows.length && rows[0].map(x => x.toLowerCase()).join() === o.header.map(x => x.toLowerCase()).join()) { rows = rows.slice(1); skip = 1; }
+    const got = [], bad = [];     // line numbers as in the file (the header counts), blank lines aside
+    rows.forEach((r, i) => { const it = o.fromRow(r); if (it && !it.err) got.push(it); else bad.push(`${T('line {n}', {n: i + 1 + skip})}: ${(it && it.err) || r.join(', ')}`); });
+    const cur = o.items(), byKey = new Map(cur.map(x => [o.key(x), x])), seen = new Map();
+    got.forEach(x => seen.set(o.key(x), x));
+    const fresh = [...seen.values()].filter(x => !byKey.has(o.key(x))), changed = [...seen.values()].filter(x => byKey.has(o.key(x)) && JSON.stringify(o.toRow(byKey.get(o.key(x)))) !== JSON.stringify(o.toRow(x)));
+    const list = [...cur.map(x => seen.get(o.key(x)) || x), ...fresh];
+    const md = openModal(T('Import CSV'), esc(f.name), `<div class="form" style="padding:4px 2px">
+      <p class="note" style="margin:0">${T('{a} new, {c} changed, {k} kept as they are. Rows already here and not in the file stay.', {a: fresh.length, c: changed.length, k: cur.length - changed.length})}</p>
+      ${bad.length ? `<p class="err" style="margin:0">${T('{n} lines could not be read and are left out:', {n: bad.length})}<br>${bad.slice(0, 8).map(esc).join('<br>')}${bad.length > 8 ? '<br>…' : ''}</p>` : ''}
+      <p class="err" id="csvErr" hidden></p>
+      <div style="display:flex;gap:8px"><button class="btn primary" id="csvOk" ${fresh.length + changed.length ? '' : 'disabled'}>${T('Import')}</button><button class="btn" id="csvNo">${T('Cancel')}</button></div></div>`);
+    document.getElementById('csvNo').onclick = md.close;
+    document.getElementById('csvOk').onclick = async () => { try { await o.save(list); md.close(); render(); } catch (err) { formErr('csvErr', err.message); } }; };
+}
 function vFlowCfg(){
   const admin = isAdmin();
   document.getElementById('setBody').innerHTML = `<div class="grid top">
-    <section class="glass panel s12">${ph('list', T('Port names'), T('your own names of ports: they replace the protocol FlowSphera names (e.g. TCP other) in every report'))}<div id="pnBox" class="loading"></div></section>
-    <section class="glass panel s12">${ph('dev', T('Host names'), T('your own names of the hosts in your network: shown next to their addresses everywhere, over the names from DNS'))}<div id="hnBox" class="loading"></div></section>
-    <section class="glass panel s12">${ph('nodes', T('Network names'), T('your own names of networks: filter by them (net:Office) and see the traffic of each on Top hosts → Networks'))}<div id="nnBox" class="loading"></div></section>
+    <section class="glass panel s12">${ph('list', T('Port names'), T('your own names of ports: they replace the protocol FlowSphera names (e.g. TCP other) in every report'), admin ? csvBtns('pn') : '')}<div id="pnBox" class="loading"></div></section>
+    <section class="glass panel s12">${ph('dev', T('Host names'), T('your own names of the hosts in your network: shown next to their addresses everywhere, over the names from DNS'), admin ? csvBtns('hn') : '')}<div id="hnBox" class="loading"></div></section>
+    <section class="glass panel s12">${ph('nodes', T('Network names'), T('your own names of networks: filter by them (net:Office) and see the traffic of each on Top hosts → Networks'), admin ? csvBtns('nn') : '')}<div id="nnBox" class="loading"></div></section>
     ${admin ? `<section class="glass panel s7">${ph('dev', T('Services on our side'), T('learned from the last day: what outside addresses call · the role decides which events they get'))}<div id="evsBox" class="loading"></div></section>
     <section class="glass panel s5">${ph('shield', T('Port roles'), T('for services not listed on the left'))}<div id="prBox" class="loading"></div></section>
     <section class="glass panel s12 evsave"><div><button class="btn primary" id="svSave">${T('Save')}</button> <button class="btn" id="svDef">${T('Restore defaults')}</button></div><p class="err" id="svErr"></p><p class="note" id="svOk" hidden>${T('Saved. The next 10-minute check uses the new settings.')}</p></section>` : ''}</div>`;
@@ -3778,7 +3823,13 @@ function vFlowCfg(){
       ok.onclick = commit; document.getElementById('pnEdNo').onclick = () => { edit = null; draw(d); };
       [eN, eT].forEach(x => x.addEventListener('keydown', e => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') { edit = null; draw(d); } }));
     } };
-  api('ports').then(draw).catch(e => fill('pnBox', errBox(e)));
+  api('ports').then(d => { draw(d);
+    csvTools({id:'pn', file:'port-names', header:['protocol', 'port', 'name'], items:() => items, key:x => `${x.proto}/${x.port}`,
+      toRow:x => [x.proto, x.port, x.name], save,
+      fromRow:([pr = '', port = '', ...rest]) => { const name = rest.join(' ').trim(), p = pr.toLowerCase();
+        if (!['tcp', 'udp'].includes(p)) return {err:T('the protocol must be TCP or UDP')};
+        if (!portOk(port)) return {err:T('A port is a number from 1 to 65535.')};
+        return name ? {proto:p, port:+port, name} : {err:T('no name')}; }}); }).catch(e => fill('pnBox', errBox(e)));
   // host names: the IP of a host and the name to show
   let hn = null;
   api('hosts/names').then(d => { if (!document.getElementById('hnBox')) return;
@@ -3795,6 +3846,10 @@ function vFlowCfg(){
       save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; return r.items; },
       delAsk:it => T('Delete the name «{name}» of {ip}?', {name:it.name, ip:it.ip}),
       empty:T('No own host names yet.') + (admin ? ' ' + T('Example: 10.0.0.15 → NAS in the office.') : '')});
+    csvTools({id:'hn', file:'host-names', header:['ip', 'name'], items:() => cur, key:x => x.ip, toRow:x => [x.ip, x.name],
+      save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; },
+      fromRow:([ip = '', ...rest]) => { const name = rest.join(' ').trim(), c = addrCheck(ip);
+        return !c.ok || c.net ? {err:T('Not an IP address: {v}', {v:ip})} : name ? {ip:c.v, name} : {err:T('no name')}; }});
   }).catch(e => fill('hnBox', errBox(e)));
   // (1.8.7) network names: a network (CIDR) and its name; several networks may share one name
   let nn = null;
@@ -3814,6 +3869,10 @@ function vFlowCfg(){
       save:async list => { const r = await apiPost('networks', {items:list}); cur = r.items; META.networks = r.items; return r.items; },
       delAsk:it => T('Delete the name «{name}» of {net}?', {name:it.name, net:it.net}),
       empty:T('No named networks yet.') + (admin ? ' ' + T('Example: 172.16.0.0/24 → Office.') : '')});
+    csvTools({id:'nn', file:'network-names', header:['network', 'name'], items:() => cur, key:x => norm(x.net) || x.net, toRow:x => [x.net, x.name],
+      save:async list => { const r = await apiPost('networks', {items:list}); cur = r.items; META.networks = r.items; },
+      fromRow:([net = '', ...rest]) => { const name = rest.join(' ').trim(), n = norm(net);
+        return !n ? {err:T('Write the network with its mask: {v}/24', {v:net})} : name ? {net:n, name} : {err:T('no name')}; }});
   }).catch(e => fill('nnBox', errBox(e)));
   if (!admin) return;
   // the roles of our services and the port lists (detections read them; saved apart from the rest of the Events tab)
@@ -4060,10 +4119,33 @@ function vLicense(){
 }
 function vDevices(){
   const v = document.getElementById('setBody'); state.ifEdit = null;
-  v.innerHTML = `<div class="grid"><section class="glass panel s12">${ph('dev', T('Exporter devices'), T('NetFlow v5/v9 and IPFIX from any vendor · statistics for 15 min'), isAdmin() ? `<button class="btn primary" id="addDev">${T('+ Connect a device')}</button>` : `<span class="nat">${T('an administrator can add devices')}</span>`)}<div id="dBox" class="loading"></div></section>
+  v.innerHTML = `<div class="grid"><section class="glass panel s12">${ph('dev', T('Exporter devices'), T('NetFlow v5/v9 and IPFIX from any vendor · statistics for 15 min'), isAdmin() ? `<span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="devExp">${T('Export')}</button><button class="btn" id="devImp">${T('Import…')}</button><input type="file" id="devFile" accept=".json,application/json" hidden><button class="btn primary" id="addDev">${T('+ Connect a device')}</button></span>` : `<span class="nat">${T('an administrator can add devices')}</span>`)}<div id="dBox" class="loading"></div></section>
     <section class="glass panel s12">${ph('ip', T('Interfaces'), T('indexes the collector saw in 24 h · the WAN role defines what is upload and download'))}<div id="ifBox" class="loading"></div></section>
 </div>`;
-  if (isAdmin()) document.getElementById('addDev').onclick = () => openDevice(null);
+  if (isAdmin()) { document.getElementById('addDev').onclick = () => openDevice(null);
+    // (2.4.0, issue #4) every device described here as a JSON file, and back: to another server or edited by hand
+    document.getElementById('devExp').onclick = async () => { try { const d = await api('devices/export');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(d, null, 1)], {type:'application/json'}));
+      a.download = `flowsphera-devices-${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+      catch (e) { alert(e.message); } };
+    const file = document.getElementById('devFile');
+    document.getElementById('devImp').onclick = () => { file.value = ''; file.click(); };
+    file.onchange = async () => { const f = file.files[0]; if (!f) return; let data;
+      try { data = JSON.parse(await f.text()); } catch (e) { data = null; }
+      const devs = data && data.format === 'flowsphera-devices' && data.devices && typeof data.devices === 'object' ? Object.keys(data.devices) : null;
+      const have = new Set((window.__devs || []).filter(x => x.configured).map(x => x.ip));
+      const md = openModal(T('Import devices'), esc(f.name), !devs ? `<p class="err">${T('Not a FlowSphera devices file')}</p>` : `<form class="form" id="diForm" novalidate style="padding:4px 2px">
+        <p class="note" style="margin:0">${T('{n} devices in the file: {a} new, {u} replace the description here. Devices not in the file stay as they are; SNMP settings are not touched.', {n: devs.length, a: devs.filter(x => !have.has(x)).length, u: devs.filter(x => have.has(x)).length})}</p>
+        <div class="tw"><table class="compact"><tbody>${devs.slice(0, 20).map(ip => `<tr><td class="mono">${esc(ip)}</td><td>${esc(data.devices[ip].name || '')}</td><td>${have.has(ip) ? `<span class="pill warn">${T('replaces')}</span>` : `<span class="pill ok">${T('new')}</span>`}</td></tr>`).join('')}</tbody></table></div>
+        <label>${T('Your password ({user}) to confirm', {user: esc(ME.name)})}<input id="diPass" type="password" autocomplete="current-password"></label>
+        <p class="err" id="diErr" hidden></p>
+        <div style="display:flex;gap:8px"><button class="btn primary" type="submit" id="diOk" disabled>${T('Import')}</button><button class="btn" type="button" id="diNo">${T('Cancel')}</button></div></form>`);
+      if (!devs) return;
+      const pw = document.getElementById('diPass'), ok = document.getElementById('diOk');
+      pw.addEventListener('input', () => { ok.disabled = !pw.value; }); pw.focus(); document.getElementById('diNo').onclick = md.close;
+      document.getElementById('diForm').onsubmit = async e => { e.preventDefault(); if (ok.disabled) return; ok.disabled = true; formErr('diErr', '');
+        try { await apiPost('devices/import', {data, password: pw.value}); md.close(); META = await fetch('api/meta').then(r => r.json()); render(); }
+        catch (err) { formErr('diErr', err.message); ok.disabled = false; } }; }; }
   section('dBox', async () => { const res = await api('devices'), d = res.devices; window.__devs = d; window.__snmpTools = res.snmp_tools;
     // the interfaces panel shows one device: the one picked in the table, else the global device filter, else the first
     const df = state.filters.find(f => f.k === 'device' && !f.neg);
@@ -4072,12 +4154,17 @@ function vDevices(){
       showIfaces(d);
       document.querySelectorAll('#dBox tr[data-pick]').forEach(tr => tr.onclick = () => { if (tr.dataset.pick === state.ifDev) return; if (state.ifEdit && !confirm(T('Discard unsaved interface changes?'))) return; state.ifEdit = null; state.ifDev = tr.dataset.pick; showIfaces(d); });
       document.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); openDevice(d.find(x => x.ip === b.dataset.edit)); });
+      // (2.4.0, issue #4) a source that should not send here: ignored (dropped unread), and back
+      document.querySelectorAll('[data-ignore]').forEach(b => b.onclick = async e => { e.stopPropagation();
+        try { await apiPost('devices/ignore', {ip:b.dataset.ignore}); render(); } catch (err) { alert(err.message); } });
+      document.querySelectorAll('[data-unignore]').forEach(b => b.onclick = async e => { e.stopPropagation();
+        try { await apiPost('devices/ignore', {ip:b.dataset.unignore, stop:true}); render(); } catch (err) { alert(err.message); } });
     });
     return `<div class="tw"><table><thead><tr><th>${T('Status')}</th><th>${T('Device')}</th><th>${T('Vendor / model')}</th><th>${T('Protocol')}</th><th>${T('Site')}</th><th>${T('Export IP')}</th><th class="num">${T('Records/s')}</th><th class="num">${T('Templates')}</th><th>${T('Sampling')}</th><th class="num">${T('Loss')}</th><th class="num">${T('No template')}</th>${isAdmin() ? '<th></th>' : ''}</tr></thead><tbody>
       ${d.map(x => { const never = !x.last, stale = Date.now() / 1000 - x.last > 180, st = never ? 'warn' : stale ? 'crit' : x.loss_pct > 0.5 ? 'warn' : '';
-        return `<tr class="click" data-pick="${esc(x.ip)}"><td><span class="dot ${st}" title="${never ? T('has not sent data yet') : stale ? T('no data for over 3 min') : T('online')}"></span></td><td><b class="mono">${esc(x.name)}</b>${x.configured ? '' : ` <span class="tag">${T('not described')}</span>`}${protoPill(x)}${snmpTag(x)}${dupPill(x)}${repeatPill(x)}${runningPill(x)}${appsPill(x)}</td><td>${esc(x.vendor || '—')}<br><span class="nat">${esc(x.model)}</span></td><td><span class="tag">${never ? T('waiting') : esc(x.proto)}</span></td><td>${esc(x.site || '—')}</td><td class="ipl">${esc(x.ip)}</td>
+        return `<tr class="click" data-pick="${esc(x.ip)}"><td><span class="dot ${st}" title="${never ? T('has not sent data yet') : stale ? T('no data for over 3 min') : T('online')}"></span></td><td><b class="mono">${esc(x.name)}</b>${x.configured ? '' : ` <span class="tag" title="${T('It sends, but has no description here. Describe it to keep it, or ignore it if it should not send here; without data it leaves this list after 15 minutes.')}">${T('not described')}</span>`}${protoPill(x)}${snmpTag(x)}${dupPill(x)}${repeatPill(x)}${runningPill(x)}${appsPill(x)}</td><td>${esc(x.vendor || '—')}<br><span class="nat">${esc(x.model)}</span></td><td><span class="tag">${never ? T('waiting') : esc(x.proto)}</span></td><td>${esc(x.site || '—')}</td><td class="ipl">${esc(x.ip)}</td>
           <td class="num mono">${x.rps}</td><td class="num mono">${x.templates}</td><td class="mono">${esc(x.sampling)}</td><td class="num mono" style="color:${x.loss_pct ? 'var(--warn)' : 'inherit'}">${x.loss_pct}%</td><td class="num mono">${x.no_template}</td>
-          ${isAdmin() ? `<td><button class="btn" data-edit="${esc(x.ip)}">${T('Edit')}</button></td>` : ''}</tr>`; }).join('') || `<tr><td colspan="12"><div class="empty">${T('No device has sent data yet')}</div></td></tr>`}</tbody></table></div>${collectorBar(res.collector, res.listen)}<p class="note">${T('Click a row to see the device’s interfaces below. To filter by device, use the device list at the top.')}${isAdmin() ? T(' The collector picks up description changes within a minute.') : ''}</p>`; });
+          ${isAdmin() ? `<td style="white-space:nowrap"><button class="btn" data-edit="${esc(x.ip)}">${x.configured ? T('Edit') : T('Describe')}</button>${x.configured ? '' : ` <button class="btn" data-ignore="${esc(x.ip)}" title="${T('Drop what this address sends; undo below the table')}">${T('Ignore')}</button>`}</td>` : ''}</tr>`; }).join('') || `<tr><td colspan="12"><div class="empty">${T('No device has sent data yet')}</div></td></tr>`}</tbody></table></div>${(res.ignored || []).length && isAdmin() ? `<p class="note">${T('Ignored sources (what they send is dropped):')} ${res.ignored.map(ip => `<span class="mono">${esc(ip)}</span> <button class="lnk" data-unignore="${esc(ip)}">${T('stop ignoring')}</button>`).join(' · ')}</p>` : ''}${collectorBar(res.collector, res.listen)}<p class="note">${T('Click a row to see the device’s interfaces below. To filter by device, use the device list at the top.')}${isAdmin() ? T(' The collector picks up description changes within a minute.') : ''}</p>`; });
 }
 // the protocol chosen in the description and the one that arrives differ
 const protoPill = x => x.config && x.config.protocol && x.detected && x.config.protocol !== x.detected
@@ -4277,7 +4364,9 @@ function openDevice(dev){
       ${protoSeg()}
       <div class="cols"><div><h4>${T('1. Configuration on the device')}</h4>${codeBox(code(), 'devCode')}</div>
       <form class="form" id="devForm" autocomplete="off"><h4 style="margin:0">${T('2. Description for FlowSphera')}</h4>
-        <div class="two"><label>${T('IP the export comes from')}<input id="fIp" required value="${esc(editing ? dev.ip : '')}" ${editing ? 'readonly' : ''} placeholder="192.0.2.1"></label><label>${T('Name')}<input id="fName" value="${esc(c.name || '')}" placeholder="branch-fw01"></label></div>
+        <div class="two"><label>${T('IP the export comes from')}<input id="fIp" required value="${esc(editing ? dev.ip : '')}" ${editing ? 'readonly' : ''} placeholder="192.0.2.1">${editing && dev.configured ? `<button type="button" class="lnk" id="fMove" style="justify-self:start">${T('Change address…')}</button>` : ''}</label><label>${T('Name')}<input id="fName" value="${esc(c.name || '')}" placeholder="branch-fw01"></label></div>
+        ${editing && dev.configured ? `<div class="moverow" id="fMoveBox" hidden><label>${T('New address')}<input id="fNewIp" placeholder="192.0.2.2"></label>
+          <button type="button" class="btn primary" id="fMoveOk">${T('Move')}</button><p class="nat">${T('Everything set here moves to the new address; the records from the old one stay this device\'s.')}</p></div>` : ''}
         <div class="two"><label>${T('Model')}<input id="fModel" value="${esc(c.model || '')}" placeholder="FortiGate 60F"></label><label>${T('form::Sampling')}<input id="fSamp" value="${esc(c.sampling || '1:1')}"></label></div>
         <p class="note warn" id="fSampNote" hidden></p>
         <div class="two"><label>${T('snmp-index of WAN interfaces (comma-separated)')}<input id="fWan" value="${esc((c.wan_ifs || []).join(', '))}" placeholder="1"></label><label>${T('Index of «the device itself» (FortiOS: 0)')}<input id="fLocal" value="${c.local_if ?? ''}" placeholder="0"></label></div>
@@ -4328,6 +4417,12 @@ function openDevice(dev){
           snmp:sn});
         m.close(); META = await fetch('api/meta').then(r => r.json()); render();
       } catch (err) { formErr('fErr', err.message); } });
+    // (2.4.0) the export now comes from another address: the description moves, the old address becomes an alias
+    const mv = document.getElementById('fMove');
+    if (mv) { mv.onclick = () => { document.getElementById('fMoveBox').hidden = false; mv.hidden = true; document.getElementById('fNewIp').focus(); };
+      document.getElementById('fMoveOk').onclick = async () => { formErr('fErr');
+        try { await apiPost('devices/move', {ip:dev.ip, new_ip:document.getElementById('fNewIp').value.trim()}); m.close(); META = await fetch('api/meta').then(r => r.json()); render(); }
+        catch (err) { formErr('fErr', err.message); } }; }
     const del = document.getElementById('fDel');
     if (del) { del.onclick = () => { document.getElementById('fDelAsk').hidden = false; del.hidden = true; };
       document.getElementById('fDelYes').onclick = async () => { try { await apiPost('devices/delete', {ip:dev.ip}); m.close(); render(); } catch (err) { formErr('fErr', err.message); } }; }

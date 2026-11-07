@@ -118,7 +118,7 @@ def network_of(ip):
 
 def exporters_mtime():
     mt = []
-    for p in (os.path.join(CONFIG_DIR, 'exporters.json'), UI_EXPORTERS):
+    for p in (os.path.join(CONFIG_DIR, 'exporters.json'), UI_EXPORTERS, IGNORED_SOURCES):
         try:
             mt.append(os.path.getmtime(p))
         except OSError:
@@ -133,6 +133,44 @@ def load_ui_exporter(ip):
             return json.load(f).get(ip) or {}
     except (FileNotFoundError, ValueError):
         return {}
+
+
+# (2.4.0, issue #4) sources an administrator chose to ignore (Settings → Devices): their packets are dropped unread
+IGNORED_SOURCES = os.path.join(STATE_DIR, 'ignored_sources.json')
+
+
+def load_ignored():
+    try:
+        with open(IGNORED_SOURCES) as f:
+            return {str(x) for x in json.load(f)}
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def save_ignored(ips):
+    tmp = IGNORED_SOURCES + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(sorted(ips)[:1000], f)
+    os.replace(tmp, IGNORED_SOURCES)
+
+
+def device_aliases(cfgs=None):
+    """(2.4.0) {an earlier address of a device: its address now} — a device whose export moved to another address keeps
+    its settings, and its records from the old address still count as its own (cfg['aliases'])."""
+    out = {}
+    for ip, c in (load_exporters() if cfgs is None else cfgs).items():
+        for a in (c or {}).get('aliases', []) or []:
+            out[str(a)] = ip
+    return out
+
+
+def move_ui_exporter(old, new):
+    """(2.4.0) The device at `old` now exports from `new`: its whole description moves (a deployment entry of `old` is
+    hidden), `old` and its own earlier addresses become aliases of `new`."""
+    cfg = dict(load_exporters().get(old) or {})
+    cfg['aliases'] = [a for a in [old] + list(cfg.get('aliases', []) or []) if a != new][:16]
+    save_ui_exporter(new, cfg)
+    save_ui_exporter(old, None)
 
 
 def save_ui_exporter(ip, cfg):

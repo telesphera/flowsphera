@@ -4,6 +4,26 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.4.0 — 2026-11-07
+
+### Added
+- **Change a device's address** (Settings → Devices → Edit → Change address…): when a device starts exporting from
+  another address, everything set for it — interface names, roles, capacities, SNMP — moves there, and the old address
+  stays its alias, so the device's history (device: filter, Through device, Path analysis, the charts) continues
+  without a break. (GitHub issue #4)
+- **Export / import devices** as a JSON file (Settings → Devices), for another server or editing many devices by hand;
+  each device is checked as the form checks it, nothing changes unless all pass, confirmed with your password.
+- **Port, host and network names as CSV** (Settings → Flow configuration): *Export CSV* and *Import CSV…* on each
+  table. An import adds and replaces rows by address / network / port and keeps the rest; it shows what is new,
+  changed and unreadable (with the file's line numbers) before saving. Reads «,» «;» or tabs, so a file saved by Excel
+  in any language works. (GitHub issue #2)
+- **Sources that send but are not described** say so and can be **ignored** (what they send is dropped); the list of
+  ignored sources with «stop ignoring» is under the table.
+
+### Fixed
+- The documentation pointed to `/etc/flowsphera/exporters.json` for devices described in the UI; they are kept in
+  `/var/lib/flowsphera/exporters.json`.
+
 ## 2.3.0 — 2026-11-07
 
 ### Added

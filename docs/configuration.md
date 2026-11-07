@@ -20,8 +20,16 @@
 | `FT_CH_FSYNC` | `0` | `1` = the parts of flows, events and the rollups' state are written to the disk before they count (fsync): fewer records lost at a power cut, but inserts about 10× slower (measured 868 vs 79 ms at 5,000 records/s). Without it the database recovers by itself after a power cut too and reports it as an event (2.0.0 build 3); a UPS is the real cure |
 | `FT_BACKUP_DIR` | `/var/backups/flowsphera` | where backups are kept on the server; change it with `sudo flowsphera upgrade --force --backup-dir DIR` (ClickHouse sees it as `/backups`) |
 
-Devices can be described in `/etc/flowsphera/exporters.json` or from the UI (*Settings → Devices → Connect
-device*, admins only; the collector picks changes up within a minute):
+Devices are best described from the UI (*Settings → Devices → Connect device*, admins only; the collector picks
+changes up within a minute). Those are kept in `/var/lib/flowsphera/exporters.json`. `/etc/flowsphera/exporters.json`
+is for a deployment that brings its devices along (configuration management): empty (`{}`) on a normal install, and
+an entry made in the UI overrides the same device there. *Export* / *Import…* on that page save every device to a
+JSON file and bring it back (another server, or many devices edited by hand; SNMP secrets are not in the file).
+A device whose export moves to another address: *Edit → Change address…* — everything set for it moves, and the old
+address stays an alias, so its records keep counting as that device's. A source that sends but is not described shows
+as «not described» and leaves the list 15 minutes after it stops; *Ignore* drops what it sends.
+
+A device as either file (or an export) describes it:
 
 ```json
 {

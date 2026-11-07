@@ -126,6 +126,11 @@ def app_sql(p):
     return "transform(app, {appf:Array(String)}, {appt:Array(String)}, app)" if ids else 'app'
 
 
+def device_ips(ip):
+    """(2.4.0) a device's address now and its earlier ones (the records from those are its own too)."""
+    return [ip] + [str(a) for a in (exporters_cfg().get(ip, {}).get('aliases') or [])]
+
+
 # filter key -> (column, ClickHouse type)
 FILTERS = {
     'ip': ('int_ip', 'String'), 'dst': ('ext_ip', 'String'), 'service': ('service', 'String'), 'l7': ('l7', 'String'),
@@ -306,10 +311,14 @@ def scope(q):
                 hits = ifaces_named(v)
                 if not hits:
                     raise BadRequest(tr('no interface named {name}', name=v[:50]))
+                parts = []
                 for n, (dev, idx) in enumerate(hits):
-                    params[f'f{i}d{n}'], params[f'f{i}i{n}'] = dev, idx
-                cond = '(' + ' OR '.join(f'(exporter = {{f{i}d{n}:String}} AND (in_if = {{f{i}i{n}:UInt32}} OR out_if = {{f{i}i{n}:UInt32}}))'
-                                         for n in range(len(hits))) + ')'
+                    ips = device_ips(dev)          # (2.4.0) a device's earlier addresses too
+                    params[f'f{i}d{n}'], params[f'f{i}i{n}'] = (ips if ips[1:] else dev), idx
+                    one = f'{{f{i}d{n}:Array(String)}}' if ips[1:] else ''
+                    parts.append(f'(exporter IN {one} AND (in_if = {{f{i}i{n}:UInt32}} OR out_if = {{f{i}i{n}:UInt32}}))' if one
+                                 else f'(exporter = {{f{i}d{n}:String}} AND (in_if = {{f{i}i{n}:UInt32}} OR out_if = {{f{i}i{n}:UInt32}}))')
+                cond = '(' + ' OR '.join(parts) + ')'
                 fcols |= {'exporter', 'in_if', 'out_if'}
         elif k in FILTERS:
             col, typ = FILTERS[k]
@@ -317,6 +326,9 @@ def scope(q):
                 raise BadRequest(f'bad value for {k}')
             # (2.3.0) an application by its name also finds the records stored before the name was known («#<id>»)
             cond = f"{app_sql(params) if k == 'app' else col} = {{f{i}:{typ}}}"
+            if k == 'device' and device_ips(v)[1:]:       # (2.4.0) and the records from its earlier addresses
+                params[f'f{i}a'] = device_ips(v)
+                cond = f'exporter IN {{f{i}a:Array(String)}}'
             fcols.add(col)
         else:
             continue
@@ -446,12 +458,15 @@ def listen_info():
 def api_meta(q):
     exp = exporters_cfg()
     seen = ch("SELECT exporter, max(ts) AS last FROM exporter_stats GROUP BY exporter", fmt='JSON')
-    devices = []
+    devices, alias = [], common.device_aliases(exp)
     for r in seen:
+        if r['exporter'] in alias:       # (2.4.0) an earlier address of a device: its records are that device's
+            continue
         c = exp.get(r['exporter'], {})
         devices.append({'ip': r['exporter'], 'name': c.get('name', r['exporter']), 'vendor': c.get('vendor', ''), 'model': c.get('model', ''),
                         'if_names': c.get('if_names', {}), 'local_if': c.get('local_if'),
-                        'city': c.get('city', ''), 'country': c.get('country', ''), 'lat': c.get('lat'), 'lon': c.get('lon'), 'last': r['last']})
+                        'city': c.get('city', ''), 'country': c.get('country', ''), 'lat': c.get('lat'), 'lon': c.get('lon'), 'last': r['last'],
+                        'aliases': c.get('aliases') or []})
     # (1.17.0) the first record in time order (min() under a WHERE read every record of the period)
     oldest = ch("SELECT toUnixTimestamp(ts) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16}) ORDER BY ts LIMIT 1", {'d': view_days()}, fmt='JSON')
     return {'devices': devices, 'now': int(time.time()), 'oldest': int(oldest[0]['t']) if oldest else 0, 'listen': listen_info(),
@@ -864,7 +879,8 @@ def live_end(q):
         flt = json.loads(q.get('f', ['[]'])[0])
     except ValueError:
         flt = []
-    devs = [str(f.get('v')) for f in (flt if isinstance(flt, list) else []) if isinstance(f, dict) and f.get('k') == 'device' and not f.get('neg')]
+    devs = [a for f in (flt if isinstance(flt, list) else []) if isinstance(f, dict) and f.get('k') == 'device' and not f.get('neg')
+            for a in device_ips(str(f.get('v')))]                  # (2.4.0) its earlier addresses too
     cond = ' AND exporter IN {devs:Array(String)}' if devs else ''
     last = ch(f"SELECT toUnixTimestamp(max(ts)) AS t FROM flows WHERE ts >= now() - INTERVAL 15 MINUTE{cond}", {'devs': devs}, fmt='JSON')
     return int(last[0]['t']) if last and int(last[0]['t']) else int(time.time())
@@ -1369,8 +1385,8 @@ def api_ingest(q):
     except ValueError:
         flt = []
     flt = [f for f in (flt if isinstance(flt, list) else []) if isinstance(f, dict) and f.get('k') == 'device']
-    inc = [str(f.get('v')) for f in flt if not f.get('neg')]
-    exc = [str(f.get('v')) for f in flt if f.get('neg')]
+    inc = [a for f in flt if not f.get('neg') for a in device_ips(str(f.get('v')))]      # (2.4.0) earlier addresses too
+    exc = [a for f in flt if f.get('neg') for a in device_ips(str(f.get('v')))]
     cond = (' AND exporter IN {inc:Array(String)}' if inc else '') + (' AND exporter NOT IN {exc:Array(String)}' if exc else '')
     p = {'t0': t0, 't1': t1, 'step': step, 'inc': inc, 'exc': exc}
     win = 'ts >= toDateTime({t0:UInt32}) AND ts < toDateTime({t1:UInt32})'
@@ -1512,6 +1528,9 @@ def api_devices(q):
     # about a minute, so until its stats cover that time show the configured one (changed in the UI -> shown at once)
     cfg_changed = max(exporters_mtime())
     out = []
+    alias, ignored = common.device_aliases(exp), common.load_ignored()
+    # (2.4.0) an earlier address still sending a while, or an ignored source: no row of its own
+    stats = [s for s in stats if s['exporter'] not in alias and s['exporter'] not in ignored]
     seen = {s['exporter'] for s in stats}
     for ip in exp:
         if ip not in seen:
@@ -1545,7 +1564,8 @@ def api_devices(q):
                     'interfaces': interfaces_of(c, [r for r in ifs if r['exporter'] == s['exporter']], seen_addrs.get(s['exporter'], {}),
                                                 sdata.get(s['exporter']) if sset.get(s['exporter'], {}).get('enabled') else None,
                                                 cnt.get(s['exporter'], {}))})
-    return {'devices': out, 'collector': collector_health(), 'listen': listen_info(), 'snmp_tools': snmp.available()}
+    return {'devices': out, 'collector': collector_health(), 'listen': listen_info(), 'snmp_tools': snmp.available(),
+            'ignored': sorted(ignored)}      # (2.4.0) sources an administrator ignores
 
 
 def api_ifload(q):
@@ -2803,6 +2823,106 @@ def post_device_interfaces(body, user):
     return {'ok': True}
 
 
+DEVICES_FORMAT = 'flowsphera-devices'
+DEVICE_KEYS = ('name', 'vendor', 'model', 'protocol', 'city', 'country', 'lat', 'lon', 'sampling', 'wan_ifs', 'local_if', 'public_ips',
+               'export_ifs', 'if_names', 'if_addrs', 'if_caps', 'aliases')
+
+
+def get_devices_export():
+    """(2.4.0, issue #4) every configured device as JSON for another server or editing by hand: its description,
+    interface names / addresses / capacities and earlier addresses. SNMP secrets never leave the server (enter them
+    again after an import)."""
+    devs = {ip: {k: c[k] for k in DEVICE_KEYS if k in c} for ip, c in exporters_cfg(raw=True).items() if c}
+    return {'format': DEVICES_FORMAT, 'version': 1, 'flowsphera': VERSION, 'exported': int(time.time()), 'devices': devs}
+
+
+def _device_extra(ip, c):
+    """The parts of an imported device the form has no fields for, checked: interface names (≤32 chars), addresses
+    (networks), capacities (Mbit/s in, out) and earlier addresses."""
+    out = {}
+    try:
+        names = {str(int(k)): str(v).strip() for k, v in (c.get('if_names') or {}).items()}
+        if any(len(v) > 32 or any(ord(x) < 32 for x in v) for v in names.values()) or len(names) > 1024:
+            raise ValueError
+        addrs = {str(int(k)): [str(ipaddress.ip_interface(str(a))) for a in (v or [])][:16] for k, v in (c.get('if_addrs') or {}).items()}
+        caps = {}
+        for k, v in (c.get('if_caps') or {}).items():
+            a, b = (float(v[0] or 0), float(v[1] or 0))
+            if not (0 <= a <= 1e6 and 0 <= b <= 1e6):
+                raise ValueError
+            caps[str(int(k))] = [a, b]
+        aliases = [str(ipaddress.ip_address(str(x))) for x in (c.get('aliases') or [])][:16]
+    except (TypeError, ValueError, AttributeError, IndexError):
+        raise BadRequest(tr('{ip}: interface names, addresses, capacities or earlier addresses are not valid', ip=ip))
+    for k, v in (('if_names', names), ('if_addrs', addrs), ('if_caps', caps), ('aliases', [a for a in aliases if a != ip])):
+        if v:
+            out[k] = v
+    return out
+
+
+def post_devices_import(body, user, ip_addr):
+    """(2.4.0, issue #4) Devices from an export: each checked as the form checks it, then added or replaced; devices
+    not in the file stay as they are. Confirmed with the admin's own password. SNMP settings are not touched."""
+    data = body.get('data')
+    if not isinstance(data, dict) or data.get('format') != DEVICES_FORMAT or not isinstance(data.get('devices'), dict):
+        raise BadRequest(tr('Not a FlowSphera devices file'))
+    if len(data['devices']) > 1000:
+        raise BadRequest(tr('Too many devices in one file'))
+    AUTH.check_password(user, str(body.get('password') or ''), ip_addr)
+    have, ready = exporters_cfg(raw=True), []
+    alias = common.device_aliases(have)
+    for dev, c in data['devices'].items():
+        if not isinstance(c, dict):
+            raise BadRequest(tr('Not a FlowSphera devices file'))
+        if dev in alias and alias[dev] not in data['devices']:
+            # an export from before the device moved: this address is the earlier one of a device here now
+            raise BadRequest(tr('{ip} is now an earlier address of {name}: export the devices again', ip=dev, name=have[alias[dev]].get('name', alias[dev])))
+        ip, cfg = device_from_body({**c, 'ip': dev})
+        cfg.pop('if_names', None); cfg.pop('if_addrs', None)       # the file's, not what this server had
+        cfg.update(_device_extra(ip, c))
+        ready.append((ip, cfg))
+    for ip, cfg in ready:                                          # only after every device passed
+        save_ui_exporter(ip, cfg)
+    NAMES.reload()
+    added = sum(1 for ip, _ in ready if ip not in have)
+    return {'ok': True, 'added': added, 'updated': len(ready) - added}
+
+
+def post_device_ignore(body, user):
+    """(2.4.0, issue #4) ignore a source that is not a configured device (its packets are dropped unread), or stop."""
+    ip = device_ip(body)
+    if ip in exporters_cfg(raw=True):
+        raise BadRequest(tr('A configured device cannot be ignored: delete its description first'))
+    ips = common.load_ignored()
+    ips.discard(ip) if body.get('stop') else ips.add(ip)
+    common.save_ignored(ips)
+    return {'ok': True, 'ignored': sorted(ips)}
+
+
+def post_device_move(body, user):
+    """(2.4.0) The device now exports from another address: its description, interfaces, capacities and SNMP move
+    there; the old address becomes an alias, so its records still count as the device's."""
+    old = device_ip(body)
+    try:
+        new = str(ipaddress.ip_address(str(body.get('new_ip', '')).strip()))
+    except ValueError:
+        raise BadRequest(tr('Invalid device IP address'))
+    cfg = exporters_cfg()
+    if old not in cfg:
+        raise BadRequest(tr('The device is not configured'))
+    if new == old:
+        raise BadRequest(tr('That is the address it has'))
+    if new in cfg:
+        raise BadRequest(tr('{ip} is already a device of its own', ip=new))
+    common.move_ui_exporter(old, new)
+    st = snmp.load_settings()
+    if old in st:
+        snmp.save_settings(new, st[old])
+        snmp.save_settings(old, None)
+    NAMES.reload()
+    return {'ok': True, 'ip': new}
+
+
 def post_device_delete(body, user):
     ip = str(body.get('ip', ''))
     if ip not in exporters_cfg():
@@ -2870,10 +2990,10 @@ STATIC = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', 
 
 AUTH = None
 POLLER = snmp.Poller()
-ADMIN_GET = {'/api/retention', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
+ADMIN_GET = {'/api/devices/export', '/api/retention', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
 # (1.11.0) what an API token can never do, whatever its scope: people's accounts, the tokens themselves, the license,
 # deleting backups, and what only a browser session has
-TOKEN_DENY = {'/api/retention', '/api/users', '/api/users/update', '/api/users/delete', '/api/tokens', '/api/tokens/delete', '/api/ldap', '/api/ldap/test', '/api/mail/delete', '/api/license',
+TOKEN_DENY = {'/api/devices/import', '/api/retention', '/api/users', '/api/users/update', '/api/users/delete', '/api/tokens', '/api/tokens/delete', '/api/ldap', '/api/ldap/test', '/api/mail/delete', '/api/license',
               '/api/license/deactivate', '/api/license/checkin', '/api/backups/delete', '/api/me/password', '/api/me/prefs',
               '/api/logout', '/api/cancel'}
 COOKIE = 'ft_session'
@@ -3002,6 +3122,8 @@ class H(BaseHTTPRequestHandler):
                     return self.json(200, get_mail())
                 if u.path == '/api/retention':
                     return self.json(200, get_retention())
+                if u.path == '/api/devices/export':
+                    return self.json(200, get_devices_export())
                 if u.path == '/api/tokens':
                     return self.json(200, {'tokens': AUTH.list_tokens()})
                 if u.path == '/api/ldap':
@@ -3107,6 +3229,9 @@ class H(BaseHTTPRequestHandler):
                 '/api/tokens/delete': lambda: (AUTH.delete_token(body.get('id')), {'tokens': AUTH.list_tokens()})[1],
                 '/api/devices/save': lambda: post_device_save(body, user),
                 '/api/devices/delete': lambda: post_device_delete(body, user),
+                '/api/devices/move': lambda: post_device_move(body, user),
+                '/api/devices/ignore': lambda: post_device_ignore(body, user),
+                '/api/devices/import': lambda: post_devices_import(body, user, self.client_ip()),
                 '/api/devices/interfaces': lambda: post_device_interfaces(body, user),
                 '/api/devices/snmp_test': lambda: post_snmp_test(body, user),
                 '/api/devices/snmp_poll': lambda: post_snmp_poll(body, user),
