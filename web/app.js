@@ -3278,8 +3278,11 @@ function vSettings(){
 // (1.10.0) scheduled reports: a PDF of the last day / week / month e-mailed at its hour; Download and Send now any time
 const REP_ICON = 'M4 2h7l3 3v11H4zM11 2v3h3M6.5 9h5M6.5 12h5';
 const REP_EVERY = () => [['day', T('Daily')], ['week', T('Weekly')], ['month', T('Monthly')]];
+// (2.4.0) every page that has something for a report: in the order of reports.SECTIONS (= the PDF's)
 const REP_SECTIONS = () => ({summary:T('Totals'), chart:T('Traffic over time'), hosts:T('Busiest inside hosts'), outside:T('Outside networks (AS)'),
-  conversations:T('Conversations'), services:T('Services'), countries:T('Countries'), networks:T('Your networks'), capacity:T('Link capacity'), events:T('Security events'), devices:T('Devices')});
+  conversations:T('Conversations'), applications:T('Applications'), services:T('Services'), countries:T('Countries'), ports:T('Ports'),
+  networks:T('Your networks'), usage:T('Usage by host'), qos:T('Traffic classes (DSCP)'), interfaces:T('Interfaces'), capacity:T('Link capacity'),
+  events:T('Security events'), devices:T('Devices')});
 const REP_TRAFFIC = () => [['internet', T('Internet traffic')], ['internal', T('Traffic between inside hosts')], ['all', T('All traffic')]];
 // weekday names in the language of the page (0 = Monday, as on the server); 5 Jan 2026 was a Monday
 const WDAYS = () => [...Array(7)].map((_, i) => new Date(Date.UTC(2026, 0, 5 + i)).toLocaleDateString(LOC, {weekday:'long', timeZone:'UTC'}));

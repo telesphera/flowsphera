@@ -29,12 +29,18 @@ STATE = os.path.join(STATE_DIR, 'reports_state.json')
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONTS = os.path.join(HERE, 'report', 'fonts')
 EVERY = ('day', 'week', 'month')
-SECTIONS = ('summary', 'chart', 'hosts', 'outside', 'conversations', 'services', 'countries', 'networks', 'capacity', 'events', 'devices')
-NEW_SECTIONS = {'capacity': '1.13.0', 'conversations': '1.18.0'}      # added to the reports made before, once (`seen` remembers what a report was offered)
+# (2.4.0) in the order the PDF shows them (the form lists them so too)
+SECTIONS = ('summary', 'chart', 'hosts', 'outside', 'conversations', 'applications', 'services', 'countries', 'ports', 'networks',
+            'usage', 'qos', 'interfaces', 'capacity', 'events', 'devices')
+NEW_SECTIONS = {'capacity': '1.13.0', 'conversations': '1.18.0', 'applications': '2.4.0', 'ports': '2.4.0', 'usage': '2.4.0',
+                'qos': '2.4.0', 'interfaces': '2.4.0'}      # added to the reports made before, once (`seen` remembers what a report was offered)
 TRAFFIC = ('internet', 'internal', 'all')
 FILTER_KEYS = ('ip', 'dst', 'net', 'service', 'l7', 'country', 'city', 'port', 'device', 'asn', 'dir', 'proto', 'in_if', 'out_if', 'iface')
 MAX_REPORTS = 20
 CONV_ROWS = 12               # (1.18.0) pairs in the Conversations part (and as many new ones at most)
+APP_ROWS, USER_ROWS = 15, 10  # (2.4.0) applications and users in the Applications part
+USAGE_ROWS = 100             # (2.4.0) inside hosts in «Usage by host» (all of them as CSV on the Usage page)
+IF_DEVICES, IF_ROWS = 10, 8  # (2.4.0) devices and their busiest interfaces in «Interfaces»
 RETRY, TRIES = 900, 8
 TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 _lock = threading.Lock()
@@ -276,10 +282,28 @@ def collect(r, t0, t1, call):
             d[name] = call('/api/top', q(dim=dim, limit=n))
     if 'conversations' in sec:     # (1.18.0) the biggest pairs and the new ones
         d['conversations'] = call('/api/conversations', q(limit=CONV_ROWS))
+    if 'applications' in sec:     # (2.4.0) what the firewalls named: the Applications page
+        a = call('/api/apps', q())
+        d['applications'] = {'summary': a, 'top': call('/api/top', q(dim='app', limit=APP_ROWS)) if a.get('apps') else {'rows': []},
+                             'users': call('/api/top', q(dim='user_name', limit=USER_ROWS)) if a.get('apps') else {'rows': []}}
+    if 'ports' in sec:            # (2.4.0) the Ports page: the destination ports outside
+        d['ports'] = call('/api/top', q(dim='ext_port', limit=10))
+    if 'usage' in sec:            # (2.4.0) the Usage page: every inside host, both ways
+        d['usage'] = call('/api/top', q(dim='int_ip', limit=USAGE_ROWS))
+    if 'qos' in sec:              # (2.4.0) the QoS page: traffic classes and re-marking
+        d['qos'] = call('/api/qos', q())
     if 'events' in sec:
         d['events'] = call('/api/alerts', q(tz=r['tz']))['alerts']
-    if 'devices' in sec:
-        d['devices'] = call('/api/devices', {})['devices']
+    if 'devices' in sec or 'interfaces' in sec:
+        dv = call('/api/devices', {})
+        d['devices'], d['ignored'] = dv['devices'], dv.get('ignored') or []
+    if 'devices' in sec:          # (2.4.0) records/s over the period (the Flows page's Ingest)
+        d['ingest'] = call('/api/ingest', q())
+    if 'interfaces' in sec:       # (2.4.0) Through device: the load of each interface over the period
+        d['interfaces'] = []
+        for x in [y for y in d['devices'] if y.get('configured') and y.get('last')][:IF_DEVICES]:
+            il = call('/api/ifload', {'device': [x['ip']], 'from': [str(t0)], 'to': [str(t1)]})
+            d['interfaces'].append({'ip': x['ip'], 'name': x.get('name') or x['ip'], 'interfaces': il.get('interfaces') or []})
     if 'capacity' in sec:          # (1.13.0) whole days up to now in the report's zone: at least 30 for a trend
         d['capacity'] = call('/api/capacity', {'days': [str(max(30, -(-(t1 - t0) // 86400)))], 'tz': [r['tz']], 'f': base['f']})
     return d
@@ -297,7 +321,25 @@ EV_COLORS = {'port_scan': '#FF9F43', 'brute_force': '#FF5C7A', 'probes': '#6E9BF
              'inside_scan': '#C77DFF', 'lateral_scan': '#8B5CFF', 'link_load': '#16B5D8', 'malware_contact': '#FF4FA0',
              'listed_contact': '#E98BB2', 'listed_inbound': '#2F7BFF', 'sustained_upload': '#1FBF83', 'burst': '#2FB3A0',
              'new_country': '#84C11F'}
+# (2.4.0) the QoS page's classes (web/app.js DSCP_INFO): what each standard marking means, its colour (deeper for paper)
+DSCP_INFO = {0: N_('Best effort'), 8: N_('Low-priority data'), 10: N_('High-throughput data'), 12: N_('High-throughput data'),
+             14: N_('High-throughput data'), 16: N_('Network management'), 18: N_('Low-latency data'), 20: N_('Low-latency data'),
+             22: N_('Low-latency data'), 24: N_('Broadcast video / call signalling'), 26: N_('Multimedia streaming'),
+             28: N_('Multimedia streaming'), 30: N_('Multimedia streaming'), 32: N_('Real-time interactive'), 34: N_('Video calls'),
+             36: N_('Video calls'), 38: N_('Video calls'), 40: N_('Signalling'), 44: N_('Voice (admitted)'), 46: N_('Voice'),
+             48: N_('Network control'), 56: N_('Network control'), 255: N_('Not reported by the device')}
+DSCP_COLORS = {0: '#6E7FA6', 8: '#4C5A7A', 10: '#2F7BFF', 12: '#2F7BFF', 14: '#2F7BFF', 16: '#3AA8D8', 18: '#16B5D8', 20: '#16B5D8',
+               22: '#16B5D8', 24: '#8B5CFF', 26: '#A879FF', 28: '#A879FF', 30: '#A879FF', 32: '#FF4FA0', 34: '#E0B03C', 36: '#E0B03C',
+               38: '#E0B03C', 40: '#FF9F43', 44: '#FF5C7A', 46: '#FF5C7A', 48: '#1FBF83', 56: '#1FBF83', 255: '#C9D0DE'}
+PROTO = {6: 'tcp', 17: 'udp', 1: 'icmp', 58: 'icmpv6', 47: 'gre', 50: 'esp'}
 _fonts = []
+
+
+def pct_s(v):
+    """(2.4.0) a share for a sentence: 24.4, 3, «<0.1» for a little more than nothing (never a bare 0 for something)."""
+    if 0 < v < 0.1:
+        return '<0.1'
+    return f'{v:.1f}'.rstrip('0').rstrip('.')
 
 
 def _register():
@@ -457,6 +499,8 @@ def render(r, data, t0, t1, version='', now=None):
     st = lambda name, **kw: ParagraphStyle(name, **{'fontName': 'FT', 'fontSize': 8.5, 'leading': 11, 'textColor': C(INK), **kw})  # noqa: E731
     P, PM, PR = st('p'), st('pm', textColor=C(INK2)), st('pr', alignment=TA_RIGHT)
     H2 = st('h2', fontName='FT-Black', fontSize=12.5, leading=16, spaceBefore=6 * mm, spaceAfter=2 * mm)
+    HD = st('hd', fontName='FT-Bold', fontSize=7.4, leading=9, textColor=C(INK2), alignment=TA_RIGHT)      # (2.4.0) a head that wraps
+    H3 = st('h3s', fontName='FT-Bold', fontSize=9.5, leading=13, spaceBefore=4 * mm, spaceAfter=1.5 * mm)      # (2.4.0) parts of a part
     esc = lambda s: html.escape(str(s))      # noqa: E731
     story = []
     s = data['summary']
@@ -655,24 +699,81 @@ def render(r, data, t0, t1, version='', now=None):
             story.append(table([tr('Inside host'), tr('Talks to'), tr('Country'), tr('Total')], body,
                                [(W - 26 * mm - 22 * mm) / 2, (W - 26 * mm - 22 * mm) / 2, 26 * mm, 22 * mm], right=(3,)))
 
-    # ---- services and countries side by side
-    halves = []
     hw = (W - 6 * mm) / 2
+
+    def pairs(halves):
+        """Half-width tables two by two; one left alone takes the whole width (a half-width table alone sat in the middle)."""
+        for i in range(0, len(halves), 2):
+            story.append(CondPageBreak(60 * mm))
+            if i + 1 < len(halves):
+                t = Table([[made(halves[i], hw), made(halves[i + 1], hw)]], colWidths=[hw + 6 * mm, hw])
+                t.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                                       ('RIGHTPADDING', (0, 0), (-1, -1), 0)]))
+                story.append(t)
+            else:
+                story.extend(made(halves[i], W))
+
+    def half(title, head, body, h=H2):
+        return (title, head, body, h)
+
+    def made(x, w):
+        title, head, body, h = x
+        return [Paragraph(esc(title), h), table(head, body, [w - 22 * mm - 24 * mm, 22 * mm, 24 * mm], right=(1,))]
+
+    # ---- (2.4.0) applications: what the firewalls named (FortiGate Application Control, Palo Alto App-ID / User-ID)
+    if 'applications' in sec:
+        ap = data.get('applications') or {}
+        a = ap.get('summary') or {}
+        if not a.get('apps'):
+            section(tr('Applications'), Paragraph(esc(tr('No device named applications in this period. A FortiGate (Application Control) or a Palo Alto (PAN-OS Field Types) can.')), PM))
+        else:
+            cats = a.get('cats') or {}
+
+            def app(k):      # a FortiGate application whose name has not arrived yet is stored as «#<id>»
+                k = str(k)
+                return two_lines(tr('Application {id}', id=k), tr('name not received yet')) if k.startswith('#') else Paragraph(esc(k), P)
+            top = ap.get('top') or {}
+            atot = max(top.get('total') or 0, 1)
+            users = [x for x in (ap.get('users') or {}).get('rows') or [] if x['k']]
+            hasu = any(x.get('users') for x in top.get('rows') or [])
+            note = trn(a['apps'], '{n} application named in this period', '{n} applications named in this period', n=fmt_n(a['apps']))
+            if a.get('naming_bytes'):
+                note += ' · ' + tr('{pct}% of the traffic of the devices that name applications identified', pct=pct_s(100 * a['named_bytes'] / a['naming_bytes']))
+            head = ['#', tr('Application'), tr('Category'), tr('Hosts')] + ([tr('Users')] if hasu else []) + [tr('Downloaded'), tr('Uploaded'), tr('Share')]
+            body = [[str(i), app(x['k']), Paragraph(esc(cats.get(x['k']) or '—'), PM), fmt_n(x.get('hosts') or 0)]
+                    + ([fmt_n(x.get('users') or 0)] if hasu else []) + [fmt_b(x['dn']), fmt_b(x['up']), bar((x['up'] + x['dn']) / atot, BLUE, w=20 * mm)]
+                    for i, x in enumerate(top.get('rows') or [], 1)]
+            fixed = 8 * mm + 14 * mm + (14 * mm if hasu else 0) + 2 * 20 * mm + 24 * mm
+            widths = [8 * mm, (W - fixed) * 0.6, (W - fixed) * 0.4, 14 * mm] + ([14 * mm] if hasu else []) + [20 * mm, 20 * mm, 24 * mm]
+            right = (3, 4, 5, 6) if hasu else (3, 4, 5)
+            section(tr('Applications'), table(head, body, widths, right=right), note=note)
+            halves = []
+            named = [c for c in a.get('categories') or [] if c[0]]
+            if named:
+                call_b = max(sum(c[1] for c in a['categories']), 1)
+                halves.append(half(tr('Categories'), [tr('Category'), tr('Total'), tr('Share')],
+                                   [[Paragraph(esc(c[0]), P), fmt_b(c[1]), bar(c[1] / call_b, BLUE, w=20 * mm)] for c in named[:10]], H3))
+            if users:
+                utot = max((ap.get('users') or {}).get('total') or 0, 1)
+                halves.append(half(tr('Users'), [tr('User'), tr('Total'), tr('Share')],
+                                   [[Paragraph(esc(x['k']), P), fmt_b(x['up'] + x['dn']), bar((x['up'] + x['dn']) / utot, BLUE, w=20 * mm)] for x in users], H3))
+            if a.get('new_looks') and a.get('new'):
+                halves.append(half(tr('New applications'), [tr('Application'), tr('Total'), tr('Share')],
+                                   [[two_lines(x[0], cats.get(x[0]) or ''), fmt_b(x[1]), bar(x[1] / atot, UP, w=20 * mm)] for x in a['new'][:10]], H3))
+            pairs(halves)
+            if a.get('new_looks') and a.get('new'):
+                story.append(Paragraph(esc(tr('New: none like them in the {n} days before.', n=a.get('new_days', 7))), st('cmp', textColor=C(INK3), fontSize=7)))
+
+    # ---- services and countries side by side, (2.4.0) then the ports
+    halves = []
     for name, title, label in (('services', tr('Services'), lambda x: two_lines(x['k'] or tr('unknown'), x.get('l7', ''))),
-                               ('countries', tr('Countries'), lambda x: Paragraph(esc(country(x['k'], lang)), P))):
+                               ('countries', tr('Countries'), lambda x: Paragraph(esc(country(x['k'], lang)), P)),
+                               ('ports', tr('Ports'), lambda x: two_lines(f"{x['k']}" + (f"/{PROTO.get(x.get('proto_n'), '')}" if PROTO.get(x.get('proto_n')) else ''),
+                                                                         ' · '.join(v for v in (x.get('l7'), x.get('service')) if v)))):
         if name in sec and data.get(name, {}).get('rows'):
             body = [[label(x), fmt_b(x['up'] + x['dn']), bar((x['up'] + x['dn']) / tot, BLUE, w=20 * mm)] for x in data[name]['rows']]
-            halves.append([Paragraph(esc(title), H2), table([title, tr('Total'), tr('Share')], body,
-                                                           [hw - 22 * mm - 24 * mm, 22 * mm, 24 * mm], right=(1,))])
-    if len(halves) == 2:
-        story.append(CondPageBreak(60 * mm))
-        t = Table([[halves[0], halves[1]]], colWidths=[hw + 6 * mm, hw])
-        t.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                               ('RIGHTPADDING', (0, 0), (-1, -1), 0)]))
-        story.append(t)
-    elif halves:
-        story.append(CondPageBreak(60 * mm))
-        story.extend(halves[0])
+            halves.append(half(title, [title, tr('Total'), tr('Share')], body))
+    pairs(halves)
 
     # ---- named networks
     nets = [x for x in (data.get('networks') or {}).get('rows') or [] if x['k']]
@@ -682,6 +783,56 @@ def render(r, data, t0, t1, version='', now=None):
         section(tr('Your networks'),
                 table([tr('Network'), tr('Hosts'), tr('Downloaded'), tr('Uploaded'), tr('Share')], body,
                       [W - 18 * mm - 2 * 24 * mm - 30 * mm, 18 * mm, 24 * mm, 24 * mm, 30 * mm], right=(1, 2, 3)))
+
+    # ---- (2.4.0) usage by host: every inside host of the period, both ways (the Usage page; all of them there as CSV)
+    us = (data.get('usage') or {}).get('rows') or []
+    if 'usage' in sec and us:
+        body = [[str(i), two_lines(h.get('name') or h['k'], h['k'] if h.get('name') else ''), Paragraph(esc(h.get('net') or ''), PM),
+                 fmt_b(h['dn']), fmt_b(h['up']), fmt_b(h['up'] + h['dn'])] for i, h in enumerate(us, 1)]
+        section(tr('Usage by host'), table(['#', tr('Host'), tr('Network'), tr('Downloaded'), tr('Uploaded'), tr('Total')], body,
+                                           [10 * mm, (W - 10 * mm - 3 * 22 * mm) * 0.6, (W - 10 * mm - 3 * 22 * mm) * 0.4, 22 * mm, 22 * mm, 22 * mm], right=(3, 4, 5)),
+                note=tr('Every inside host of the period, the busiest first.') if len(us) < USAGE_ROWS else
+                tr('The {n} busiest inside hosts; all of them as CSV in FlowSphera → Usage.', n=USAGE_ROWS))
+
+    # ---- (2.4.0) traffic classes (DSCP) and the devices that changed them (the QoS page)
+    qd = data.get('qos') or {}
+    if 'qos' in sec and qd.get('classes'):
+        names = qd.get('names') or {}
+        cl = sorted(qd['classes'], key=lambda c: -c['bytes'])
+        qtot = max(sum(c['bytes'] for c in cl), 1)
+
+        def cname(k):
+            return '—' if k == 255 else names.get(str(k)) or f'DSCP {k}'
+        body = [[dot(DSCP_COLORS.get(c['k'], '#B0B8CC')), two_lines(cname(c['k']), tr(DSCP_INFO.get(c['k'], 'Non-standard marking'))),
+                 fmt_b(c['bytes']), fmt_n(c['flows']), bar(c['bytes'] / qtot, BLUE)] for c in cl[:12]]
+        flow = [table(['', tr('Class'), tr('Traffic'), tr('Flows'), tr('Share')], body,
+                      [6 * mm, W - 6 * mm - 24 * mm - 22 * mm - 30 * mm, 24 * mm, 22 * mm, 30 * mm], right=(2, 3))]
+        rem = qd.get('remarked') or []
+        if rem:
+            flow += [Spacer(0, 2.5 * mm), Paragraph('<br/>'.join(
+                f"<b>{esc(x['device_name'])}</b>: {esc(cname(x['from']))} → {esc(cname(x['to']))}, {esc(fmt_b(x['bytes']))}" for x in rem[:8]), st('say', leading=12.5))]
+            note = tr('Re-marked: {pct}% of the traffic leaves a device in another class.', pct=pct_s(100 * sum(x['bytes'] for x in rem) / max(qd.get('both_known') or 1, 1)))
+        else:
+            note = tr('No device changed the class of the traffic in this period.') if qd.get('both_known') else \
+                tr('The devices do not report the class on the way out (FortiGate does), so re-marking cannot be seen.')
+        section(tr('Traffic classes (DSCP)'), *flow, note=note)
+
+    # ---- (2.4.0) interfaces: all the traffic through each device, per interface (the Through device page)
+    if 'interfaces' in sec and data.get('interfaces'):
+        def cell(v, k):
+            pc = v.get(f'{k}_pct')
+            return two_lines(fmt_rate(v[k]), f'{pc:g}%' if pc is not None else '')
+        body = []
+        for dv in data['interfaces']:
+            rows_ = sorted([x for x in dv['interfaces'] if x['in']['bytes'] or x['out']['bytes']], key=lambda x: -(x['in']['bytes'] + x['out']['bytes']))
+            for x in rows_[:IF_ROWS]:
+                body.append([two_lines(x.get('name') or f"#{x['index']}", dv['name'] + (' · WAN' if x.get('role') == 'wan' else '')),
+                             cell(x['in'], 'avg'), cell(x['in'], 'p95'), cell(x['in'], 'peak'),
+                             cell(x['out'], 'avg'), cell(x['out'], 'p95'), cell(x['out'], 'peak'), fmt_b(x['in']['bytes'] + x['out']['bytes'])])
+        if body:
+            section(tr('Interfaces'), table([tr('Interface')] + [Paragraph(esc(k), HD) for k in (tr('In, average'), tr('In, 95%'), tr('In, peak'), tr('Out, average'), tr('Out, 95%'), tr('Out, peak'))] + [tr('Traffic')],
+                                            body, [W - 6 * 19 * mm - 20 * mm] + [19 * mm] * 6 + [20 * mm], right=(1, 2, 3, 4, 5, 6, 7)),
+                    note=tr('All the traffic through each device, per 5 minutes: the average, the 95th percentile (the busy hours) and the peak; % of the capacity where it is known.'))
 
     # ---- (1.13.0) link capacity: the links with a known capacity, the fullest first, and what to plan for
     if 'capacity' in sec and data.get('capacity'):
@@ -780,19 +931,42 @@ def render(r, data, t0, t1, version='', now=None):
             section(tr('Security events'), *graphs, chips, Spacer(0, 2 * mm),
                     table(['', tr('Event'), tr('Last seen')], body, [6 * mm, W - 6 * mm - 30 * mm, 30 * mm], right=(2,)), note=note)
 
-    # ---- devices
+    # ---- devices: their state now and (2.4.0) records/s over the period (the Flows page's Ingest), earlier addresses,
+    # ignored sources
     if 'devices' in sec and data.get('devices'):
+        ing = data.get('ingest') or {}
+        steps = max(-(-(int(ing.get('to') or t1) - int(ing.get('from') or t0)) // max(int(ing.get('step') or 300), 1)), 1)
+        per = {}
+        for row in ing.get('rows') or []:
+            per[row[1]] = per.get(row[1], 0) + row[2]
         body = []
         for x in data['devices']:
+            if not x.get('configured', True) and not x.get('last'):
+                continue
             seen = int(now - x['last']) if x.get('last') else None
             ok = seen is not None and seen < 600
             state = tr('sending') if ok else tr('silent since {when}', when=datetime.datetime.fromtimestamp(x['last'], tz).strftime('%Y-%m-%d %H:%M')) \
                 if x.get('last') else tr('never sent')
-            body.append([Paragraph(esc(x.get('name') or x['ip']), P), x['ip'], x.get('proto') or '', f"{x.get('rps', 0):g}",
-                         f"{x.get('loss_pct', 0):g}%", Paragraph(f'<font color="{"#1E9E6A" if ok else SEV["crit"]}">{esc(state)}</font>', P)])
-        section(tr('Devices'), table([tr('Device'), tr('Address'), tr('Protocol'), tr('Records/s'), tr('Lost'), tr('State')], body,
-                                     [W - 30 * mm - 26 * mm - 20 * mm - 16 * mm - 34 * mm, 30 * mm, 26 * mm, 20 * mm, 16 * mm, 34 * mm],
-                                     right=(3, 4)), note=tr('As of the moment the report was made.'))
+            avg = sum(per.get(a, 0) for a in [x['ip']] + (x.get('aliases') or [])) / steps
+            addr = two_lines(x['ip'], tr('earlier: {addrs}', addrs=', '.join(x['aliases'])) if x.get('aliases') else '')
+            body.append([Paragraph(esc(x.get('name') or x['ip']), P), addr, x.get('proto') or '', f"{avg:.1f}".rstrip('0').rstrip('.') if ing else '—',
+                         f"{x.get('rps', 0):g}", f"{x.get('loss_pct', 0):g}%", Paragraph(f'<font color="{"#1E9E6A" if ok else SEV["crit"]}">{esc(state)}</font>', P)])
+        says = []
+        if ing.get('peak'):
+            pk = max(ing['peak'], key=lambda v: v[1])
+            says.append(tr('Busiest minute: {n} records/s ({when}).', n=f"{pk[1]:g}", when=datetime.datetime.fromtimestamp(pk[0], tz).strftime('%Y-%m-%d %H:%M')))
+        if ing.get('limit'):
+            says.append(tr('The license allows {n} records/s.', n=fmt_n(ing['limit'])))
+        if ing.get('drops'):
+            says.append(tr('Over the limit in {n} intervals: those records were counted, not stored.', n=len(ing['drops'])))
+        if data.get('ignored'):
+            says.append(tr('Ignored sources (what they send is dropped): {addrs}', addrs=', '.join(data['ignored'])))
+        section(tr('Devices'), table([tr('Device'), tr('Address'), tr('Protocol'), Paragraph(esc(tr('Records/s, average')), HD),
+                                      Paragraph(esc(tr('Records/s, now')), HD), tr('Lost'), tr('State')], body,
+                                     [W - 30 * mm - 22 * mm - 22 * mm - 18 * mm - 14 * mm - 32 * mm, 30 * mm, 22 * mm, 22 * mm, 18 * mm, 14 * mm, 32 * mm],
+                                     right=(3, 4, 5)),
+                *([Spacer(0, 2 * mm), Paragraph(esc(' '.join(says)), PM)] if says else []),
+                note=tr('The average over the period; the state as of the moment the report was made.'))
 
     # ---- the page frame: a navy head on the first page, a footer on each
     title = r['name']

@@ -2,6 +2,7 @@
 the settings checks and the PDF itself (both languages, an empty period)."""
 import datetime
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -36,9 +37,29 @@ def fake_call(log=None):
             return {'step': 3600, 'rows': [[t, 2_000_000, 300_000, 0, 10] for t in range(t0, t1, 3600)]}
         if path == '/api/top':
             dim = q['dim'][0]
-            row = {'int_ip': {'k': '192.0.2.10', 'name': 'printer'}, 'asn': {'k': '64500', 'as_org': 'Example Net', 'country': 'UA'},
-                   'service': {'k': 'Example', 'l7': 'HTTPS'}, 'country': {'k': 'UA'}, 'net': {'k': 'Office', 'hosts': 3}}[dim]
-            return {'total': 9_000_000_000, 'rows': [dict(row, up=100_000_000, dn=900_000_000)] * 3}
+            row = {'int_ip': {'k': '192.0.2.10', 'name': 'printer', 'net': 'Office'}, 'asn': {'k': '64500', 'as_org': 'Example Net', 'country': 'UA'},
+                   'service': {'k': 'Example', 'l7': 'HTTPS'}, 'country': {'k': 'UA'}, 'net': {'k': 'Office', 'hosts': 3},
+                   'app': {'k': 'Microsoft.Teams', 'hosts': 4, 'users': 2}, 'user_name': {'k': 'corp\\anna'},       # (2.4.0)
+                   'ext_port': {'k': '443', 'l7': 'HTTPS', 'proto_n': 6, 'service': 'Example'}}[dim]
+            rows = [dict(row, up=100_000_000, dn=900_000_000)] * 3
+            if dim == 'app':          # a FortiGate application whose name has not arrived yet
+                rows.append({'k': '#40568', 'hosts': 1, 'users': 0, 'up': 1_000, 'dn': 2_000})
+            return {'total': 9_000_000_000, 'rows': rows}
+        if path == '/api/apps':              # (2.4.0) the Applications page
+            return {'apps': 42, 'named_bytes': 6_000_000_000, 'naming_bytes': 8_000_000_000, 'categories': [['Collaboration', 5_000_000_000], ['', 1_000_000_000]],
+                    'new': [['Hotspot.Shield', 300_000_000]], 'new_looks': True, 'new_days': 7, 'cats': {'Microsoft.Teams': 'Collaboration', 'Hotspot.Shield': 'Proxy'}}
+        if path == '/api/qos':               # (2.4.0) the QoS page
+            return {'names': {'0': 'CS0', '46': 'EF'}, 'classes': [{'k': 0, 'bytes': 8_000_000_000, 'packets': 1, 'flows': 900}, {'k': 46, 'bytes': 500_000_000, 'packets': 1, 'flows': 40},
+                                                                  {'k': 255, 'bytes': 1_000, 'packets': 1, 'flows': 1}, {'k': 7, 'bytes': 1_000, 'packets': 1, 'flows': 1}],
+                    'remarked': [{'device': '192.0.2.1', 'device_name': 'fw', 'from': 46, 'to': 0, 'bytes': 100_000_000}], 'both_known': 8_500_000_000}
+        if path == '/api/ingest':            # (2.4.0) records/s per device and step, the busiest minutes, the limit
+            return {'from': t0, 'to': t1, 'step': 3600, 'limit': 5000, 'rows': [[t, a, 12.5] for t in range(t0, t1, 3600) for a in ('192.0.2.1', '192.0.2.9')],
+                    'peak': [[t0, 40.0], [t0 + 3600, 55.5]], 'drops': [[t0, 10]]}
+        if path == '/api/ifload':            # (2.4.0) Through device: two interfaces, one with a capacity
+            v = lambda b, pct: {'avg': 1e6, 'p95': 5e6, 'peak': 9e6, 'bytes': b, 'avg_pct': pct, 'p95_pct': pct, 'peak_pct': pct}      # noqa: E731
+            return {'interfaces': [{'index': 1, 'name': 'wan1', 'role': 'wan', 'in': v(9_000_000, 5.0), 'out': v(1_000_000, 0.5)},
+                                   {'index': 7, 'name': '', 'role': '', 'in': v(1_000, None), 'out': v(0, None)},
+                                   {'index': 9, 'name': 'idle', 'role': '', 'in': v(0, None), 'out': v(0, None)}]}
         if path == '/api/alerts':
             return {'alerts': [{'sev': 'warn', 'kind': 'port_scan', 'title': 'Port scan', 'text': '203.0.113.5 tried 9 ports of ours.',
                                 'when': '2026-10-12 10:00:00', 'last': '2026-10-12 10:00:00', 'stored': True}] * 20}
@@ -50,7 +71,8 @@ def fake_call(log=None):
                               'new_bytes': 300_000_000, 'countries': 12, 'top_countries': ['UA']}, 'new_from': t0 - 7 * 86400,
                     'pairs': [pair] * int(q.get('limit', ['12'])[0]), 'new': [pair] * 3}
         if path == '/api/devices':
-            return {'devices': [{'ip': '192.0.2.1', 'name': 'fw', 'proto': 'IPFIX', 'rps': 12.5, 'loss_pct': 0, 'last': t1}]}
+            return {'devices': [{'ip': '192.0.2.1', 'name': 'fw', 'proto': 'IPFIX', 'rps': 12.5, 'loss_pct': 0, 'last': ts(2026, 10, 20), 'configured': True,
+                                 'aliases': ['192.0.2.9']}], 'ignored': ['198.51.100.200']}
         if path == '/api/capacity':          # (1.13.0) a WAN that fills in 40 days, a quiet LAN port, one without a capacity
             fc = lambda full: {'growth_pct_month': 12.5, 'direction': 'up', 'clear': True, 'horizon': 60, 'full_in': full, 'over_in': None, 'busy_pct': 60}  # noqa: E731
             d = lambda pct, full: {'p95': pct * 1e6, 'peak': 2 * pct * 1e6, 'avg': pct * 5e5, 'bytes': 1, 'p95_pct': pct, 'peak_pct': 2 * pct,      # noqa: E731
@@ -335,6 +357,13 @@ class Pdf(unittest.TestCase):
             self.assertEqual(data['capacity']['days'], 30)           # a week's report: the trend over 30 days
             self.assertEqual(len(data['conversations']['pairs']), reports.CONV_ROWS)
             self.assertIn(b'Manrope-ExtraBold', pdf)
+            # (2.4.0) every page with something for a report is in it
+            self.assertEqual(data['applications']['summary']['apps'], 42)
+            self.assertTrue(data['applications']['users']['rows'] and data['ports']['rows'] and data['usage']['rows'])
+            self.assertEqual(data['qos']['remarked'][0]['to'], 0)
+            self.assertEqual(data['ingest']['limit'], 5000)
+            self.assertEqual([x['name'] for x in data['interfaces']], ['fw'])
+            self.assertEqual(data['ignored'], ['198.51.100.200'])
 
     def test_an_empty_period(self):
         def empty(path, q):
@@ -383,8 +412,48 @@ class NewSections(unittest.TestCase):
                 js.dump({'reports': [{'id': 'a1', 'name': 'Old', 'sections': old}]}, f)
             r = reports.load()[0]
             # (1.18.0) Conversations came later still: an old report gets both, once
-            self.assertEqual(r['sections'], ['summary', 'hosts', 'conversations', 'capacity', 'events', 'devices'])
+            # (2.4.0) and the parts of the pages that had none: Applications, Ports, Usage, QoS, Interfaces
+            self.assertEqual(r['sections'], ['summary', 'hosts', 'conversations', 'applications', 'ports', 'usage', 'qos', 'interfaces',
+                                             'capacity', 'events', 'devices'])
             r['sections'] = old                                  # the user switches it off again and saves
             with open(reports.CONFIG, 'w') as f:
                 js.dump({'reports': [reports.validate(r)]}, f)
             self.assertNotIn('capacity', reports.load()[0]['sections'])
+
+
+class Parts240(unittest.TestCase):
+    """(2.4.0) the parts added for the pages that had none in reports"""
+    def test_every_new_part_is_in_the_form_and_offered_to_old_reports_once(self):
+        for k in ('applications', 'ports', 'usage', 'qos', 'interfaces'):
+            self.assertIn(k, reports.SECTIONS)
+            self.assertEqual(reports.NEW_SECTIONS[k], '2.4.0')
+        app = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'web', 'app.js')).read()
+        m = re.search(r'const REP_SECTIONS = \(\) => \(\{(.*?)\}\);', app, re.S)
+        self.assertEqual(re.findall(r'(\w+):T\(', m.group(1)), list(reports.SECTIONS))      # the form lists them in the PDF's order
+
+    def test_texts_of_the_new_parts(self):
+        r = reports.validate({'name': 'R', 'every': 'week', 'tz': 'Europe/Kyiv', 'lang': 'en', 'sections': list(reports.SECTIONS)})
+        t0, t1 = reports.period(r, ts(2026, 10, 20))
+        seen = []
+        real = reports.tr
+        def spy(s, **kw):
+            seen.append(s)
+            return real(s, **kw)
+        with mock.patch.object(reports, 'tr', spy):
+            reports.make(r, t0, t1, fake_call(), '2.4.0')
+        for s in ('Applications', 'Categories', 'Users', 'New applications', 'Ports', 'Usage by host', 'Traffic classes (DSCP)',
+                  'Interfaces', 'earlier: {addrs}', 'Busiest minute: {n} records/s ({when}).', 'The license allows {n} records/s.',
+                  'Ignored sources (what they send is dropped): {addrs}', 'Re-marked: {pct}% of the traffic leaves a device in another class.',
+                  'Application {id}', 'Over the limit in {n} intervals: those records were counted, not stored.'):
+            self.assertIn(s, seen)
+
+    def test_no_applications_says_which_devices_can(self):
+        def call(path, q):
+            if path == '/api/apps':
+                return {'apps': 0, 'named_bytes': 0, 'naming_bytes': 0, 'categories': [], 'new': [], 'new_looks': False, 'cats': {}}
+            return fake_call()(path, q)
+        r = reports.validate({'name': 'R', 'every': 'day', 'tz': 'Europe/Kyiv', 'lang': 'uk', 'sections': ['applications']})
+        t0, t1 = reports.period(r, ts(2026, 10, 20))
+        pdf, data = reports.make(r, t0, t1, call, '2.4.0')
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        self.assertEqual(data['applications']['top'], {'rows': []})      # no rows asked for when nothing is named

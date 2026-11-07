@@ -20,6 +20,13 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
 - **Sources that send but are not described** say so and can be **ignored** (what they send is dropped); the list of
   ignored sources with «stop ignoring» is under the table.
 
+- **Reports hold every page that has something for them**: new parts *Applications* (the busiest applications with
+  their category, hosts and users, the categories, the users and the new applications), *Ports*, *Usage by host* (every
+  inside host both ways), *Traffic classes (DSCP)* (with the devices that re-mark them) and *Interfaces* (all the
+  traffic through each device: average, 95th percentile, peak, % of the capacity). *Devices* adds records/s over the
+  period, the busiest minute, the license's limit and records over it, earlier addresses and ignored sources. Reports
+  made before get the new parts switched on once.
+
 ### Fixed
 - The documentation pointed to `/etc/flowsphera/exporters.json` for devices described in the UI; they are kept in
   `/var/lib/flowsphera/exporters.json`.

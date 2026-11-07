@@ -36,8 +36,9 @@
 
 **New in 1.10**
 - **Scheduled reports** (*Settings → Reports*): a PDF of the last day, week or month e-mailed at its hour — totals
-  against the period before, traffic over time, the busiest hosts, outside networks, services, countries, named
-  networks, security events and devices; English or Ukrainian, any time zone, on the weekday / day of the month you
+  against the period before, traffic over time, the busiest hosts, outside networks, conversations, applications
+  (categories, users, new ones), services, countries, ports, named networks, usage by host, traffic classes (DSCP),
+  interfaces, link capacity, security events and devices (records/s over the period); English or Ukrainian, any time zone, on the weekday / day of the month you
   choose, narrowed by filters if you like; a period not fully collected yet is shown with a note, never as zeros.
   *Download PDF* and *Send now* any time.
 - **Report for a period**: the report button in the top bar turns the period and filters on screen (an incident

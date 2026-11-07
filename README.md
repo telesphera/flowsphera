@@ -211,8 +211,9 @@ The same two charts open the *Security events* part of every PDF report:
 ### Reports — by e-mail, on schedule or for any period
 
 A PDF for the management or the duty engineer: totals against the period before, traffic over time, the busiest hosts,
-outside networks, the conversations and the new ones, services, countries, your networks, link capacity with the date each link fills, security events and the
-devices. Daily, weekly or monthly on
+outside networks, the conversations and the new ones, the applications your firewall named (with their categories, users and
+the new ones), services, countries, ports, your networks, usage of every host, traffic classes (DSCP), the load of every
+interface, link capacity with the date each link fills, security events and the devices with their records per second. Daily, weekly or monthly on
 the day and hour you choose, in English or Ukrainian — or, after an attack or an outage, for exactly the period and
 filters on your screen, with one click.
 
