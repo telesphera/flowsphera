@@ -4,7 +4,7 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
-## 2.3.0 — 2026-11-06
+## 2.3.0 — 2026-11-07
 
 ### Added
 - **Applications — a page of its own** (in the menu as soon as a device names applications): applications over time,
