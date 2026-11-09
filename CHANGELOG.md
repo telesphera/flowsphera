@@ -4,6 +4,14 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.4.1 — 2026-11-09
+
+### Fixed
+- **Install and upgrade finish properly.** Since 2.1.0 the installer stopped at its very end with
+  «Installation stopped at step: Starting FlowSphera» and exit code 1, although FlowSphera was installed and running.
+  It skipped the closing summary: the address, the certificate fingerprint, the edition and, on an unattended install
+  without a password, the generated `admin` password. Now it ends with «FlowSphera is running» and exit code 0.
+
 ## 2.4.0 — 2026-11-07
 
 ### Added

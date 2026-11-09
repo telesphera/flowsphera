@@ -816,7 +816,7 @@ start_all() {
   systemctl start flowsphera-geoip.timer flowsphera-backup.timer flowsphera-backup.path
   for _ in $(seq 1 30); do
     # (1.17.2) «running» = the collector holds its UDP port (before that the kernel drops what devices send)
-    if systemctl is-active -q flowsphera-collector && udp_busy "$NF_PORT" && curl -fsSk -o /dev/null "$PROTO://127.0.0.1:$WEB_PORT/"; then return 0; fi   # localhost is always served
+    if systemctl is-active -q flowsphera-collector && udp_busy "$NF_PORT" && curl -fsk -o /dev/null "$PROTO://127.0.0.1:$WEB_PORT/"; then return 0; fi   # localhost is always served; not -S: «not yet» is no error for the log
     sleep 1
   done
   systemctl status --no-pager $UNITS; journalctl -u flowsphera-collector -u flowsphera-web -n 30 --no-pager; return 1
@@ -848,6 +848,9 @@ if [ -n "$LIC_KEY" ] && ! step "$(t 'FlowSphera license' 'Ліцензія FlowS
 fi
 
 # ------------------------------------------------------------------ done
+# (2.4.1) the work is done and the services are up: from here on the installer only prints. Nothing below may report a
+# failed installation (2.1–2.4: no BUILD file + pipefail stopped it right here, with exit 1 and no summary or password)
+trap - ERR; set +eu
 say ""
 FT_VERSION=$(cat "$PREFIX/app/VERSION" 2>/dev/null || echo dev)
 FT_BUILD=$(cat "$PREFIX/app/BUILD" 2>/dev/null | tr -dc 0-9)    # (2.0.0) fixes published as builds of the same version
