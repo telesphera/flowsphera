@@ -87,6 +87,13 @@ interface GigabitEthernet0/0/1
 /ip traffic-flow target add dst-address=<COLLECTOR_IP> port=2055 version=9
 ```
 
+VPN users (SSTP, L2TP, PPTP, OpenVPN) and PPPoE clients get a new interface for every session; FlowSphera folds them
+by name (2.6.0). For one interface per user, give each a static server binding:
+
+```
+/interface sstp-server add name=sstp-alice user=alice
+```
+
 **Palo Alto (PAN-OS)** — NetFlow v9. *Device → Server Profiles → NetFlow → Add*: active timeout 1 min, template refresh
 1 min, server `<COLLECTOR_IP>` port 2055, and tick **PAN-OS Field Types**: FlowSphera then shows the application
 App-ID named (Services → Applications, the `app:` filter) and the user User-ID named (`user:`). Put the profile on every

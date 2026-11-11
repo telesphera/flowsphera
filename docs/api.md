@@ -20,6 +20,7 @@ JSON over HTTP — with the session cookie of the UI, or with an **API token** (
 | `GET /api/river` | top inside × top outside links (live 2-minute window or whole period) |
 | `GET /api/flows`, `GET /api/live?since=` | raw records; records newer than a timestamp |
 | `GET /api/geo`, `GET /api/host?ip=` | per-city aggregates; one host's details |
+| `GET /api/geo/places?country=&q=&limit=` | (2.6.0) places of a country (two letters) whose name begins with / holds `q` (no accents, any case), biggest first: `places` [{name, region, lat, lon}], `ready` = the place index exists; `limit` 1–30 (default 10). `/api/meta` devices carry `lat`/`lon` from City + Country when none are set, and `geo_src` = `manual` / `city` / null |
 | `GET /api/paths`, `GET /api/devmap` | traffic through one device (the `device` filter): interface pairs, hosts behind them |
 | `GET /api/topology?pov=&depth=` | layer-3 neighbours of a device, links with what each end sent and received |
 | `GET /api/path?src=&dst=` | the hops from a source to a destination (address or network) across the devices |
@@ -27,6 +28,7 @@ JSON over HTTP — with the session cookie of the UI, or with an **API token** (
 | `GET /api/devices`, `GET /api/meta` | exporters and interfaces; metadata |
 | `GET /api/top?dim=app`, `dim=user_name`; filters `app`, `user` | (2.2.0) applications / users the exporter named (Palo Alto App-ID / User-ID), each with its inside hosts; unnamed traffic is no row |
 | `GET /api/ingest` | records/s per device over the period (per-minute device statistics): `rows` [t, device, rec/s], `peak` (busiest minute), `drops` (records over the license limit), `limit`; only the `device` filter applies |
+| `GET/POST /api/dns` | (2.6.0) admin: host names from reverse DNS — `mode` `off` / `shown` / `background`, `rate` 5 / 20 / 50 lookups a second; GET also `named`, `asked`, `last_pass`, `last_hosts` |
 | `GET/POST /api/retention` | admin, no API tokens: days kept, the license's most, the choice, sizes; POST `{days, password}` (password when fewer days) |
 | `GET /api/top?dim=net`, `GET /api/series?by=net` | traffic by your named networks |
 | `GET /api/networks`, `GET /api/hosts/names`, `GET /api/ports` | your names of networks, hosts and ports |

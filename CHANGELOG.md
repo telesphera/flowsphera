@@ -4,6 +4,39 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.6.0 — 2026-11-11
+
+### Added
+- **A device is placed on the map by its City and Country.** Latitude and Longitude are no longer needed: a device
+  described by City + Country code lands on the connection map and the 3D globe at that place. While you type the
+  City, the device dialog offers the places of that country (with region and coordinates), and the line under the
+  coordinates says where the map puts the device. Latitude and Longitude, if set, still take priority. The places
+  (about 150,000) come from the DB-IP Lite City database FlowSphera already installs — offline, no online geocoding;
+  the index (`/opt/flowsphera/geoip/dbip-places.tsv`) is built after each monthly refresh and on upgrade. (Forum request)
+- **Top hosts → Networks without named networks.** The networks are found from the devices' interface addresses
+  (SNMP or typed), with their own masks (`10.10.0.0/16` stays one network); an inside address in none of them falls
+  into its /24, marked as a guess; named networks still come first. `net:` takes such a network by its address, and the
+  PDF part *Your networks* shows them too. Before, the page stayed empty until networks were named.
+- **IP reputation lists by URL.** Settings → Events → IP reputation → *Add a list by URL*: up to ten lists of your own,
+  each with a name, what it holds and how often to download it (every hour … weekly). Text (with `#` / `;` comments),
+  CSV, JSON and JSON lines are read; a failed or empty download keeps the last good copy and says so. A list can hold
+  malware, criminal netblocks, attackers, **spam sources** (new category) or Tor exits. (Forum request)
+- **Host names from DNS under your control.** Settings → General → *Host names from DNS*: off, only the hosts a page
+  shows, or also in the background at 5 / 20 / 50 lookups a second (default 20, never more than 4 at a time);
+  `FT_DNS_RATE` in `/etc/flowsphera/env` gives the default. For DNS servers that forward private PTR queries outside.
+- API: `GET /api/geo/places?country=&q=&limit=`; `GET/POST /api/dns`; `/api/meta` devices carry `geo_src`
+  (`manual` / `city`).
+
+### Fixed
+- **MikroTik VPN / PPPoE sessions no longer multiply the interfaces.** RouterOS gives every session (`<sstp-user>`,
+  `<l2tp-…>`, `<pppoe-…>`) a new interface number: Capacity listed one row per past session as «if 15738749». Now the
+  name of every interface number is kept (read over SNMP every minute with the counters), and these interfaces are
+  folded into one line per name on Capacity and in Settings → Devices; `iface:<name>` covers all the sessions. The
+  MikroTik snippet shows the static binding that gives one interface per user, and a session's interface is no longer
+  put into the default export list.
+- Settings → Devices: the *Site* column showed `[object Object]`; in the device dialog the IP and Name fields were not
+  aligned.
+- A duplicate Ukrainian text key removed (a test now guards against it).
 ## 2.5.0 — 2026-11-11
 
 ### Added
