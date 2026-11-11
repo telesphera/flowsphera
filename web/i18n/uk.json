@@ -461,7 +461,6 @@
  "Show all": "Показати всі",
  "Show top 10": "Показати топ-10",
  "Show top 50": "Показати топ-50",
- "Show top 50": "Показати топ-50",
  "Sign in": "Вхід до панелі",
  "Sign out": "Вийти",
  "Site": "Майданчик",
@@ -2133,5 +2132,16 @@
  "earlier sessions": "попередні сесії",
  "{n} sessions from before names were kept": {"one": "{n} сесія без збереженої назви", "few": "{n} сесії без збереженої назви", "many": "{n} сесій без збереженої назви", "other": "{n} сесії без збереженої назви"},
  "last {date}": "остання {date}",
- "VPN users (SSTP, L2TP, PPTP, OpenVPN, PPPoE): a static binding keeps one interface per user, not a new one each session": "Користувачі VPN (SSTP, L2TP, PPTP, OpenVPN, PPPoE): статична прив'язка дає один інтерфейс на користувача, а не новий на кожну сесію"
+ "VPN users (SSTP, L2TP, PPTP, OpenVPN, PPPoE): a static binding keeps one interface per user, not a new one each session": "Користувачі VPN (SSTP, L2TP, PPTP, OpenVPN, PPPoE): статична прив'язка дає один інтерфейс на користувача, а не новий на кожну сесію",
+ "Lists by URL — a list on the web that FlowSphera downloads again by itself": "Списки за URL — список в інтернеті, який FlowSphera сама регулярно завантажує",
+ "Add a list by URL": "Додати список за URL",
+ "Text with one address or network per line (# and ; start a comment), CSV or JSON. Downloaded within 10 minutes of saving, then on its schedule; a failed or empty download keeps the last good copy.": "Текст з однією адресою чи мережею на рядок (# і ; починають коментар), CSV або JSON. Завантажується протягом 10 хвилин після збереження, далі за розкладом; невдале чи порожнє завантаження зберігає останню добру копію.",
+ "every hour": "щогодини",
+ "every 6 hours": "кожні 6 годин",
+ "every 12 hours": "кожні 12 годин",
+ "daily": "щодня",
+ "weekly": "щотижня",
+ "My blocklist": "Мій список",
+ "at most {n} lists by URL": "не більше {n} списків за URL",
+ "list by URL: not an http(s) address: {value}": "список за URL: це не адреса http(s): {value}"
 }

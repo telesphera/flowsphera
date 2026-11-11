@@ -892,3 +892,9 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
 .captable tr.capdyn{cursor:pointer}
 .captable tr.capdyn td{background:rgba(255,255,255,.025)}
 .captable tr.capdynrow td:nth-child(2){padding-left:22px}
+/* (2.6.0) IP reputation: lists by URL */
+.evurl{margin-top:14px;display:grid;gap:8px}
+.evu td:nth-child(3){width:32%}
+.evu input[data-uk=url]{min-width:300px;width:100%}
+.evu input[data-uk=name]{min-width:190px}
+.evu select[data-uk=category]{min-width:230px}

@@ -9,6 +9,7 @@ import io
 import ipaddress
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -72,6 +73,71 @@ LISTS = {
     'dshield':        ('attack', ['https://feeds.dshield.org/block.txt'], _dshield, REFRESH, 'https://www.dshield.org/'),
     'tor_exit':       ('anon', ['https://check.torproject.org/torbulkexitlist'], _lines, REFRESH, 'https://metrics.torproject.org/'),
 }
+# (2.6.0) lists an administrator adds by URL (Settings → Events → IP reputation): {name: (category, [url], parser,
+# refresh seconds, url, title)}, set from the events configuration by use_url_lists(); name = 'url_<id>'
+EXTRA = {}
+URL_MAX = 10
+URL_CATS = ('malware', 'drop', 'attack', 'anon')
+URL_HOURS = (1, 6, 12, 24, 168)
+
+
+def _auto(text):
+    """(2.6.0) A list in whatever shape a publisher gives it: JSON (an array of addresses, or of objects with ip / cidr /
+    network / address, or one such object per line) or text — one entry per line, comments after # or ; dropped, the
+    first word of a line (also before a comma: a CSV) taken."""
+    t = text.lstrip('\ufeff').strip()
+    if t[:1] in '[{':
+        keys = ('cidr', 'ip', 'network', 'address', 'ip_address', 'ipaddress', 'prefix')
+
+        def one(x):
+            if isinstance(x, str):
+                return x
+            if isinstance(x, dict):
+                return next((str(x[k]) for k in keys if x.get(k)), None)
+            return None
+        try:
+            d = json.loads(t)
+            items = d if isinstance(d, list) else next((v for v in d.values() if isinstance(v, list)), [d])
+            for x in items:
+                v = one(x)
+                if v:
+                    yield v
+            return
+        except ValueError:
+            pass
+        ok = False
+        for line in t.splitlines():      # one JSON object per line (Spamhaus DROP)
+            try:
+                v = one(json.loads(line))
+            except ValueError:
+                continue
+            if v:
+                ok = True
+                yield v
+        if ok:
+            return
+    for line in t.splitlines():
+        line = re.split(r'[#;]', line, maxsplit=1)[0].strip()
+        if line:
+            yield re.split(r'[\s,]', line, maxsplit=1)[0]
+
+
+def use_url_lists(items):
+    """(2.6.0) Make the URL lists of the configuration known here (detect.load_config calls it)."""
+    EXTRA.clear()
+    for x in items or ():
+        EXTRA['url_' + x['id']] = (x['category'], [x['url']], _auto, int(x['hours']) * 3600, x['url'], x['name'])
+
+
+def _def(name):
+    return LISTS.get(name) or (EXTRA[name][:5] if name in EXTRA else None)
+
+
+def title(name):
+    """A list's name for people."""
+    return EXTRA[name][5] if name in EXTRA else TITLES.get(name, name)
+
+
 TITLES = {'feodo': 'abuse.ch Feodo Tracker', 'threatfox': 'abuse.ch ThreatFox', 'spamhaus_drop': 'Spamhaus DROP',
           'et_compromised': 'ET compromised', 'cins': 'CINS Army', 'blocklist_de': 'blocklist.de', 'dshield': 'DShield top',
           'tor_exit': 'Tor exits', 'custom': 'own list'}
@@ -182,12 +248,21 @@ def update(enabled, log=print, now=None):
     """Download the enabled lists that are due. A failed or empty download keeps the previous copy. -> names updated."""
     os.makedirs(DIR, exist_ok=True)
     now, m, done, keys = now or time.time(), meta(), [], load_keys()
+    for name in [x for x in m if x.startswith('url_') and x not in EXTRA]:      # (2.6.0) a URL list removed: its copy too
+        m.pop(name, None)
+        try:
+            os.remove(os.path.join(DIR, name + '.txt'))
+        except OSError:
+            pass
+        _save_meta(m)
     for name in enabled:
-        if name not in LISTS:
+        if not _def(name):
             continue
-        cat, urls, parse, every, _ = LISTS[name]
+        cat, urls, parse, every, _ = _def(name)
         st = m.get(name, {})
-        if now - st.get('tried', 0) < (every if st.get('ok') else RETRY):
+        if name in EXTRA and st.get('url') != urls[0]:        # (2.6.0) a new or changed address: download now
+            st = {'url': urls[0]}
+        if st.get('tried') and now - st['tried'] < (every if st.get('ok') else RETRY):      # never tried: now
             continue
         st['tried'] = now
         auth = AUTH.get(name, {})
@@ -222,7 +297,7 @@ class Index:
         self.build(enabled, custom)
 
     def build(self, enabled, custom):
-        files = [(n, os.path.join(DIR, n + '.txt')) for n in enabled if n in LISTS]
+        files = [(n, os.path.join(DIR, n + '.txt')) for n in enabled if _def(n)]
         key = (tuple(sorted(custom)), tuple((n, os.path.getmtime(p)) for n, p in files if os.path.exists(p)))
         if key == self.key:
             return False
@@ -284,5 +359,5 @@ def _segments(ranges):
 
 def category(names):
     """The worst category among list names: malware > drop > attack > anon (own list counts as attack)."""
-    cats = {LISTS[n][0] if n in LISTS else 'attack' for n in names}
+    cats = {_def(n)[0] if _def(n) else 'attack' for n in names}
     return next((c for c in ('malware', 'drop', 'attack', 'anon') if c in cats), '')

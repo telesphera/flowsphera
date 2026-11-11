@@ -2608,6 +2608,11 @@ def get_events_config():
               'count': m.get(n, {}).get('count', 0), 'updated': m.get(n, {}).get('updated', 0), 'error': m.get(n, {}).get('error', ''),
               'key_set': n in keys, 'key_need': bool(reputation.AUTH.get(n, {}).get('need')), 'key_link': reputation.AUTH.get(n, {}).get('signup', '')}
              for n, (c, _, _, _, link) in reputation.LISTS.items()]
+    # (2.6.0) the lists added by URL with what their downloads did
+    for x in cfg.get('url_lists') or []:
+        st = m.get('url_' + x['id'], {})
+        x.update(count=st.get('count', 0) if st.get('url') == x['url'] else 0, updated=st.get('updated', 0) if st.get('url') == x['url'] else 0,
+                 error=st.get('error', '') if st.get('url') == x['url'] else '')
     return {'config': cfg, 'defaults': detect.defaults(), 'services': svcs, 'lists': lists}
 
 
@@ -2621,7 +2626,7 @@ EXCEPTION_KEYS = ('ignore', 'exclude')
 def post_events_config(body):
     cur = detect.load_config()
     try:
-        detect.save_config(detect.validate({**{k: cur[k] for k in SERVICE_KEYS + EXCEPTION_KEYS}, **body}))
+        detect.save_config(detect.validate({**{k: cur[k] for k in SERVICE_KEYS + EXCEPTION_KEYS + ('url_lists',)}, **body}))
         # (1.16.2) list keys: {list: key} sets, clear_keys: [list] removes; an empty field keeps the saved key
         keys = {n: v for n, v in (body.get('list_keys') or {}).items() if isinstance(v, str) and v.strip()}
         keys.update({n: '' for n in body.get('clear_keys') or [] if isinstance(n, str)})

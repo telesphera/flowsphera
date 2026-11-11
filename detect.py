@@ -23,7 +23,9 @@ import json
 import os
 import re
 import threading
+import secrets
 import time
+import urllib.parse
 from zoneinfo import ZoneInfo
 
 import notify
@@ -96,7 +98,7 @@ HEAVY = {'max_memory_usage': _MEM, 'max_bytes_before_external_group_by': _MEM * 
 # ---------------------------------------------------------------- settings
 def defaults():
     return {'kinds': {k: dict(v) for k, v in KINDS.items()}, 'ignore': [], 'exclude': [], 'sensitive': list(SENSITIVE),
-            'public': list(PUBLIC), 'roles': {}, 'lists': {n: True for n in reputation.LISTS}, 'own_list': []}
+            'public': list(PUBLIC), 'roles': {}, 'lists': {n: True for n in reputation.LISTS}, 'own_list': [], 'url_lists': []}
 
 
 def load_config():
@@ -109,11 +111,42 @@ def load_config():
     for k, v in (saved.get('kinds') or {}).items():
         if k in cfg['kinds'] and isinstance(v, dict):
             cfg['kinds'][k].update({x: y for x, y in v.items() if x in cfg['kinds'][k]})
-    for k in ('ignore', 'exclude', 'sensitive', 'public', 'roles', 'own_list'):
+    for k in ('ignore', 'exclude', 'sensitive', 'public', 'roles', 'own_list', 'url_lists'):
         if k in saved:
             cfg[k] = saved[k]
     cfg['lists'].update({n: bool(v) for n, v in (saved.get('lists') or {}).items() if n in cfg['lists']})
+    reputation.use_url_lists(cfg['url_lists'])          # (2.6.0) the lists by URL are known wherever the settings are read
     return cfg
+
+
+def enabled_lists(cfg):
+    """(2.6.0) The names of the reputation lists switched on: the built-in ones and those added by URL."""
+    return [n for n, on in cfg['lists'].items() if on] + ['url_' + x['id'] for x in cfg.get('url_lists') or () if x.get('on')]
+
+
+def url_lists(items):
+    """(2.6.0) Lists by URL from the UI, checked: [{id, name, url, category, hours, on}]; raises ValueError for people."""
+    if not isinstance(items, list):
+        raise ValueError('url_lists')
+    if len(items) > reputation.URL_MAX:
+        raise ValueError(tr('at most {n} lists by URL', n=reputation.URL_MAX))
+    out, ids = [], set()
+    for x in items:
+        if not isinstance(x, dict):
+            raise ValueError('url_lists')
+        url = str(x.get('url', '')).strip()
+        u = urllib.parse.urlparse(url)
+        if u.scheme not in ('http', 'https') or not u.hostname or len(url) > 500 or any(c.isspace() for c in url):
+            raise ValueError(tr('list by URL: not an http(s) address: {value}', value=url[:80]))
+        name = ' '.join(str(x.get('name', '')).split())[:40] or u.hostname
+        hours = int(x['hours']) if str(x.get('hours', '')).isdigit() and int(x['hours']) in reputation.URL_HOURS else 24
+        lid = str(x.get('id', ''))
+        if not re.fullmatch(r'[a-z0-9]{1,12}', lid) or lid in ids:
+            lid = secrets.token_hex(4)
+        ids.add(lid)
+        out.append({'id': lid, 'name': name, 'url': url, 'category': x.get('category') if x.get('category') in reputation.URL_CATS else 'attack',
+                    'hours': hours, 'on': bool(x.get('on', True))})
+    return out
 
 
 def _ignore_item(s):
@@ -197,6 +230,7 @@ def validate(body):
     if len(out) > 20000:
         raise ValueError(tr('own list: at most 20,000 entries'))
     cfg['own_list'] = sorted(out)
+    cfg['url_lists'] = url_lists(body.get('url_lists', []))
     cfg['exclude'] = exclusions(body.get('exclude', []))
     return cfg
 
@@ -872,7 +906,7 @@ class Detector:
                 self.save_state(self.state().get('done'), seeded=now)
             self.base, self.learned = learn(self.log), now
         cfg = load_config()
-        lists = [n for n, on in cfg['lists'].items() if on]
+        lists = enabled_lists(cfg)
         done = self.state().get('done') or (now - BACKFILL) // WINDOW * WINDOW
         done = max(done, (now - BACKFILL) // WINDOW * WINDOW)     # off for days: only the last one
         found = 0
@@ -895,7 +929,7 @@ class Detector:
         try:
             cfg = load_config()
             if any(cfg['kinds'][k]['on'] for k in ('malware_contact', 'listed_contact', 'listed_inbound')):
-                done = reputation.update([n for n, on in cfg['lists'].items() if on], self.log)
+                done = reputation.update(enabled_lists(cfg), self.log)
                 if done:
                     self.log(f"reputation lists updated: {', '.join(done)}")
         except Exception as ex:
@@ -987,7 +1021,7 @@ def _mbps(v):
 
 
 def _lists(names):
-    return ', '.join(reputation.TITLES.get(n, n) for n in names)
+    return ', '.join(reputation.title(n) for n in names)
 
 
 def describe(r):
@@ -1114,7 +1148,7 @@ def _describe(r):
         for names in m.values():
             for n in names:
                 per[n] = per.get(n, 0) + 1
-        top = ', '.join(f'{reputation.TITLES.get(n, n)} {c:,}' for n, c in sorted(per.items(), key=lambda x: -x[1]))
+        top = ', '.join(f'{reputation.title(n)} {c:,}' for n, c in sorted(per.items(), key=lambda x: -x[1]))
         return (tr('Listed addresses calling us'),
                 trn(len(m), '{n} address from reputation lists called our services ({sessions} sessions; ports {ports}): {top}.',
                     '{n} addresses from reputation lists called our services ({sessions} sessions; ports {ports}): {top}.',

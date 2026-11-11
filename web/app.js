@@ -2974,6 +2974,15 @@ function vEventsCfg(){
         placeholder="${l.key_set ? T('saved — leave empty to keep') : l.key_need ? T('needed — paste the key') : T('only if the publisher asks')}">
         ${l.key_set ? `<label class="chk"><input type="checkbox" data-keyx="${esc(l.name)}">${T('Remove')}</label>` : ''}
         ${noKey(l) && l.key_link ? `<div class="note"><a href="${esc(l.key_link)}" target="_blank" rel="noopener">${T('Get a free key')}</a></div>` : ''}</td>`;
+    const HOURS = [[1, T('every hour')], [6, T('every 6 hours')], [12, T('every 12 hours')], [24, T('daily')], [168, T('weekly')]];
+    const urlRow = x => `<tr data-u="${esc(x.id || '')}"><td><label class="chk"><input type="checkbox" data-uk="on" ${x.on !== false ? 'checked' : ''} aria-label="${T('On')}"></label></td>
+      <td><input data-uk="name" value="${esc(x.name || '')}" maxlength="40" placeholder="${T('My blocklist')}" aria-label="${T('Name')}"></td>
+      <td><input data-uk="url" class="mono" value="${esc(x.url || '')}" maxlength="500" placeholder="https://example.org/blocklist.txt" aria-label="URL"></td>
+      <td><select data-uk="category" aria-label="${T('What it holds')}">${Object.entries(cats).map(([k, v]) => `<option value="${k}"${k === x.category ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></td>
+      <td><select data-uk="hours" aria-label="${T('How often')}">${HOURS.map(([h, v]) => `<option value="${h}"${h === (x.hours || 24) ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></td>
+      <td class="num mono">${x.count ? x.count.toLocaleString(LOC) : '—'}</td>
+      <td>${x.id ? listState(x) : ''}<span class="note">${x.updated ? when(x.updated) : x.id && x.on !== false && !x.error ? T('not yet — within 10 min') : ''}</span></td>
+      <td><button class="btn tiny" type="button" data-urm title="${T('Remove')}" aria-label="${T('Remove')}">×</button></td></tr>`;
     const listState = l => l.error === 'needs a key' ? `<span class="pill warn">${T('needs a key')}</span>`
       : l.error === 'the key was refused' ? `<span class="pill crit">${T('the key was refused')}</span> `
       : l.error ? `<span class="pill crit" title="${esc(l.error)}">${T('failed')}</span> ` : '';
@@ -2981,7 +2990,17 @@ function vEventsCfg(){
       ${res.lists.map(l => `<tr><td><label class="chk"><input type="checkbox" data-list="${esc(l.name)}" ${l.on ? 'checked' : ''} aria-label="${esc(l.title)}"></label></td>
         <td><a href="${esc(l.link)}" target="_blank" rel="noopener">${esc(l.title)}</a></td><td class="note">${cats[l.category] || ''}</td><td class="num mono">${l.count ? l.count.toLocaleString(LOC) : '—'}</td>
         <td>${listState(l)}<span class="note">${l.updated ? when(l.updated) : l.on && !l.error ? T('not yet — within 10 min') : ''}</span></td>${keyCell(l)}</tr>`).join('')}</tbody></table></div>
-      <div class="form evown"><label>${T('Own list — addresses and networks you consider malicious (one per line)')}<textarea id="evOwn" rows="3" placeholder="203.0.113.66&#10;198.51.100.0/24">${esc((cfg.own_list || []).join('\n'))}</textarea></label></div>`);
+      <div class="form evown"><label>${T('Own list — addresses and networks you consider malicious (one per line)')}<textarea id="evOwn" rows="3" placeholder="203.0.113.66&#10;198.51.100.0/24">${esc((cfg.own_list || []).join('\n'))}</textarea></label></div>
+      <div class="form evurl"><span class="lbl">${T('Lists by URL — a list on the web that FlowSphera downloads again by itself')}</span>
+        <div class="tw"><table class="evr evu"><thead><tr><th>${T('On')}</th><th>${T('Name')}</th><th>URL</th><th>${T('What it holds')}</th><th>${T('How often')}</th><th class="num">${T('Entries')}</th><th>${T('Updated')}</th><th></th></tr></thead>
+        <tbody id="evuRows">${(cfg.url_lists || []).map(urlRow).join('')}</tbody></table></div>
+        <div><button class="btn" type="button" id="evuAdd">+ ${T('Add a list by URL')}</button> <span class="note">${T('Text with one address or network per line (# and ; start a comment), CSV or JSON. Downloaded within 10 minutes of saving, then on its schedule; a failed or empty download keeps the last good copy.')}</span></div></div>`);
+    // (2.6.0) lists by URL: rows added and removed here, saved with the page
+    const evuWire = () => { document.querySelectorAll('#evuRows [data-urm]').forEach(b => b.onclick = () => { b.closest('tr').remove(); evuMax(); }); };
+    const evuMax = () => { document.getElementById('evuAdd').disabled = document.querySelectorAll('#evuRows tr').length >= 10; };
+    document.getElementById('evuAdd').onclick = () => { document.getElementById('evuRows').insertAdjacentHTML('beforeend', urlRow({on:true, category:'attack', hours:24}));
+      evuWire(); evuMax(); const r = document.querySelectorAll('#evuRows tr'); r[r.length - 1].querySelector('[data-uk=url]').focus(); };
+    evuWire(); evuMax();
     excTables(cfg);
     mark();
   };
@@ -2993,7 +3012,10 @@ function vEventsCfg(){
     const lists = {}; document.querySelectorAll('table.evr [data-list]').forEach(i => { lists[i.dataset.list] = i.checked; });
     const list_keys = {}; document.querySelectorAll('table.evr [data-key]').forEach(i => { if (i.value.trim()) list_keys[i.dataset.key] = i.value.trim(); });
     const clear_keys = [...document.querySelectorAll('table.evr [data-keyx]:checked')].map(i => i.dataset.keyx);
-    return {kinds, lists, list_keys, clear_keys, own_list:document.getElementById('evOwn').value.split('\n').filter(x => x.trim())};
+    const url_lists = [...document.querySelectorAll('#evuRows tr')].map(tr => { const v = k => tr.querySelector(`[data-uk=${k}]`);     // (2.6.0)
+      return {id:tr.dataset.u, on:v('on').checked, name:v('name').value.trim(), url:v('url').value.trim(), category:v('category').value, hours:Number(v('hours').value)}; })
+      .filter(x => x.url || x.name);
+    return {kinds, lists, list_keys, clear_keys, url_lists, own_list:document.getElementById('evOwn').value.split('\n').filter(x => x.trim())};
   };
   const collectNotify = () => { const kinds = {}, email_kinds = {}, webhook_kinds = {}, siem_kinds = {}, v = id => document.getElementById(id);
     document.querySelectorAll('table.evk [data-s]').forEach(i => { siem_kinds[i.dataset.s] = i.checked; });
