@@ -151,9 +151,11 @@ filter like any other: `dscp:EF` narrows every page to it.
 ### Top hosts and your own networks
 
 Name your networks once (*172.16.0.0/24 → Office*) and see the traffic, trend and main services of each — or of every
-single host.
+single host. **No names yet? The networks are already there:** FlowSphera finds them from the addresses of your
+devices' interfaces, with their own masks — a `/16` stays one network, not 256 pieces — and says which interface of
+which device each one sits behind. A name you give wins.
 
-<p align="center"><img src="docs/media/en/hosts-networks.webp" alt="Top hosts by named network" width="100%"></p>
+<p align="center"><img src="docs/media/en/networks-auto.webp" alt="Top networks with no setup: a named network (Servers) and two found from the devices' interfaces — lan of edge-fw, bridge of branch-rtr" width="100%"></p>
 
 ### Usage — who used how much
 
@@ -200,13 +202,16 @@ keeps them across restarts, so a host is found even if no page has shown it yet.
 
 Port scans, password guessing on SSH / RDP / management ports, floods and DDoS against your usual peak, inside hosts
 that scan, contact with addresses on eight public reputation lists (plus your own), sustained uploads, new countries
-and exporter health. FlowSphera works out who opened each connection and which of your services are public, so busy
+and exporter health. **Add any blocklist by its URL** — text, CSV or JSON, refreshed every hour to every week — next
+to the built-in ones. FlowSphera works out who opened each connection and which of your services are public, so busy
 web sites stay quiet. New events go to Telegram (your own bot), e-mail, webhooks (Slack, Mattermost, Discord or your
 own system) and your SIEM as syslog (CEF or JSON).
 
 The page shows the picture first: how many events of each priority, how their number changes over the period by kind,
 and the share of each kind. Pick a priority or a kind and the chart, the ring and the list follow it. Below — the newest
 30 events with Filter / Exclude / Ignore; **All events** pages through the rest with a search by address or text.
+
+<p align="center"><img src="docs/media/en/url-lists.webp" alt="IP reputation: lists by URL — name, address, what it holds, how often it is downloaded" width="100%"></p>
 
 <p align="center"><img src="docs/media/en/events.webp" alt="Events page: cards by priority, events over time by kind, the share of each kind, the newest events with Filter / Exclude / Ignore" width="100%"></p>
 
@@ -276,6 +281,18 @@ names, roles, capacities, SNMP — and keeps the old address as its alias, so it
 page. Devices go to another server as a JSON file (checked device by device, all or nothing, no SNMP secrets), and a
 source that sends but is not described can be **ignored**. Port, host and network names come and go as **CSV** — straight
 from Excel in any language — with a preview of what is new, changed or unreadable before anything is saved.
+
+**City and country are enough.** Type the city and the device is on the connection map and the globe: FlowSphera
+offers the places of that country as you type (about 150,000, from the GeoIP data it already has — offline, no online
+service asked), and latitude and longitude stay for when you want it exact. A MikroTik's VPN and PPPoE sessions — a new
+interface each time — are kept by name and folded into one line, so the lists of interfaces stay clean.
+
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/media/en/device-place-offer.webp" alt="The device dialog: «Bru» typed with the country BE — Brussels, Bruges and more offered with their region and coordinates"></td>
+<td width="50%" valign="top"><img src="docs/media/en/device-place.webp" alt="The device dialog: City Brussels, Country BE — «On the map at Brussels, Brussels Capital (50.85, 4.36) — from City + Country»"></td>
+</tr>
+</table>
 
 <table>
 <tr>
