@@ -326,6 +326,17 @@ def api_hosts_find(q):
     return {'hosts': NAMES.find(q.get('q', [''])[0][:100], limit)}
 
 
+def api_geo_places(q):
+    """(2.6.0) GET /api/geo/places?country=CC&q=text[&limit=N]: places of a country by name (the device form's City),
+    from the DB-IP place index; `ready` false = the index is not built yet."""
+    try:
+        limit = max(1, min(30, int(q.get('limit', ['10'])[0])))
+    except ValueError:
+        limit = 10
+    cc = q.get('country', [''])[0].strip()[:2]
+    return {'places': common.PLACES.find(cc, q.get('q', [''])[0][:64], limit), 'ready': common.PLACES.ready()}
+
+
 # ------------------------------------------------------------------ query building
 
 class BadRequest(Exception):
@@ -583,9 +594,10 @@ def api_meta(q):
         if r['exporter'] in alias:       # (2.4.0) an earlier address of a device: its records are that device's
             continue
         c = exp.get(r['exporter'], {})
+        lat, lon, site = common.device_site(c)      # (2.6.0) no coordinates: the place of its City + Country
         devices.append({'ip': r['exporter'], 'name': c.get('name', r['exporter']), 'vendor': c.get('vendor', ''), 'model': c.get('model', ''),
                         'if_names': c.get('if_names', {}), 'local_if': c.get('local_if'),
-                        'city': c.get('city', ''), 'country': c.get('country', ''), 'lat': c.get('lat'), 'lon': c.get('lon'), 'last': r['last'],
+                        'city': c.get('city', ''), 'country': c.get('country', ''), 'lat': lat, 'lon': lon, 'site': site, 'last': r['last'],
                         'aliases': c.get('aliases') or []})
     # (1.17.0) the first record in time order (min() under a WHERE read every record of the period)
     oldest = ch("SELECT toUnixTimestamp(ts) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16}) ORDER BY ts LIMIT 1", {'d': view_days()}, fmt='JSON')
@@ -1689,6 +1701,7 @@ def api_devices(q):
                     'wan_ifs': c.get('wan_ifs', []), 'configured': s['exporter'] in exp,
                     'aliases': [str(a) for a in c.get('aliases') or []],      # (2.4.0) its earlier addresses (reports)
                     'config': {k: c.get(k) for k in ('name', 'vendor', 'protocol', 'model', 'wan_ifs', 'local_if', 'public_ips', 'city', 'country', 'lat', 'lon', 'sampling', 'export_ifs')},
+                    'site': dict(zip(('lat', 'lon', 'src'), common.device_site(c))),     # (2.6.0) where the map puts it
                     'snmp': snmp_status(s['exporter'], sset, sdata),
                     'interfaces': interfaces_of(c, [r for r in ifs if r['exporter'] == s['exporter']], seen_addrs.get(s['exporter'], {}),
                                                 sdata.get(s['exporter']) if sset.get(s['exporter'], {}).get('enabled') else None,
@@ -3111,7 +3124,7 @@ class Cache:
 
 
 CACHE = Cache()
-ROUTES = {'/api/hosts/find': api_hosts_find, '/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
+ROUTES = {'/api/hosts/find': api_hosts_find, '/api/geo/places': api_geo_places, '/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
           '/api/flows': api_flows, '/api/paths': api_paths, '/api/devmap': api_devmap, '/api/topology': api_topology, '/api/path': api_path, '/api/live': api_live, '/api/ports': api_ports, '/api/hosts/names': api_host_names, '/api/networks': api_networks, '/api/geo': api_geo, '/api/devices': api_devices, '/api/host': api_host,
           '/api/alerts': api_alerts, '/api/ifload': api_ifload, '/api/ingest': api_ingest, '/api/apps': api_apps,
           '/api/capacity': api_capacity, '/api/capacity/iface': api_capacity_iface, '/api/usage': api_usage, '/api/qos': api_qos, '/api/conversations': api_conversations}

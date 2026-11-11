@@ -882,3 +882,9 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
 .moverow p{grid-column:1 / -1;margin:0}
 /* (2.4.0) Flow configuration: CSV buttons in the panel header */
 .csvbtns{display:flex;gap:6px;flex-wrap:wrap}
+/* (2.6.0) device dialog: places offered under City (fixed over the dialog, never pushing the form) */
+.plist{position:fixed;z-index:200;max-height:280px;overflow-y:auto;padding:4px;border-radius:12px;background:#0B1736;border:1px solid var(--edge-hi);box-shadow:0 18px 48px rgba(0,0,0,.6)}
+.plist button{display:flex;justify-content:space-between;gap:12px;width:100%;padding:7px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.plist button:hover{background:rgba(255,255,255,.07)}
+.plist .nat{white-space:nowrap}
+#fSite{margin:-2px 0 4px}

@@ -2601,7 +2601,7 @@ function vApps(){
 }
 // devices without a location: the map draws no lines from them — say so and where to set it
 const noSite = () => { const n = META.devices.filter(d => d.lat == null || d.lon == null).map(d => d.name || d.ip);
-  return n.length ? `<p class="note warn">${T('No lines from devices without a location — set Latitude and Longitude in Settings → Devices')}: ${esc(n.join(', '))}</p>` : ''; };
+  return n.length ? `<p class="note warn">${T('No lines from devices without a location — set City and Country (or Latitude and Longitude) in Settings → Devices')}: ${esc(n.join(', '))}</p>` : ''; };
 function vGeo(){
   const v = document.getElementById('view');
   v.innerHTML = `<div class="grid"><section class="glass panel s8">${ph('globe', T('Connection map'), T('destination GeoIP · a line appears when a new flow arrives · colour = direction'),
@@ -4307,6 +4307,58 @@ function openModal(title, sub, body, wide){
   return {root, close};
 }
 const formErr = (id, msg) => { const el = document.getElementById(id); if (el) { el.textContent = msg || ''; el.hidden = !msg; } };
+// (2.6.0) City + Country put a device on the map without coordinates (the DB-IP place index, api/geo/places): the
+// City field offers the country's places, the line under the coordinates says where the map puts the device
+const placeFold = s => (s || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/-/g, ' ').split(/\s+/).filter(Boolean).join(' ');
+const placeAsk = (cc, q, limit) => fetch(`api/geo/places?country=${encodeURIComponent(cc)}&q=${encodeURIComponent(q)}&limit=${limit}`)
+  .then(r => r.ok ? r.json() : {places:[], ready:false}).catch(() => ({places:[], ready:false}));
+function wirePlace(root){
+  const $ = id => document.getElementById(id), city = $('fCity'), cc = $('fCc'), lat = $('fLat'), lon = $('fLon'), out = $('fSite');
+  if (!city || !out) return;
+  const list = document.createElement('div'); list.className = 'plist'; list.id = 'fCityList'; list.hidden = true; root.appendChild(list);
+  let seq = 0, tm = 0, offered = [];
+  const where = x => `${esc(x.name)}${x.region ? `, ${esc(x.region)}` : ''}`, deg = x => `${x.lat.toFixed(2)}, ${x.lon.toFixed(2)}`;
+  const site = async () => {
+    const my = ++seq, c = cc.value.trim(), q = city.value.trim();
+    lat.placeholder = '52.37'; lon.placeholder = '4.90';
+    if (lat.value.trim() && lon.value.trim()) { out.textContent = T('On the map at the latitude and longitude set here.'); return; }
+    if (!q || c.length !== 2) { out.textContent = T('Enter City and Country code, or Latitude and Longitude, to put the device on the map.'); return; }
+    const r = await placeAsk(c, q, 30);
+    if (my !== seq) return;
+    const hit = r.places.find(x => placeFold(x.name) === placeFold(q));
+    if (hit) { lat.placeholder = hit.lat.toFixed(4); lon.placeholder = hit.lon.toFixed(4);
+      out.innerHTML = T('On the map at {place} ({ll}) — from City + Country. Latitude and Longitude, if set, take priority.', {place: where(hit), ll: deg(hit)}); }
+    else out.textContent = r.ready ? T('No place «{city}» in the GeoIP data for {cc} — check the name or set Latitude and Longitude.', {city: q, cc: c.toUpperCase()})
+      : T('The place list is not ready yet (it is made with the GeoIP databases) — set Latitude and Longitude, or try again later.');
+  };
+  const hide = () => { list.hidden = true; };
+  const show = async () => {
+    const my = ++seq, c = cc.value.trim(), q = city.value.trim();
+    if (q.length < 2 || c.length !== 2) { hide(); site(); return; }
+    const r = await placeAsk(c, q, 8);
+    if (my !== seq) return;
+    offered = r.places;
+    if (!offered.length || (offered.length === 1 && offered[0].name === q)) { hide(); site(); return; }
+    // under the field, or above it when the window has more room there
+    const b = city.getBoundingClientRect(), below = innerHeight - b.bottom - 12, up = below < 200 && b.top > below;
+    Object.assign(list.style, {left:`${b.left}px`, width:`${Math.max(b.width, 260)}px`, maxHeight:`${Math.min(280, up ? b.top - 12 : below)}px`,
+      top:up ? 'auto' : `${b.bottom + 4}px`, bottom:up ? `${innerHeight - b.top + 4}px` : 'auto'});
+    list.innerHTML = offered.map((x, i) => `<button type="button" data-i="${i}">${esc(x.name)}<span class="nat">${x.region ? esc(x.region) + ' · ' : ''}${deg(x)}</span></button>`).join('');
+    list.hidden = false; site();
+  };
+  list.addEventListener('mousedown', e => { const b = e.target.closest('button'); if (!b) return; e.preventDefault();
+    const x = offered[+b.dataset.i]; city.value = x.name;
+    // a name used twice in the country (Springfield): the one picked is kept by its coordinates
+    const twice = offered.filter(y => placeFold(y.name) === placeFold(x.name)).length > 1;
+    lat.value = twice ? String(x.lat) : ''; lon.value = twice ? String(x.lon) : '';
+    hide(); site(); });
+  city.addEventListener('input', () => { clearTimeout(tm); tm = setTimeout(show, 150); });
+  city.addEventListener('blur', () => setTimeout(hide, 100));
+  city.addEventListener('keydown', e => { if (e.key === 'Escape' && !list.hidden) { e.stopPropagation(); hide(); } });
+  root.querySelector('.modal')?.addEventListener('scroll', hide);
+  [cc, lat, lon].forEach(el => el.addEventListener('input', () => { clearTimeout(tm); tm = setTimeout(site, 150); }));
+  site();
+}
 function openDevice(dev){
   const c = dev ? dev.config || {} : {}, editing = !!dev, st = (dev && dev.snmp) || {};
   let vendor = VENDOR_LIST().includes(c.vendor) ? c.vendor : c.vendor ? 'Other' : 'Fortinet';
@@ -4379,6 +4431,7 @@ function openDevice(dev){
         <label>${T('Public IPs of the device (comma-separated)')}<input id="fPub" value="${esc((c.public_ips || []).join(', '))}" placeholder="198.51.100.10"></label>
         <div class="two"><label>${T('City')}<input id="fCity" value="${esc(c.city || '')}" placeholder="Amsterdam"></label><label>${T('Country code')}<input id="fCc" value="${esc(c.country || '')}" maxlength="2" placeholder="NL"></label></div>
         <div class="two"><label>${T('Latitude')}<input id="fLat" value="${c.lat ?? ''}" placeholder="52.37"></label><label>${T('Longitude')}<input id="fLon" value="${c.lon ?? ''}" placeholder="4.90"></label></div>
+        <p class="nat" id="fSite" role="status"></p>
         <label class="chk"><input type="checkbox" id="sOn"${sn.enabled ? ' checked' : ''}> ${T('Read interface names and IP addresses over SNMP')}</label>
         <div class="snmpbox" id="sBox"${sn.enabled ? '' : ' hidden'}>${snmpBox()}</div>
         <p class="err" id="fErr" hidden></p>
@@ -4410,7 +4463,7 @@ function openDevice(dev){
       b.querySelectorAll('input[type=checkbox]').forEach(el => el.onchange = () => { ifSel = [...b.querySelectorAll('input[type=checkbox]:checked')].map(x => x.dataset.n); redraw(); });
       const t = document.getElementById('fIfsTxt'); if (t) t.oninput = () => { ifSel = t.value.split(',').map(x => x.trim()).filter(Boolean); redraw(); }; };
     drawIfs = () => { document.getElementById('fIfs').innerHTML = ifBox(); wireIfs(); };
-    wireSnmp(); wireIfs();
+    wireSnmp(); wireIfs(); wirePlace(m.root);
     document.getElementById('fSamp').oninput = redraw;
     document.getElementById('fWan').addEventListener('input', () => drawIfs());
     document.getElementById('sOn').onchange = e => { syncSn(); box.hidden = !e.target.checked; drawIfs(); redraw(); };

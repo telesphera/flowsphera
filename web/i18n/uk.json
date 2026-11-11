@@ -1145,7 +1145,7 @@
  "{t} on the server": "{t} на сервері",
  "Too much data for this period: choose a shorter period or add a filter.": "Забагато даних за цей період: виберіть коротший період або додайте фільтр.",
  "Not enough memory for this period: choose a shorter period or add a filter.": "Не вистачає пам'яті для цього періоду: виберіть коротший період або додайте фільтр.",
- "No lines from devices without a location — set Latitude and Longitude in Settings → Devices": "Ліній від пристроїв без розташування немає — вкажіть широту й довготу в Налаштування → Пристрої",
+ "No lines from devices without a location — set City and Country (or Latitude and Longitude) in Settings → Devices": "Ліній від пристроїв без розташування немає — вкажіть місто й країну (або широту й довготу) в Налаштування → Пристрої",
  "This device sends long sessions again at every export with all their bytes since the start (a running total). FlowSphera stores only what each session grew by since its last export.": "Цей пристрій при кожному експорті надсилає довгі сесії знову з усіма байтами від їхнього початку (наростаючий підсумок). FlowSphera зберігає лише те, на скільки сесія виросла з попереднього експорту.",
  "running totals corrected": "наростаючі підсумки виправлено",
  "{n} devices": "Пристроїв: {n}",
@@ -2116,5 +2116,10 @@
  "The request is too large.": "Запит завеликий.",
  "host name": "ім'я хоста",
  "device address": "адреса пристрою",
- "reverse DNS": "зворотний DNS"
+ "reverse DNS": "зворотний DNS",
+ "On the map at the latitude and longitude set here.": "На карті — за вказаними тут широтою й довготою.",
+ "Enter City and Country code, or Latitude and Longitude, to put the device on the map.": "Вкажіть місто й код країни або широту й довготу, щоб пристрій з'явився на карті.",
+ "On the map at {place} ({ll}) — from City + Country. Latitude and Longitude, if set, take priority.": "На карті: {place} ({ll}) — за містом і країною. Широта й довгота, якщо вказані, мають перевагу.",
+ "No place «{city}» in the GeoIP data for {cc} — check the name or set Latitude and Longitude.": "У даних GeoIP для {cc} немає місця «{city}» — перевірте назву або вкажіть широту й довготу.",
+ "The place list is not ready yet (it is made with the GeoIP databases) — set Latitude and Longitude, or try again later.": "Список місць ще не готовий (він створюється разом із базами GeoIP) — вкажіть широту й довготу або спробуйте пізніше."
 }

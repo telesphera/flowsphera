@@ -75,7 +75,8 @@ Pick the look that suits you — every user keeps their own default view:
 ### Overview — the whole network at a glance
 
 Totals with trends, the live connection map or a 3D globe, top services, hosts and conversations. Every panel opens
-full screen.
+full screen. Your devices stand on the map by their city and country alone — no coordinates to look up, and no online
+service asked.
 
 <p align="center"><img src="docs/media/en/overview.webp" alt="Overview page" width="100%"></p>
 

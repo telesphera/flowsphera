@@ -834,6 +834,101 @@ class Geo:
         return country, city, lat, lon, asn, as_org
 
 
+def place_key(s):
+    """(2.6.0) The form place names are compared in: no accents, no case, single spaces («Liège» = «liege»); the same
+    as fold() in deploy/geoip-places.py, which wrote the index's keys."""
+    import unicodedata
+    s = unicodedata.normalize('NFKD', s or '')
+    return ' '.join(''.join(ch for ch in s if not unicodedata.combining(ch)).casefold().replace('-', ' ').split())
+
+
+class Places:
+    """(2.6.0) «country + city → coordinates» from GEOIP_DIR/dbip-places.tsv (built from DB-IP Lite City by
+    deploy/geoip-places.py): a device described by City + Country is on the map without coordinates. Kept as one
+    text block per country (≈ 8 MB in all, not 150,000 objects); the file is read again when it changes."""
+    CHECK = 60                       # seconds between looks at the file's time
+
+    def __init__(self, path=None):
+        self.path = path or os.path.join(GEOIP_DIR, 'dbip-places.tsv')
+        self.by_cc, self.mtime, self.looked, self.lock, self.memo = {}, None, 0.0, threading.Lock(), {}
+
+    def _fresh(self):
+        now = time.time()
+        if now - self.looked < self.CHECK and self.mtime is not None:
+            return
+        with self.lock:
+            self.looked = now
+            try:
+                m = os.stat(self.path).st_mtime
+            except OSError:
+                self.by_cc, self.mtime, self.memo = {}, 0, {}
+                return
+            if m == self.mtime:
+                return
+            by, cur, part = {}, None, []
+            with open(self.path, encoding='utf-8') as f:
+                for line in f:
+                    cc = line[:2]
+                    if cc != cur:
+                        if cur:
+                            by[cur] = ''.join(part)
+                        cur, part = cc, []
+                    part.append(line[3:])
+            if cur:
+                by[cur] = ''.join(part)
+            self.by_cc, self.mtime, self.memo = by, m, {}
+
+    def _rows(self, cc):
+        for line in self.by_cc.get((cc or '').upper(), '').splitlines():
+            key, name, reg, lat, lon, n = line.split('\t')
+            yield key, name, reg, float(lat), float(lon)
+
+    def ready(self):
+        self._fresh()
+        return bool(self.by_cc)
+
+    def get(self, cc, city):
+        """The place called `city` in country `cc` (two letters), or None."""
+        self._fresh()
+        cc, key = (cc or '').upper(), place_key(city)
+        if not key or not cc:
+            return None
+        if (cc, key) not in self.memo:
+            if len(self.memo) > 4096:
+                self.memo.clear()
+            self.memo[(cc, key)] = next(({'name': name, 'region': reg, 'lat': lat, 'lon': lon}       # biggest first:
+                                         for k, name, reg, lat, lon in self._rows(cc) if k == key), None)   # a name used twice = the bigger
+        return self.memo[(cc, key)]
+
+    def find(self, cc, q, limit=10):
+        """Places of country `cc` whose name begins with `q` (then those holding it), biggest first."""
+        self._fresh()
+        key = place_key(q)
+        if not key or not cc:
+            return []
+        first, rest = [], []
+        for k, name, reg, lat, lon in self._rows(cc):
+            if k.startswith(key):
+                first.append({'name': name, 'region': reg, 'lat': lat, 'lon': lon})
+                if len(first) >= limit:
+                    break
+            elif key in k and len(rest) < limit:
+                rest.append({'name': name, 'region': reg, 'lat': lat, 'lon': lon})
+        return (first + rest)[:limit]
+
+
+PLACES = Places()
+
+
+def device_site(c):
+    """(2.6.0) Where a device stands on the map: its own Latitude/Longitude, else the place of its City + Country.
+    (lat, lon, 'manual' | 'city') or (None, None, None)."""
+    if c.get('lat') is not None and c.get('lon') is not None:
+        return c['lat'], c['lon'], 'manual'
+    pl = PLACES.get(c.get('country'), c.get('city')) if c.get('city') and c.get('country') else None
+    return (pl['lat'], pl['lon'], 'city') if pl else (None, None, None)
+
+
 # well-known ports -> (L7 protocol, service name if the port alone identifies it)
 PORTS = {
     (6, 443): ('HTTPS', None), (17, 443): ('QUIC', None), (6, 80): ('HTTP', None), (6, 8080): ('HTTP', None),
