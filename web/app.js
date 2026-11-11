@@ -4984,7 +4984,26 @@ const qBox = (() => { const el = document.createElement('div'); el.id = 'qGuide'
   el.addEventListener('click', e => { const b = e.target.closest('[data-qi]'); if (b) qTake(qItems[+b.dataset.qi]); });
   return el; })();
 function qWord(){ const m = q.value.match(/(\S*)$/); return m ? m[1] : ''; }
-function qSuggest(word){
+// (2.5.0) hosts by name for the search box: the server is asked as a word is typed (each word kept a minute) and the
+// box is drawn again when the answer comes; a suggestion applies ip:<address>, so every page and report follows it
+const hostHits = new Map(), hostSrc = x => x === 'dns' ? T('reverse DNS') : x === 'device' ? T('device address') : T('host name');
+let hostAsk = null;
+function hostFind(w, redraw){
+  const k = w.trim().toLowerCase();
+  if (k.length < 2 || /[:\s]/.test(k)) return [];
+  const hit = hostHits.get(k);
+  if (hit && Date.now() - hit.t < 60000) return hit.list || [];
+  clearTimeout(hostAsk);
+  hostAsk = setTimeout(async () => {
+    hostHits.set(k, {t:Date.now(), list:null});
+    try { const r = await fetch(`api/hosts/find?q=${encodeURIComponent(k)}&limit=6`).then(x => x.ok ? x.json() : {hosts:[]}); hostHits.set(k, {t:Date.now(), list:r.hosts || []}); }
+    catch (e) { hostHits.delete(k); return; }
+    if (hostHits.size > 200) hostHits.delete(hostHits.keys().next().value);
+    if (redraw) redraw();
+  }, 150);
+  return [];
+}
+function qSuggest(word, redraw){
   const neg = word.startsWith('-'), w = neg ? word.slice(1) : word, pre = neg ? '-' : '', info = QKEY_INFO(), out = [];
   const i = w.indexOf(':'), key = i > 0 ? w.slice(0, i).toLowerCase() : '', val = i > 0 ? w.slice(i + 1) : '';
   if (key && info[key]) {                               // key typed: its help and values
@@ -5003,10 +5022,12 @@ function qSuggest(word){
     return out;
   }
   if (!w) return null;                                  // empty: the whole guide
+  const hosts = hostFind(w, redraw);
+  hosts.forEach(h => out.push({text:`${pre}ip:${h.ip}`, label:h.name, note:`${h.ip} · ${hostSrc(h.src)}`, apply:true}));
   // (2.2.0) the whole key typed («app», «ip») still offers «app:» — it used to vanish just when it was spelled out
   Object.keys(info).filter(k => k.startsWith(w.toLowerCase())).forEach(k => out.push({text:`${pre}${k}:`, label:`${pre}${k}:`, note:info[k][1], key:true}));
   const r = qParse(word);
-  if (r.err) out.push({err:r.err});
+  if (r.err) { if (!hosts.length) out.push({err:r.err}); }      // (2.5.0) a host found by name: no error for the word
   else if (r.f) {
     const addr = r.f.k === 'ip' || r.f.k === 'dst', alt = addr ? (r.f.k === 'ip' ? 'dst' : 'ip') : null;
     const note = f => f.v.includes('/') ? (f.k === 'ip' ? T('inside network') : T('outside network')) : info[f.k][1];
@@ -5030,7 +5051,7 @@ function guideHtml(list, items, tips){
 }
 function qGuide(){
   if (document.activeElement !== q) { qBox.hidden = true; return; }
-  const word = qWord(), list = qSuggest(word);
+  const word = qWord(), list = qSuggest(word, qGuide);
   qItems = [];
   if (list && !list.length) { qBox.hidden = true; return; }
   qBox.innerHTML = guideHtml(list, qItems, T('<b>-</b>key:value leaves out · two values of one key: either of them · <b>Enter</b> applies · <b>Backspace</b> in an empty box removes the last filter · <b>/</b> opens the search'));
@@ -5062,7 +5083,7 @@ function filterGuide(input){
   const mark = () => box.querySelectorAll('[data-qi]').forEach(b => { const on = +b.dataset.qi === sel; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); if (on) b.scrollIntoView({block:'nearest'}); });
   const show = () => {
     if (document.activeElement !== input) { box.hidden = true; return; }
-    const w = word(), list = qSuggest(w);
+    const w = word(), list = qSuggest(w, show);
     // the words before this one: what is wrong with them, so the form is not refused later without a reason
     const errs = input.value.trim().split(/\s+/).filter(t => t && t !== w).map(t => [t, qParse(t).err]).filter(([, e]) => e);
     items.length = 0;

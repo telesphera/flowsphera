@@ -160,14 +160,49 @@ def dscp_value(v):
 
 # ------------------------------------------------------------------ names
 
+DNS_FILE = os.path.join(STATE_DIR, 'dns_names.json')     # (2.5.0) reverse DNS names kept across restarts
+DNS_DAYS = 7               # the inside hosts of these days get their names looked up in the background
+DNS_REFRESH = 86400        # a name (or its absence) is looked up again after a day
+DNS_KEEP = 30 * 86400      # names of hosts not seen for a month are forgotten
+DNS_HOSTS = 20000          # at most this many hosts per pass, the busiest first
+DNS_RATE = 20              # lookups per second at most: the network's DNS server is not flooded
+
+
 class Names:
-    """Inside host names: hosts.json (manual) > exporter self IPs > reverse DNS (cached, async)."""
+    """Inside host names: hosts.json (manual) > exporter self IPs > reverse DNS (cached, async).
+    (2.5.0) The reverse DNS names are kept in DNS_FILE, the inside hosts of DNS_DAYS get theirs in the background
+    (dns_indexer), and find() searches every name known — the search box offers hosts by name."""
 
     def __init__(self):
         self.pool = ThreadPoolExecutor(max_workers=4)
         self.cache, self.pending = {}, set()
         self.lock = threading.Lock()
+        self.dirty = False
+        self.load_cache()
         self.reload()
+
+    def load_cache(self):
+        try:
+            with open(DNS_FILE) as f:
+                raw = json.load(f)
+            cut = time.time() - DNS_KEEP
+            self.cache = {ip: (str(v[0]), float(v[1])) for ip, v in raw.items()
+                          if isinstance(v, list) and len(v) == 2 and float(v[1]) > cut}
+        except (OSError, ValueError, TypeError):
+            self.cache = {}
+
+    def save_cache(self):
+        with self.lock:
+            if not self.dirty:
+                return
+            data, self.dirty = {ip: [n, int(t)] for ip, (n, t) in self.cache.items()}, False
+        tmp = DNS_FILE + '.tmp'
+        try:
+            with open(tmp, 'w') as f:
+                json.dump(data, f, separators=(',', ':'))
+            os.replace(tmp, DNS_FILE)
+        except OSError as e:
+            print(f'[flowsphera-api] host names: cannot save {DNS_FILE}: {e}', flush=True)
 
     def reload(self):
         self.manual = common.load_host_names()
@@ -187,6 +222,7 @@ class Names:
         with self.lock:
             self.cache[ip] = (name, time.time())
             self.pending.discard(ip)
+            self.dirty = True
 
     def get(self, ip, lookup=True):
         """lookup=False (1.14.1): only names known already — an export of 100,000 hosts must not queue as many
@@ -202,8 +238,92 @@ class Names:
                 self.pool.submit(self._resolve, ip)
         return hit[0] if hit else ''
 
+    def find(self, text, limit=10):
+        """(2.5.0) hosts whose name holds `text` (any case): [{ip, name, src: manual|device|dns}], names that begin
+        with it first, then by name. A host has one name, the one shown for it (manual > device > DNS)."""
+        t = text.strip().lower()
+        if not t:
+            return []
+        with self.lock:
+            dns = {ip: n for ip, (n, _) in self.cache.items() if n}
+        seen, out = set(), []
+        for src, names in (('manual', self.manual), ('device', self.self_ips), ('dns', dns)):
+            for ip, name in names.items():
+                if ip in seen:
+                    continue
+                seen.add(ip)
+                if t in str(name).lower():
+                    out.append({'ip': ip, 'name': str(name), 'src': src})
+        out.sort(key=lambda r: (not r['name'].lower().startswith(t), r['name'].lower(), r['ip']))
+        return out[:limit]
+
+    def index(self, ips, stop=None, rate=DNS_RATE):
+        """(2.5.0) look up the names of these inside hosts that have none from the settings and none fresh in the
+        cache, at most `rate` lookups a second; True when it ran to the end."""
+        now = time.time()
+        with self.lock:
+            todo = [ip for ip in ips if is_private(ip) and ip not in self.manual and ip not in self.self_ips
+                    and ip not in self.pending and now - self.cache.get(ip, ('', 0))[1] > DNS_REFRESH]
+        for ip in todo:
+            if stop is not None and stop.is_set():
+                return False
+            with self.lock:
+                if ip in self.pending:
+                    continue
+                self.pending.add(ip)
+            self.pool.submit(self._resolve, ip)
+            time.sleep(1 / rate)
+            while True:                       # never more queued than the pool works on
+                with self.lock:
+                    if len(self.pending) < 16:
+                        break
+                time.sleep(0.2)
+        with self.lock:                       # forget hosts not seen for a month
+            cut = time.time() - DNS_KEEP
+            old = [ip for ip, (_, t) in self.cache.items() if t < cut]
+            for ip in old:
+                del self.cache[ip]
+            self.dirty = self.dirty or bool(old)
+        return True
+
 
 NAMES = Names()
+
+
+def inside_hosts(days=DNS_DAYS, limit=DNS_HOSTS):
+    """(2.5.0) the inside hosts of the last `days`, the busiest first (from the rollups)."""
+    src, _ = rollups.source(['int_ip'], int(time.time()) - days * 86400, None, set(), use=USE_ROLLUPS)
+    rows = ch(f"SELECT int_ip AS ip, sum(bytes) AS b FROM {src} GROUP BY ip ORDER BY b DESC LIMIT {int(limit)}", fmt='JSON')
+    return [r['ip'] for r in rows]
+
+
+def dns_indexer(stop, every=3600, first=120):
+    """(2.5.0) web-service thread: the names of the inside hosts of the last week, looked up in the background
+    (at start after `first` s, then every `every` s) and saved; the cache is also saved every 5 minutes."""
+    wait = first
+    while not stop.wait(min(wait, 300)):
+        wait -= min(wait, 300)
+        NAMES.save_cache()
+        if wait > 0:
+            continue
+        wait = every
+        try:
+            with web_query(f'ftd-{os.urandom(3).hex()}', {'max_execution_time': 120, 'priority': 9}):
+                ips = inside_hosts()
+        except (CHError, OSError) as e:
+            print(f'[flowsphera-api] host names: cannot list the inside hosts: {e}', flush=True)
+            continue
+        NAMES.index(ips, stop)
+        NAMES.save_cache()
+
+
+def api_hosts_find(q):
+    """(2.5.0) GET /api/hosts/find?q=text[&limit=N]: hosts by name for the search box."""
+    try:
+        limit = max(1, min(50, int(q.get('limit', ['10'])[0])))
+    except ValueError:
+        limit = 10
+    return {'hosts': NAMES.find(q.get('q', [''])[0][:100], limit)}
 
 
 # ------------------------------------------------------------------ query building
@@ -2991,7 +3111,7 @@ class Cache:
 
 
 CACHE = Cache()
-ROUTES = {'/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
+ROUTES = {'/api/hosts/find': api_hosts_find, '/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
           '/api/flows': api_flows, '/api/paths': api_paths, '/api/devmap': api_devmap, '/api/topology': api_topology, '/api/path': api_path, '/api/live': api_live, '/api/ports': api_ports, '/api/hosts/names': api_host_names, '/api/networks': api_networks, '/api/geo': api_geo, '/api/devices': api_devices, '/api/host': api_host,
           '/api/alerts': api_alerts, '/api/ifload': api_ifload, '/api/ingest': api_ingest, '/api/apps': api_apps,
           '/api/capacity': api_capacity, '/api/capacity/iface': api_capacity_iface, '/api/usage': api_usage, '/api/qos': api_qos, '/api/conversations': api_conversations}
@@ -3810,6 +3930,7 @@ if __name__ == '__main__':
         topo_refresher(threading.Event())
     threading.Thread(target=_topo_warm, daemon=True).start()
     threading.Thread(target=reports.scheduler, args=(report_call, VERSION), daemon=True).start()      # (1.10.0)
+    threading.Thread(target=dns_indexer, args=(threading.Event(),), daemon=True).start()   # (2.5.0) host names
     for srv in servers[1:]:
         threading.Thread(target=srv.serve_forever, daemon=True).start()
     servers[0].serve_forever()
