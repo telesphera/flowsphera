@@ -1498,6 +1498,9 @@ def snmp_error_text(code, e, ip):
     }.get(code, tr('The device answered with an error.'))
 
 
+BIG_BODY = 8 << 20           # (2.4.2) the largest request an administrator may send
+
+
 def api_devices(q):
     exp = exporters_cfg(raw=True)
     sset, sdata = snmp.load_settings(), snmp.load_data()
@@ -1570,7 +1573,8 @@ def api_devices(q):
                     'interfaces': interfaces_of(c, [r for r in ifs if r['exporter'] == s['exporter']], seen_addrs.get(s['exporter'], {}),
                                                 sdata.get(s['exporter']) if sset.get(s['exporter'], {}).get('enabled') else None,
                                                 cnt.get(s['exporter'], {}))})
-    return {'devices': out, 'collector': collector_health(), 'listen': listen_info(), 'snmp_tools': snmp.available(),
+    # (2.4.2) 'now' = the server's clock: a device's «last» is compared with it, not with the browser's clock
+    return {'devices': out, 'now': int(time.time()), 'collector': collector_health(), 'listen': listen_info(), 'snmp_tools': snmp.available(),
             'ignored': sorted(ignored)}      # (2.4.0) sources an administrator ignores
 
 
@@ -3194,8 +3198,15 @@ class H(BaseHTTPRequestHandler):
             n = -1
         if n < 0:
             return self.json(400, {'error': 'bad Content-Length'})
+        # (2.4.2) 64 KB for anyone; a signed-in administrator may send more (an own IP list of 20,000 entries, a big
+        # CSV of names): the limit used to cut the own list at about 3,000 lines with «too large»
         if n > 65536:
-            return self.json(413, {'error': 'too large'})
+            try:
+                big = n <= BIG_BODY and self.who()[1] == 'admin'
+            except Exception:
+                big = False
+            if not big:
+                return self.json(413, {'error': tr('The request is too large.') if n <= BIG_BODY else 'too large'})
         try:
             body = json.loads(self.rfile.read(n) or b'{}')
             if not isinstance(body, dict):

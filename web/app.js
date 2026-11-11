@@ -101,6 +101,8 @@ function addFilter(k, v, neg){ putFilter({k, v, neg}); state.sel = null; render(
 const fmtB = b => { b = +b || 0; const u = ['B','KB','MB','GB','TB']; let i = 0; while (b >= 1000 && i < 4) { b /= 1000; i++; } return (i >= 2 ? b.toFixed(b < 10 ? 2 : 1) : Math.round(b)) + ' ' + u[i]; };
 const fmtR = bps => { bps = +bps || 0; const u = [T('bit/s'), T('kbit/s'), T('Mbit/s'), T('Gbit/s')]; let i = 0; while (bps >= 1000 && i < 3) { bps /= 1000; i++; } return bps.toFixed(bps < 10 && i > 0 ? 1 : 0) + ' ' + u[i]; };
 const fmtN = n => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(2) + ' M' : n >= 1e4 ? (n / 1e3).toFixed(1) + ' K' : Math.round(n).toLocaleString(LOC); };
+// (2.4.2) the server's clock from an answer that carries it (api/devices): a PC whose clock is off showed «No data»
+const srvNow = r => (r && r.now) || Date.now() / 1000;
 const hhmm = t => new Date(t * 1000).toLocaleTimeString(LOC, {hour:'2-digit', minute:'2-digit'});
 const hms = t => new Date(t * 1000).toLocaleTimeString(LOC, {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 const dmy = t => new Date(t * 1000).toLocaleDateString(LOC, {day:'numeric', month:'2-digit'});
@@ -2971,7 +2973,7 @@ function vEventsCfg(){
     const lists = {}; document.querySelectorAll('table.evr [data-list]').forEach(i => { lists[i.dataset.list] = i.checked; });
     const list_keys = {}; document.querySelectorAll('table.evr [data-key]').forEach(i => { if (i.value.trim()) list_keys[i.dataset.key] = i.value.trim(); });
     const clear_keys = [...document.querySelectorAll('table.evr [data-keyx]:checked')].map(i => i.dataset.keyx);
-    return {kinds, lists, list_keys, clear_keys, own_list:document.getElementById('evOwn').value.split(/[\s,]+/).filter(Boolean)};
+    return {kinds, lists, list_keys, clear_keys, own_list:document.getElementById('evOwn').value.split('\n').filter(x => x.trim())};
   };
   const collectNotify = () => { const kinds = {}, email_kinds = {}, webhook_kinds = {}, siem_kinds = {}, v = id => document.getElementById(id);
     document.querySelectorAll('table.evk [data-s]').forEach(i => { siem_kinds[i.dataset.s] = i.checked; });
@@ -4164,7 +4166,7 @@ function vDevices(){
         try { await apiPost('devices/ignore', {ip:b.dataset.unignore, stop:true}); render(); } catch (err) { alert(err.message); } });
     });
     return `<div class="tw"><table><thead><tr><th>${T('Status')}</th><th>${T('Device')}</th><th>${T('Vendor / model')}</th><th>${T('Protocol')}</th><th>${T('Site')}</th><th>${T('Export IP')}</th><th class="num">${T('Records/s')}</th><th class="num">${T('Templates')}</th><th>${T('Sampling')}</th><th class="num">${T('Loss')}</th><th class="num">${T('No template')}</th>${isAdmin() ? '<th></th>' : ''}</tr></thead><tbody>
-      ${d.map(x => { const never = !x.last, stale = Date.now() / 1000 - x.last > 180, st = never ? 'warn' : stale ? 'crit' : x.loss_pct > 0.5 ? 'warn' : '';
+      ${d.map(x => { const never = !x.last, stale = srvNow(res) - x.last > 180, st = never ? 'warn' : stale ? 'crit' : x.loss_pct > 0.5 ? 'warn' : '';
         return `<tr class="click" data-pick="${esc(x.ip)}"><td><span class="dot ${st}" title="${never ? T('has not sent data yet') : stale ? T('no data for over 3 min') : T('online')}"></span></td><td><b class="mono">${esc(x.name)}</b>${x.configured ? '' : ` <span class="tag" title="${T('It sends, but has no description here. Describe it to keep it, or ignore it if it should not send here; without data it leaves this list after 15 minutes.')}">${T('not described')}</span>`}${protoPill(x)}${snmpTag(x)}${dupPill(x)}${repeatPill(x)}${runningPill(x)}${appsPill(x)}</td><td>${esc(x.vendor || '—')}<br><span class="nat">${esc(x.model)}</span></td><td><span class="tag">${never ? T('waiting') : esc(x.proto)}</span></td><td>${esc(x.site || '—')}</td><td class="ipl">${esc(x.ip)}</td>
           <td class="num mono">${x.rps}</td><td class="num mono">${x.templates}</td><td class="mono">${esc(x.sampling)}</td><td class="num mono" style="color:${x.loss_pct ? 'var(--warn)' : 'inherit'}">${x.loss_pct}%</td><td class="num mono">${x.no_template}</td>
           ${isAdmin() ? `<td style="white-space:nowrap"><button class="btn" data-edit="${esc(x.ip)}">${x.configured ? T('Edit') : T('Describe')}</button>${x.configured ? '' : ` <button class="btn" data-ignore="${esc(x.ip)}" title="${T('Drop what this address sends; undo below the table')}">${T('Ignore')}</button>`}</td>` : ''}</tr>`; }).join('') || `<tr><td colspan="12"><div class="empty">${T('No device has sent data yet')}</div></td></tr>`}</tbody></table></div>${(res.ignored || []).length && isAdmin() ? `<p class="note">${T('Ignored sources (what they send is dropped):')} ${res.ignored.map(ip => `<span class="mono">${esc(ip)}</span> <button class="lnk" data-unignore="${esc(ip)}">${T('stop ignoring')}</button>`).join(' · ')}</p>` : ''}${collectorBar(res.collector, res.listen)}<p class="note">${T('Click a row to see the device’s interfaces below. To filter by device, use the device list at the top.')}${isAdmin() ? T(' The collector picks up description changes within a minute.') : ''}</p>`; });
@@ -5116,8 +5118,8 @@ const ingHist = [];
 async function health(){
   if (!ME) return;
   try {
-    const d = (await fetch('api/devices').then(r => r.json())).devices || [];
-    const rps = d.reduce((s, x) => s + x.rps, 0), online = d.filter(x => Date.now() / 1000 - x.last < 180).length;
+    const dd = await fetch('api/devices').then(r => r.json()), d = dd.devices || [];
+    const rps = d.reduce((s, x) => s + x.rps, 0), online = d.filter(x => srvNow(dd) - x.last < 180).length;
     document.getElementById('collState').textContent = d.length ? (online ? T('Collector online') : T('No data')) : T('Waiting for export');
     document.getElementById('collDot').className = 'dot' + (online ? '' : ' crit');
     document.getElementById('expCount').textContent = Tn(d.length, '{online}/{n} exporter', '{online}/{n} exporters', {online});

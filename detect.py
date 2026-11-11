@@ -21,6 +21,7 @@ import datetime
 import ipaddress
 import json
 import os
+import re
 import threading
 import time
 from zoneinfo import ZoneInfo
@@ -182,7 +183,9 @@ def validate(body):
     lists = body.get('lists') or {}
     cfg['lists'].update({n: bool(v) for n, v in (lists.items() if isinstance(lists, dict) else []) if n in cfg['lists']})
     own = body.get('own_list', [])
-    own = own if isinstance(own, list) else str(own).replace(',', ' ').split()
+    own = own if isinstance(own, list) else str(own).splitlines()
+    # (2.4.2) a pasted list keeps its comments: «1.10.16.0/20 ; SBL256894» (Spamhaus DROP), «# header» lines
+    own = [y for x in own for y in re.split(r'[;#]', str(x), maxsplit=1)[0].replace(',', ' ').split()]
     out = set()
     for x in (str(x).strip() for x in own):
         if not x:

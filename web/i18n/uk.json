@@ -2112,5 +2112,6 @@
  "{pct}% of the traffic of the devices that name applications identified": "розпізнано {pct}% трафіку пристроїв, які називають застосунки",
  "{n} applications named in this period": {"one": "{n} застосунок названо за цей період", "few": "{n} застосунки названо за цей період", "many": "{n} застосунків названо за цей період", "other": "{n} застосунку названо за цей період"},
  "The devices began sending application data on {when}, after this period: the next reports will have it.": "Пристрої почали передавати інформацію про застосунки {when}, уже після цього періоду: вона буде в наступних звітах.",
- "No application was named in this period.": "За цей період не названо жодного застосунку."
+ "No application was named in this period.": "За цей період не названо жодного застосунку.",
+ "The request is too large.": "Запит завеликий."
 }
