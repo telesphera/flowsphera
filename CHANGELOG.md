@@ -4,6 +4,16 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.4.2 — 2026-11-11
+
+### Fixed
+- **Own IP reputation list takes its full 20,000 entries.** Settings → Events → IP reputation → Own list refused a
+  pasted list longer than about 3,000 lines with «too large». An administrator may now save the whole list. Comments
+  in a pasted list are skipped, so a list such as Spamhaus DROP (`1.10.16.0/20 ; SBL256894`) can be pasted as it is.
+- **Device status follows the server's clock.** Settings → Devices and the collector status at the bottom left
+  compared the time of the latest data with the clock of the computer the browser runs on. When that clock and the
+  server's differed by more than 3 minutes, a device that was sending showed «No data». They now use the server's time.
+
 ## 2.4.1 — 2026-11-09
 
 ### Fixed
