@@ -786,7 +786,9 @@ def render(r, data, t0, t1, version='', now=None):
     # ---- named networks
     nets = [x for x in (data.get('networks') or {}).get('rows') or [] if x['k']]
     if 'networks' in sec and nets:
-        body = [[Paragraph(esc(x['k']), P), str(x.get('hosts', '')), fmt_b(x['dn']), fmt_b(x['up']),
+        # (2.6.0) a network nobody named: the device interface it was found from, or a /24 guess
+        sub = lambda x: f"{x.get('iface', '')} · {x.get('device', '')}" if x.get('auto') == 'iface' else tr('a /24 guessed from the addresses') if x.get('auto') == 'guess' else ''   # noqa: E731
+        body = [[two_lines(x['k'], sub(x)), str(x.get('hosts', '')), fmt_b(x['dn']), fmt_b(x['up']),
                  bar((x['up'] + x['dn']) / tot, BLUE)] for x in nets]
         section(tr('Your networks'),
                 table([tr('Network'), tr('Hosts'), tr('Downloaded'), tr('Uploaded'), tr('Share')], body,

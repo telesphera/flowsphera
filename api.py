@@ -383,11 +383,17 @@ def scope(q):
         if isinstance(f, dict) and f.get('k') == 'net':
             v = str(f.get('v', '')).strip().lower()
             hit = [x for x in nets if x['name'].lower() == v]
-            if not hit:
-                raise BadRequest(tr('no network named {name}', name=str(f.get('v', ''))[:50]))
-            f['v'] = hit[0]['name']
+            if hit:
+                f['v'] = hit[0]['name']
+                hit = [x['net'] for x in hit]
+            else:           # (2.6.0) a network nobody named (an interface's, or a /24): by its address
+                try:
+                    f['v'] = str(ipaddress.ip_network(str(f.get('v', '')).strip(), strict=False))
+                except ValueError:
+                    raise BadRequest(tr('no network named {name}', name=str(f.get('v', ''))[:50])) from None
+                hit = [f['v']]
             if not f.get('neg') and traffic != 'internet':
-                hnets += [x['net'] for x in hit if x['net'] not in hnets]
+                hnets += [x for x in hit if x not in hnets]
     internal = "dir IN ('internal', 'internal_back')"
     # traffic scope: internet (inside <-> outside, default), internal (inside <-> inside) or all
     if traffic == 'internet':
@@ -492,15 +498,72 @@ def scope(q):
 DIR_HOST = rollups.DIR
 
 
+AUTO_NETS = {'t': 0.0, 'key': None, 'v': []}
+AUTO_TTL = 60
+
+
+def auto_networks():
+    """(2.6.0) The inside networks nobody named: those of the devices' interface addresses (SNMP or typed by hand) with
+    their own masks (10.10.0.1/16 on an interface = 10.10.0.0/16, not 256 /24s); a WAN interface's too (the device's
+    own address is an inside host of its records); host routes and networks wider than /8 left out, a named network
+    wins. [{net, iface, device, _n}] narrowest first."""
+    now = time.time()
+    named = {x['net'] for x in common.load_networks()}
+    if now - AUTO_NETS['t'] < AUTO_TTL and AUTO_NETS['key'] == named:
+        return AUTO_NETS['v']
+    seen = {}
+    try:
+        exp = snmp.merge(exporters_cfg(raw=True))
+    except Exception:            # noqa: BLE001 — the networks are a convenience: never break a page
+        exp = {}
+    for dev, c in exp.items():
+        for idx, addrs in (c.get('if_addrs') or {}).items():
+            for a in addrs or ():
+                try:
+                    n = ipaddress.ip_interface(str(a).strip()).network
+                except ValueError:
+                    continue
+                if n.prefixlen == n.max_prefixlen or n.prefixlen < 8 or str(n) in named or str(n) in seen:
+                    continue
+                seen[str(n)] = {'net': str(n), 'iface': (c.get('if_names') or {}).get(str(idx)) or f'if {idx}',
+                                'device': c.get('name') or dev, '_n': n}
+    v = sorted(seen.values(), key=lambda x: (x['_n'].version, -x['_n'].prefixlen, int(x['_n'].network_address)))
+    AUTO_NETS.update(t=now, key=named, v=v)
+    return v
+
+
+# (2.6.0) an inside IPv4 address in no named and no interface network: its /24, marked as a guess
+GUESS_NET = "if(isIPv4String({c}), concat(IPv4NumToString(bitAnd(IPv4StringToNumOrDefault({c}), 4294967040)), '/24'), '')"
+
+
 def net_expr(col, p):
-    """(1.8.7) SQL: the name of the narrowest named network holding the address in `col`, or ''; the networks go to
-    the params `p` (nc0, nn0, …)."""
-    nets = common.load_networks()
-    if not nets:
-        return "''"
+    """(1.8.7) SQL: the name of the narrowest named network holding the address in `col`; (2.6.0) else the network of
+    a device interface holding it (its address, e.g. 10.10.0.0/16), else its /24 (a guess), '' for IPv6 outside them.
+    The networks go to the params `p` (nc0, nn0, …, na0, …)."""
+    nets, auto = common.load_networks(), auto_networks()
+    arms = []
     for j, x in enumerate(nets):
         p[f'nc{j}'], p[f'nn{j}'] = x['net'], x['name']
-    return 'multiIf(' + ', '.join(f'isIPAddressInRange({col}, {{nc{j}:String}}), {{nn{j}:String}}' for j in range(len(nets))) + ", '')"
+        arms.append(f'isIPAddressInRange({col}, {{nc{j}:String}}), {{nn{j}:String}}')
+    for j, x in enumerate(auto):
+        p[f'na{j}'] = x['net']
+        arms.append(f'isIPAddressInRange({col}, {{na{j}:String}}), {{na{j}:String}}')
+    guess = GUESS_NET.format(c=col)
+    return f"multiIf({', '.join(arms)}, {guess})" if arms else guess
+
+
+def net_kind(k):
+    """(2.6.0) What a network key of net_expr is: ('named', [its networks]) · ('iface', {net, iface, device}) ·
+    ('guess', None) · (None, None) for ''."""
+    if not k:
+        return None, None
+    by = [x['net'] for x in common.load_networks() if x['name'] == k]
+    if by:
+        return 'named', by
+    hit = next((x for x in auto_networks() if x['net'] == k), None)
+    if hit:
+        return 'iface', {'net': hit['net'], 'iface': hit['iface'], 'device': hit['device']}
+    return 'guess', None
 
 
 def net_value(v):
@@ -989,12 +1052,15 @@ def top_csv(dim, res):
     return ('\ufeff' + f.getvalue()).encode()
 
 def net_rows(rows, p, where, svc_src=None):
-    """(1.8.7) The networks of each named-network row; with `svc_src` also its main service, L7 protocol and protocol."""
-    by = {}
-    for x in common.load_networks():
-        by.setdefault(x['name'], []).append(x['net'])
+    """(1.8.7) The networks of each named-network row; with `svc_src` also its main service, L7 protocol and protocol.
+    (2.6.0) `auto`: 'iface' (a device interface's network: `iface`, `device`) or 'guess' (a /24), none for named."""
     for r in rows:
-        r['nets'] = by.get(r['k'], [])
+        kind, info = net_kind(r['k'])
+        r['nets'] = info if kind == 'named' else [r['k']] if kind else []
+        if kind == 'iface':
+            r.update(auto='iface', iface=info['iface'], device=info['device'])
+        elif kind == 'guess':
+            r['auto'] = 'guess'
     if svc_src and rows:
         e = net_expr('int_ip', p)
         main = {x['k']: x for x in ch(f"""SELECT k, argMax(service, b) AS service, argMax(l7, b) AS l7, argMax(proto, b) AS proto
@@ -2438,6 +2504,12 @@ def _event_match(a, f):
         return v in addrs
     if k == 'net':              # (1.8.7) any of the event's addresses in the named network
         addrs = {a.get('ip'), a.get('src'), a.get('dst')} | set(a.get('addrs') or ())
+        if '/' in v and not any(x['name'].lower() == v.lower() for x in common.load_networks()):
+            try:                # (2.6.0) a network nobody named: by its address
+                net = ipaddress.ip_network(v, strict=False)
+            except ValueError:
+                return False
+            return any(_in_net(x, net) for x in addrs if x)
         return any(common.network_of(x).lower() == v.lower() for x in addrs if x)
     if k == 'device':
         return v == (a.get('exporter') or a.get('device'))

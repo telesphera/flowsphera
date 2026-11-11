@@ -2395,7 +2395,10 @@ function downloadCsv(name, header, rows){
 }
 // (1.8.7) the user's named networks: the label of a group ('' = addresses in none of them) and its networks in short
 const netLabel = k => k || T('no network');
-const netsText = (nets, k) => !k ? T('addresses in none of the named networks') : nets.length > 2 ? `${nets.slice(0, 2).join(', ')} +${nets.length - 2}` : nets.join(', ');
+// (2.6.0) a row of the networks: named (its networks), found from a device interface's address, or a guessed /24
+const netsText = r => { const nets = r.nets || [];
+  return !r.k ? T('addresses in none of these networks') : r.auto === 'iface' ? T('{iface} · {device} · found from the device', {iface: r.iface, device: r.device})
+    : r.auto === 'guess' ? T('a /24 guessed from the addresses') : nets.length > 2 ? `${nets.slice(0, 2).join(', ')} +${nets.length - 2}` : nets.join(', '); };
 function netsCsv(rows, secs){
   return [['rank', 'network', 'networks', 'hosts', 'bytes', 'upload', 'download', 'percent', 'flows', 'avg_bps'],
     rows.map((r, i) => [i + 1, netLabel(r.k), (r.nets || []).join(' '), r.hosts || 0, tot(r), r.up, r.dn, (100 * tot(r) / (window.__tTotal || 1)).toFixed(2), r.fl, Math.round(tot(r) * 8 / secs)])];
@@ -2403,14 +2406,14 @@ function netsCsv(rows, secs){
 function vTalkers(){
   const v = document.getElementById('view');
   // Hosts | Networks (1.8.7): the same panels, grouped by inside host or by the user's named network
-  const byNet = state.talkersBy === 'net', fk = byNet ? 'net' : 'ip', dim = byNet ? 'net' : 'int_ip', noNets = byNet && !(META.networks || []).length;
+  const byNet = state.talkersBy === 'net', fk = byNet ? 'net' : 'ip', dim = byNet ? 'net' : 'int_ip';
   // (1.18.0) the trend first, the table under it: graphics on top on every page (Yegor)
   v.innerHTML = `<div class="grid">
     <div id="tKpi" class="s12 grid" style="grid-column:span 12"><div class="glass kcard s3 loading"></div><div class="glass kcard s3 loading"></div><div class="glass kcard s3 loading"></div><div class="glass kcard s3 loading"></div></div>
     <div class="col s8 fillcol">
       <section class="glass panel">${ph('chart', byNet ? T('Top networks trend') : T('Top hosts trend'), T('top 5 and the rest'),
-        seg('tBySeg', [['ip', T('Hosts')], ['net', T('Networks'), T('Grouped by the networks named in Settings → Flow configuration')]], fk))}<div class="chart" id="cTop5"></div></section>
-      <section class="glass panel grow">${ph('users', byNet ? T('Top networks') : T('Top hosts'), byNet ? T('your named networks by total volume · click a row to add the network to the filters') : T('by total volume · click a row to add the host to the filters'),
+        seg('tBySeg', [['ip', T('Hosts')], ['net', T('Networks'), T('Grouped by your named networks, else by the networks of the devices\' interfaces')]], fk))}<div class="chart" id="cTop5"></div></section>
+      <section class="glass panel grow">${ph('users', byNet ? T('Top networks') : T('Top hosts'), byNet ? T('by total volume · click a row to add the network to the filters') : T('by total volume · click a row to add the host to the filters'),
         '<button class="lnk" id="tMore"></button>')}<div id="tBox" class="loading"></div></section>
     </div>
     <div class="col s4">
@@ -2440,23 +2443,17 @@ function vTalkers(){
     if (box) box.querySelectorAll('[data-qa]').forEach(b => b.onclick = acts[+b.dataset.qa][3]);
   };
   section('tKpi', async () => {
-    const [s, ser, t] = await Promise.all([api('summary'), api('series'), noNets ? {rows:[], total:0} : api('top', {dim, limit:byNet ? 2 : 1})]);
+    const [s, ser, t] = await Promise.all([api('summary'), api('series'), api('top', {dim, limit:byNet ? 2 : 1})]);
     const trend = (a, b) => !s.has_prev || !b ? `<span class="tr nodata" style="color:var(--ink3)">${T('data since {time}', {time: hhmm(s.oldest)})}</span>` : `<span class="tr ${a < b ? 'dn' : ''}">${a >= b ? '↑' : '↓'} ${Math.abs(100 * (a - b) / b).toFixed(1)}%</span>`;
     const vals = ser.rows.map(r => r[1] + r[2] + r[3]), fl = ser.rows.map(r => r[4]), top = byNet ? t.rows.find(r => r.k) : t.rows[0];
     const card = (ic, k, v, tr, sp, col, sub) => `<div class="glass kcard s3"><span class="ico">${icon(ICO[ic], 22)}</span><span class="k">${k}</span><span></span><span class="v">${v}</span>${tr}${sub ? `<span class="s" style="grid-column:2/-1;font-size:12.5px;color:var(--ink2)">${sub}</span>` : ''}${sp ? sparkSvg(sp, col) : ''}</div>`;
     return card('pulse', T('Total traffic'), fmtB(s.bytes), trend(s.bytes, s.p_bytes), vals, C.down)
-      + (byNet ? card('ip', T('Top network (by volume)'), esc(top ? top.k : '—'), '', null, '', top ? `${esc(netsText(top.nets || [], top.k))} · ${fmtB(tot(top))} (${pct(tot(top), t.total)})` : '')
+      + (byNet ? card('ip', T('Top network (by volume)'), esc(top ? top.k : '—'), '', null, '', top ? `${esc(netsText(top))} · ${fmtB(tot(top))} (${pct(tot(top), t.total)})` : '')
         : card('ip', T('Top host (by volume)'), esc(top ? top.name || top.k : '—'), '', null, '', top ? `${esc(top.name ? top.k + ' · ' : '')}${fmtB(tot(top))} (${pct(tot(top), t.total)})` : ''))
       + card('users', T('Unique hosts'), fmtN(s.hosts), trend(s.hosts, s.p_hosts), fl.map(Math.sqrt), C.int)
       + card('nodes', T('Total flows'), fmtN(s.flows), trend(s.flows, s.p_flows), fl, C.ext);
   });
-  if (noNets) {          // nothing named yet: say where networks get their names
-    const box = fill('tBox', `<div class="empty">${T('No named networks yet. Give your networks names in Settings → Flow configuration (e.g. 172.16.0.0/24 → Office), and their traffic shows here.')}
-      <div style="margin-top:10px"><button class="btn primary" id="toNets">${T('Name networks')}</button></div></div>`);
-    if (box) { box.classList.remove('loading'); document.getElementById('toNets').onclick = () => { state.view = 'settings'; state.setTab = 'flowcfg'; render(); }; }
-    ['tDonut', 'tDetail', 'cTop5'].forEach(id => { const el = fill(id, `<div class="empty">${T('No data')}</div>`); if (el) el.classList.remove('loading'); });
-    drawQa();
-  } else Promise.all([api('top', {dim, limit}), api('series', {by:dim, top:Math.min(limit, 20)})]).then(([t, ser]) => {
+  Promise.all([api('top', {dim, limit}), api('series', {by:dim, top:Math.min(limit, 20)})]).then(([t, ser]) => {
     topRows = t.rows; window.__tTotal = t.total;
     t.rows.forEach((r, i) => colorOf.set(r.k, byNet && !r.k ? C.other : HOSTPAL[i % HOSTPAL.length]));
     const fip = (state.filters.find(f => f.k === fk && !f.neg) || {}).v;
@@ -2465,7 +2462,7 @@ function vTalkers(){
     const {ts} = grid(ser), max = t.rows.length ? tot(t.rows[0]) : 1, conn = isInternal() && !byNet, cols = 8 + (conn || byNet ? 1 : 0);
     const label = r => byNet ? netLabel(r.k) : r.name || r.k;
     const who = (r, c) => byNet
-      ? `<div class="hcell"><span class="hbar" style="background:${c};box-shadow:0 0 8px ${c}"></span><span class="htxt"><b>${esc(netLabel(r.k))}</b><span class="nat mono" title="${esc((r.nets || []).join(', '))}">${esc(netsText(r.nets || [], r.k))}</span></span></div>`
+      ? `<div class="hcell"><span class="hbar" style="background:${c};box-shadow:0 0 8px ${c}"></span><span class="htxt"><b>${esc(netLabel(r.k))}</b><span class="nat mono" title="${esc((r.nets || []).join(', '))}">${esc(netsText(r))}</span></span></div>`
       : `<div class="hcell"><span class="hbar" style="background:${c};box-shadow:0 0 8px ${c}"></span><span class="htxt"><b class="mono">${esc(r.k)}</b><span class="nat">${esc(r.name || (r.k.startsWith('10.') || r.k.startsWith('192.168.') || r.k.startsWith('172.') ? T('no name') : T('public address')))}</span></span></div>`;
     const pick = r => !byNet || r.k ? ` data-pick="${esc(r.k)}" title="${T('Add to filters')}"` : '';
     const box = fill('tBox', `<div class="tw"><table class="talkers"><thead><tr><th>#</th><th>${byNet ? T('Network') : T('Host / IP')}</th><th style="width:26%">${T('Volume')}</th>${conn ? `<th class="num" title="${T('→ inside hosts it connected to · ← inside hosts that connected to it')}">${T('Connections')}</th>` : byNet ? `<th class="num">${T('Hosts')}</th>` : ''}<th class="num">%</th><th class="num">Flows</th><th class="num">${T('Avg rate')}</th><th>${T('Trend')}</th><th></th></tr></thead><tbody>
@@ -2473,8 +2470,11 @@ function vTalkers(){
         return `<tr class="${pick(r) ? 'click' : ''}${r.k === fip ? ' is-picked' : ''}"${pick(r)}><td class="mono">${i + 1}</td><td>${who(r, c)}</td>
           <td><b class="mono">${fmtB(tot(r))}</b><div class="vbar"><i style="width:${(100 * tot(r) / max).toFixed(1)}%;background:linear-gradient(90deg,${hexA(c, .55)},${c});box-shadow:0 0 8px ${hexA(c, .6)}"></i></div>${isInternal() ? `<span class="nat mono"><span class="u" title="${T('sent')}">↑ ${fmtB(r.up)}</span> <span class="d" title="${T('received')}">↓ ${fmtB(r.dn)}</span></span>` : ''}</td>
           ${conn ? `<td class="num mono"><span class="u" title="${T('inside hosts it connected to')}">→ ${fmtN(r.calls || 0)}</span> · <span class="d" title="${T('inside hosts that connected to it')}">← ${fmtN(r.callers || 0)}</span></td>` : byNet ? `<td class="num mono">${fmtN(r.hosts || 0)}</td>` : ''}<td class="num mono">${pct(tot(r), t.total)}</td><td class="num mono">${fmtN(r.fl)}</td><td class="num mono">${fmtR(tot(r) * 8 / secs)}</td>
-          <td style="width:120px">${sp.has(r.k) ? sparkSvg(ts.map(x => sp.get(r.k).get(x) || 0), c, 120, 26) : ''}</td><td>${!byNet ? `<button class="btn" data-open="${esc(r.k)}" title="${T('Host card')}">›</button>` : r.k ? `<button class="btn" data-open="${esc(r.k)}" title="${T('Hosts of the network')}">›</button>` : ''}</td></tr>`; }).join('') || `<tr><td colspan="${cols}"><div class="empty">${T('No data')}</div></td></tr>`}</tbody></table></div>`);
+          <td style="width:120px">${sp.has(r.k) ? sparkSvg(ts.map(x => sp.get(r.k).get(x) || 0), c, 120, 26) : ''}</td><td>${!byNet ? `<button class="btn" data-open="${esc(r.k)}" title="${T('Host card')}">›</button>` : r.k ? `<button class="btn" data-open="${esc(r.k)}" title="${T('Hosts of the network')}">›</button>` : ''}</td></tr>`; }).join('') || `<tr><td colspan="${cols}"><div class="empty">${T('No data')}</div></td></tr>`}</tbody></table></div>${byNet && t.rows.some(r => r.auto) ? `<p class="note">${t.rows.some(r => r.auto === 'guess')
+        ? T('Networks without a name are found from the addresses of the devices\' interfaces (SNMP or typed in Settings → Devices); a «/24 guessed» one means no interface holds it.')
+        : T('Networks without a name are found from the addresses of the devices\' interfaces.')} <button class="lnk" id="toNets">${T('Name networks')}</button></p>` : ''}`);
     if (box) { box.classList.remove('loading');
+      const tn = document.getElementById('toNets'); if (tn) tn.onclick = () => { state.view = 'settings'; state.setTab = 'flowcfg'; render(); };
       box.querySelectorAll('tr[data-pick]').forEach(tr => tr.onclick = () => addFilter(fk, tr.dataset.pick));
       box.querySelectorAll('[data-open]').forEach(b => b.onclick = e => { e.stopPropagation();
         if (byNet) { putFilter({k:'net', v:b.dataset.open, neg:false}); state.talkersBy = null; state.sel = null; render(); } else openHost(b.dataset.open); }); }
@@ -2507,7 +2507,7 @@ function vTalkers(){
         series:[{type:'scatter', coordinateSystem:'geo', symbolSize:d => 4 + 10 * Math.sqrt(d[2] / cmax), itemStyle:{color:'#27D3F5', shadowBlur:10, shadowColor:'#27D3F5'},
           data:city.rows.filter(r => r.la || r.lo).map(r => [r.lo, r.la, tot(r)])}]}); });
     return `<div class="geomini"><div class="chart" id="cMini" style="height:120px"></div><div class="dl">${cc.rows.map((r, i) => `<i class="idot" style="background:${cols[i]}"></i><button class="link" data-f="country" data-v="${esc(r.k)}">${esc(r.k ? ccName(r.k) : T('Local'))}</button><span class="p">${pct(tot(r), cc.total)}</span><span class="t"></span>`).join('')}${rest > 0 ? `<i class="idot" style="background:${C.other}"></i><span>${T('Others')}</span><span class="p">${pct(rest, cc.total)}</span><span class="t"></span>` : ''}</div></div>`; });
-  if (!noNets) section('tDetail', async () => { const d = await api('top', {dim:byNet ? 'net_svc' : 'host_svc', limit:6});
+  section('tDetail', async () => { const d = await api('top', {dim:byNet ? 'net_svc' : 'host_svc', limit:6});
     return `<div class="tw"><table class="compact"><thead><tr><th>${byNet ? T('Network') : T('Host')}</th><th>${T('Main service')}</th><th>${T('Protocol')}</th><th class="num">${T('Volume')}</th></tr></thead><tbody>${d.rows.map((r, i) => { const c = byNet && !r.k ? C.other : HOSTPAL[i % HOSTPAL.length];
       return `<tr${byNet && !r.k ? '' : ` class="click" data-f="${fk}" data-v="${esc(r.k)}"`}><td><span class="idot" style="background:${c};box-shadow:0 0 8px ${c}"></span><span class="${byNet ? '' : 'mono'}">${esc(byNet ? netLabel(r.k) : r.name || r.k)}</span></td><td>${svcBadge(r.service)}</td><td><span class="tag">${L4[r.proto] || r.proto} · ${esc(dv(r.l7))}</span></td><td class="num mono">${fmtB(tot(r))}</td></tr>`; }).join('')}</tbody></table></div>`; });
 }
@@ -5007,6 +5007,7 @@ function qParse(t){
   if (key && FILTER_KEYS.includes(key) && t.slice(i + 1)) { let v = t.slice(i + 1);
     if (key === 'device') { const d = (META.devices || []).find(x => x.ip === v || (x.name || '').toLowerCase() === v.toLowerCase()); if (d) v = d.ip; }   // by name too
     if (key === 'ip' || key === 'dst') { const c = addrCheck(v); if (!c.ok) return {err:c.msg}; v = c.v; }
+    if (key === 'net' && !netFind(v) && v.includes('/')) { const c = addrCheck(v); if (!c.ok) return {err:c.msg}; return {f:{k:key, v:c.v, neg}}; }   // (2.6.0) a network nobody named
     if (key === 'net') { const n = netFind(v); if (!n) return {err:(META.networks || []).length ? T('No network named {v}: name networks in Settings → Flow configuration', {v}) : T('No named networks yet: name them in Settings → Flow configuration')}; v = n.name; }
     if (['port', 'proto', 'in_if', 'out_if'].includes(key) && !/^\d+$/.test(v)) return {err:T('{key} takes a number: {v}', {key, v})};
     if (key === 'iface' && !/^\d+$/.test(v) && !/^[\w.\/:-]{1,60}$/.test(v)) return {err:T('{key} takes a number or a name: {v}', {key, v})};      // (1.13.0) iface:wan
