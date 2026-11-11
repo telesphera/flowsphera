@@ -1449,7 +1449,8 @@ def iface(c, idx, nbytes, ext, seen=(), sn=None):
     custom = names.get(str(idx), '')
     si = (sn or {}).get('ifs', {}).get(str(idx), {})
     past = (sn or {}).get('past', {}).get(str(idx), '')        # (2.6.0) the name a gone index had
-    return {'index': idx, 'name': custom or si.get('name') or past or ('local' if role == 'local' else f'if {idx}'), 'custom_name': custom,
+    name = custom or si.get('name') or past or ('local' if role == 'local' else f'if {idx}')
+    return {'index': idx, 'name': name, 'custom_name': custom, 'dyn': iface_dynamic(c, idx, name),     # (2.6.0) a VPN session's interface
             'role': role, 'wan': role == 'wan', 'bytes': nbytes, 'ext_share': round(ext / nbytes, 3) if nbytes else 0,
             'addrs': c.get('if_addrs', {}).get(str(idx), []), 'seen_addrs': list(seen),
             'snmp_name': si.get('name', ''), 'snmp_alias': si.get('alias', ''), 'snmp_up': si.get('oper') == 1 if si else None,

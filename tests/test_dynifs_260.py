@@ -90,3 +90,13 @@ class Dynamic(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DeviceInterfaces(unittest.TestCase):
+    def test_marked(self):      # (2.6.0) Settings → Devices folds them by this mark
+        mt = {'vendor': 'MikroTik'}
+        self.assertEqual(api.iface(mt, 15731993, 0, 0, (), {'ifs': {'15731993': {'name': '<sstp-yegor>'}}})['dyn'], '<sstp-yegor>')
+        self.assertEqual(api.iface(mt, 15738749, 0, 0, (), None)['dyn'], '')
+        self.assertIsNone(api.iface(mt, 2, 0, 0, (), {'ifs': {'2': {'name': 'ether1'}}})['dyn'])
+        with open(os.path.join(os.path.dirname(api.__file__), 'web', 'app.js')) as f:
+            self.assertIn("x.interfaces.filter(i => i.dyn == null)", f.read())
