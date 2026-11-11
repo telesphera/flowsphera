@@ -4,6 +4,13 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.6.1 — 2026-11-11
+
+### Fixed
+- **The device list at the top kept a device that was deleted** (issue #8): «All devices (3)» while only two were
+  described, for as long as the deleted device's old statistics were kept. The list now holds the described devices,
+  a source nobody described only while it sends (as in Settings → Devices), and never an ignored source.
+
 ## 2.6.0 — 2026-11-11
 
 ### Added
