@@ -12,9 +12,8 @@
 | `FT_MAX_NEW_EXPORTERS` | `16` | with `FT_EXPORTERS` empty: how many sources not yet configured are tracked at once (they show in Settings → Devices to be set up; one idle for 15 min makes room) — a bound against packets with forged sender addresses |
 | `FT_FORWARD` | *(empty)* | `host:port,…` — copy every datagram unchanged to other collectors |
 | `FT_WORKERS` | `auto` | decoding processes; `auto` = half the CPU threads, at most 4 |
-| | | With specific interfaces, both services also answer on localhost (health checks, `ssh -L`, a local reverse proxy) and restart themselves when an interface's address changes (DHCP). |
 | `FT_RCVBUF` | `33554432` | UDP receive buffer in bytes (capped by `net.core.rmem_max`, which the installer raises to 32 MB) |
-| `FT_WEB_BIND`, `FT_WEB_PORT` | interface of the default route, `3030` | web UI and API, same syntax — e.g. NetFlow on the external interface, the web UI only on the internal one |
+| `FT_WEB_BIND`, `FT_WEB_PORT` | interface of the default route, `3030` | web UI and API, same syntax — e.g. NetFlow on the external interface, the web UI only on the internal one. With specific interfaces in `FT_BIND` or `FT_WEB_BIND`, both services also answer on localhost (health checks, `ssh -L`, a local reverse proxy) and restart themselves when an interface's address changes (DHCP) |
 | `FT_TLS_CERT`, `FT_TLS_KEY` | `/etc/flowsphera/tls/*.pem` | HTTPS certificate and key; empty = plain HTTP |
 | `FT_CH_URL`, `FT_CH_USER`, `FT_CH_PASSWORD`, `FT_CH_DB` | | ClickHouse connection |
 | `FT_CH_FSYNC` | `0` | `1` = the parts of flows, events and the rollups' state are written to the disk before they count (fsync): fewer records lost at a power cut, but inserts about 10× slower (measured 868 vs 79 ms at 5,000 records/s). Without it the database recovers by itself after a power cut too and reports it as an event (2.0.0 build 3); a UPS is the real cure |
