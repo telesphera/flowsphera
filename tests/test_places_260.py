@@ -111,7 +111,7 @@ class Api(unittest.TestCase):
         with mock.patch.object(common, 'PLACES', self.pl), mock.patch.object(api, 'exporters_cfg', return_value=exp), \
              mock.patch.object(api, 'ch', side_effect=ch), mock.patch.object(api, 'has_apps', return_value=False), \
              mock.patch.object(api, 'listen_info', return_value={}), mock.patch.object(api, 'edition_info', return_value={}):
-            got = {d['ip']: (d['lat'], d['lon'], d['site']) for d in api.api_meta({})['devices']}
+            got = {d['ip']: (d['lat'], d['lon'], d['geo_src']) for d in api.api_meta({})['devices']}
         self.assertEqual(got, {'192.0.2.1': (50.8476, 4.3572, 'city'), '192.0.2.2': (52.37, 4.9, 'manual'), '192.0.2.3': (None, None, None)})
 
     def test_places_endpoint(self):
@@ -138,3 +138,10 @@ class Wiring(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DeviceTable(unittest.TestCase):
+    def test_site_stays_text(self):         # (2.6.0) a dict under 'site' showed «[object Object]» in Settings → Devices + CSV
+        src = open(api.__file__).read()
+        self.assertNotIn("'site': dict(", src)
+        self.assertIn("'site': ', '.join(x for x in (c.get('city', ''), c.get('country', '')) if x)", src)

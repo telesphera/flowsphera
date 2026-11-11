@@ -660,7 +660,7 @@ def api_meta(q):
         lat, lon, site = common.device_site(c)      # (2.6.0) no coordinates: the place of its City + Country
         devices.append({'ip': r['exporter'], 'name': c.get('name', r['exporter']), 'vendor': c.get('vendor', ''), 'model': c.get('model', ''),
                         'if_names': c.get('if_names', {}), 'local_if': c.get('local_if'),
-                        'city': c.get('city', ''), 'country': c.get('country', ''), 'lat': lat, 'lon': lon, 'site': site, 'last': r['last'],
+                        'city': c.get('city', ''), 'country': c.get('country', ''), 'lat': lat, 'lon': lon, 'geo_src': site, 'last': r['last'],
                         'aliases': c.get('aliases') or []})
     # (1.17.0) the first record in time order (min() under a WHERE read every record of the period)
     oldest = ch("SELECT toUnixTimestamp(ts) AS t FROM flows WHERE ts >= now() - toIntervalDay({d:UInt16}) ORDER BY ts LIMIT 1", {'d': view_days()}, fmt='JSON')
@@ -1783,7 +1783,6 @@ def api_devices(q):
                     'wan_ifs': c.get('wan_ifs', []), 'configured': s['exporter'] in exp,
                     'aliases': [str(a) for a in c.get('aliases') or []],      # (2.4.0) its earlier addresses (reports)
                     'config': {k: c.get(k) for k in ('name', 'vendor', 'protocol', 'model', 'wan_ifs', 'local_if', 'public_ips', 'city', 'country', 'lat', 'lon', 'sampling', 'export_ifs')},
-                    'site': dict(zip(('lat', 'lon', 'src'), common.device_site(c))),     # (2.6.0) where the map puts it
                     'snmp': snmp_status(s['exporter'], sset, sdata),
                     'interfaces': interfaces_of(c, [r for r in ifs if r['exporter'] == s['exporter']], seen_addrs.get(s['exporter'], {}),
                                                 sdata.get(s['exporter']) if sset.get(s['exporter'], {}).get('enabled') else None,
