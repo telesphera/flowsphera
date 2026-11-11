@@ -714,12 +714,20 @@ def listen_info():
 
 # ------------------------------------------------------------------ endpoints
 
+UNDESCRIBED_FOR = 900       # (2.6.1) a source nobody described stays in the device list this long after it stops
+
+
 def api_meta(q):
     exp = exporters_cfg()
-    seen = ch("SELECT exporter, max(ts) AS last FROM exporter_stats GROUP BY exporter", fmt='JSON')
-    devices, alias = [], common.device_aliases(exp)
+    seen = ch("SELECT exporter, max(ts) AS last, toUnixTimestamp(max(ts)) AS lu FROM exporter_stats GROUP BY exporter", fmt='JSON')
+    devices, alias, ignored, now = [], common.device_aliases(exp), common.load_ignored(), time.time()
     for r in seen:
         if r['exporter'] in alias:       # (2.4.0) an earlier address of a device: its records are that device's
+            continue
+        # (2.6.1, issue #8) the devices are the described ones; a source nobody described only while it sends (the
+        # last 15 minutes, as in Settings → Devices) — a device deleted from the settings left a ghost in the list
+        # for as long as its old statistics were kept; an ignored source never
+        if r['exporter'] in ignored or (r['exporter'] not in exp and now - int(r['lu']) > UNDESCRIBED_FOR):
             continue
         c = exp.get(r['exporter'], {})
         lat, lon, site = common.device_site(c)      # (2.6.0) no coordinates: the place of its City + Country
