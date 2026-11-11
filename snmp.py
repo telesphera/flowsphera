@@ -365,8 +365,61 @@ def summary(found):
 
 # ------------------------------------------------------------------ stored results
 
+# (2.6.0) every name an interface index ever had: a MikroTik gives each VPN session (<sstp-user>, <l2tp-…>, <pppoe-…>)
+# a new index, gone after it; without this the records of past sessions show «if 15738749». The collector's
+# counter thread (ifcounters, every minute) is the only writer: {device: {index: [name, first seen, last seen]}}.
+SEEN = os.path.join(STATE_DIR, 'snmp_names_seen.json')
+SEEN_KEEP = 400 * 86400          # longer than any edition keeps records
+SEEN_MAX = 20000                 # per device, the newest kept
+SEEN_TOUCH = 3600                # «last seen» of a known name is refreshed at most hourly (no file write a minute)
+_seen = [None, {}]
+
+
+def remember_names(ip, names, t=None):
+    """Keep the names `names` {index: name} of device `ip` seen at unix time `t`; True when the file changed."""
+    t = int(t or time.time())
+    d = _load(SEEN)
+    dev, changed = d.setdefault(ip, {}), False
+    for idx, name in names.items():
+        name = str(name or '').strip()
+        if not name:
+            continue
+        e = dev.get(str(idx))
+        if not e or e[0] != name:
+            dev[str(idx)] = [name, t, t]
+            changed = True
+        elif t - e[2] >= SEEN_TOUCH:
+            e[2] = t
+            changed = True
+    if not changed:
+        return False
+    for ipx in list(d):
+        keep = sorted(((k, v) for k, v in d[ipx].items() if t - v[2] <= SEEN_KEEP), key=lambda kv: -kv[1][2])[:SEEN_MAX]
+        d[ipx] = dict(keep)
+    _save(SEEN, d, 0o640)
+    return True
+
+
+def seen_names():
+    """{device: {index: name}} of every index ever named (read again when the file changed)."""
+    try:
+        mt = os.path.getmtime(SEEN)
+    except OSError:
+        return {}
+    if mt != _seen[0]:
+        _seen[:] = [mt, {ip: {k: v[0] for k, v in dev.items()} for ip, dev in _load(SEEN).items()}]
+    return _seen[1]
+
+
 def load_data():
-    return _load(DATA)
+    """What the last polls found; (2.6.0) each device also carries `past` {index: name} — the names of its indexes
+    that are gone (a past VPN session's interface)."""
+    d = _load(DATA)
+    for ip, names in seen_names().items():
+        if ip in d:
+            ifs = d[ip].get('ifs') or {}
+            d[ip]['past'] = {k: v for k, v in names.items() if k not in ifs}
+    return d
 
 
 def data_mtime():
@@ -455,7 +508,8 @@ def merge(exporters, data=None, settings=None):
         if not d or not settings.get(ip, {}).get('enabled') or not (d.get('ifs') or d.get('addrs')):
             out[ip] = c
             continue
-        names = {k: i['name'] for k, i in d.get('ifs', {}).items() if i.get('name')}
+        names = dict(d.get('past') or {})       # (2.6.0) gone indexes keep the name they had
+        names.update({k: i['name'] for k, i in d.get('ifs', {}).items() if i.get('name')})
         names.update(c.get('if_names') or {})
         addrs = {k: list(v) for k, v in d.get('addrs', {}).items() if v}
         addrs.update(c.get('if_addrs') or {})

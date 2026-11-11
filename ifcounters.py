@@ -28,7 +28,8 @@ LOW = {'in_octets': '1.3.6.1.2.1.2.2.1.10', 'out_octets': '1.3.6.1.2.1.2.2.1.16'
        'in_ucast': '1.3.6.1.2.1.2.2.1.11', 'out_ucast': '1.3.6.1.2.1.2.2.1.17'}
 COMMON = {'in_discards': '1.3.6.1.2.1.2.2.1.13', 'in_errors': '1.3.6.1.2.1.2.2.1.14', 'out_discards': '1.3.6.1.2.1.2.2.1.19',
           'out_errors': '1.3.6.1.2.1.2.2.1.20', 'if_type': '1.3.6.1.2.1.2.2.1.3', 'admin': '1.3.6.1.2.1.2.2.1.7',
-          'oper': '1.3.6.1.2.1.2.2.1.8', 'speed_m': '1.3.6.1.2.1.31.1.1.1.15'}
+          'oper': '1.3.6.1.2.1.2.2.1.8', 'speed_m': '1.3.6.1.2.1.31.1.1.1.15',
+          'name': '1.3.6.1.2.1.31.1.1.1.1'}      # (2.6.0) ifName: a new index (a MikroTik VPN session) named within a minute
 SKIP_TYPES = {24}             # softwareLoopback: nothing to plan for
 
 
@@ -109,6 +110,10 @@ class Poller:
             t = int(time.time())
             try:
                 found = read(ip, entry)
+                try:            # (2.6.0) the names of the indexes, kept after they are gone (snmp.seen_names)
+                    snmp.remember_names(ip, {i: v.get('name') for i, v in found.items()}, t)
+                except OSError as e:
+                    self.log(f'WARN snmp names {ip}: not kept: {str(e)[:120]}')
                 r = rows(ip, found, t)
                 if r:
                     ch('INSERT INTO if_counters FORMAT JSONEachRow', data='\n'.join(json.dumps(x, separators=(',', ':')) for x in r).encode(), timeout=20)

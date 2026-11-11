@@ -888,3 +888,7 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
 .plist button:hover{background:rgba(255,255,255,.07)}
 .plist .nat{white-space:nowrap}
 #fSite{margin:-2px 0 4px}
+/* (2.6.0) Capacity: a device's dynamic interfaces (VPN sessions) folded into one row */
+.captable tr.capdyn{cursor:pointer}
+.captable tr.capdyn td{background:rgba(255,255,255,.025)}
+.captable tr.capdynrow td:nth-child(2){padding-left:22px}

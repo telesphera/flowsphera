@@ -847,7 +847,7 @@ def render(r, data, t0, t1, version='', now=None):
     # ---- (1.13.0) link capacity: the links with a known capacity, the fullest first, and what to plan for
     if 'capacity' in sec and data.get('capacity'):
         cd = data['capacity']
-        links = [x for x in cd['interfaces'] if x['status'] != 'unknown'][:14]
+        links = [x for x in cd['interfaces'] if x['status'] != 'unknown' and not x.get('dynamic')][:14]      # (2.6.0) no VPN session
         if not links:
             section(tr('Link capacity'), Paragraph(esc(tr('No link has a known capacity: set the port speeds or your ISP figures in Settings → Devices → Interfaces.')), PM))
         else:

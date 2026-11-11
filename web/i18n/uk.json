@@ -2124,5 +2124,13 @@
  "Grouped by your named networks, else by the networks of the devices' interfaces": "За вашими іменованими мережами, а без назви — за мережами інтерфейсів пристроїв",
  "by total volume · click a row to add the network to the filters": "за загальним обсягом · клік по рядку додає мережу у фільтри",
  "Networks without a name are found from the addresses of the devices' interfaces (SNMP or typed in Settings → Devices); a «/24 guessed» one means no interface holds it.": "Мережі без назви знайдено за адресами інтерфейсів пристроїв (SNMP або введені в Налаштування → Пристрої); «/24, припущена» означає, що жоден інтерфейс її не містить.",
- "Networks without a name are found from the addresses of the devices' interfaces.": "Мережі без назви знайдено за адресами інтерфейсів пристроїв."
+ "Networks without a name are found from the addresses of the devices' interfaces.": "Мережі без назви знайдено за адресами інтерфейсів пристроїв.",
+ "dynamic": "динамічні",
+ "Dynamic interfaces": "Динамічні інтерфейси",
+ "{n} sessions": {"one": "{n} сесія", "few": "{n} сесії", "many": "{n} сесій", "other": "{n} сесії"},
+ "{n} names": {"one": "{n} назва", "few": "{n} назви", "many": "{n} назв", "other": "{n} назви"},
+ "A VPN or PPPoE session makes its own interface on the device, with a new number each time: they are no links to plan, so they are shown here by name.": "Кожна сесія VPN чи PPPoE створює на пристрої власний інтерфейс, щоразу з новим номером: це не канали для планування, тому тут вони зібрані за назвою.",
+ "earlier sessions": "попередні сесії",
+ "{n} sessions from before names were kept": {"one": "{n} сесія без збереженої назви", "few": "{n} сесії без збереженої назви", "many": "{n} сесій без збереженої назви", "other": "{n} сесії без збереженої назви"},
+ "last {date}": "остання {date}"
 }

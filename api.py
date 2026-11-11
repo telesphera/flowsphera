@@ -1448,7 +1448,8 @@ def iface(c, idx, nbytes, ext, seen=(), sn=None):
     role = 'wan' if idx in c.get('wan_ifs', []) else 'local' if c.get('local_if') == idx and c.get('local_if') is not None else 'lan'
     custom = names.get(str(idx), '')
     si = (sn or {}).get('ifs', {}).get(str(idx), {})
-    return {'index': idx, 'name': custom or si.get('name') or ('local' if role == 'local' else f'if {idx}'), 'custom_name': custom,
+    past = (sn or {}).get('past', {}).get(str(idx), '')        # (2.6.0) the name a gone index had
+    return {'index': idx, 'name': custom or si.get('name') or past or ('local' if role == 'local' else f'if {idx}'), 'custom_name': custom,
             'role': role, 'wan': role == 'wan', 'bytes': nbytes, 'ext_share': round(ext / nbytes, 3) if nbytes else 0,
             'addrs': c.get('if_addrs', {}).get(str(idx), []), 'seen_addrs': list(seen),
             'snmp_name': si.get('name', ''), 'snmp_alias': si.get('alias', ''), 'snmp_up': si.get('oper') == 1 if si else None,
@@ -1465,11 +1466,26 @@ def ifaces_named(name):
         sn = sdata.get(dev) if sset.get(dev, {}).get('enabled') else None
         idxs = {int(k) for key in ('if_names', 'if_addrs', 'if_caps') for k in (c.get(key) or {}) if str(k).isdigit()}
         idxs |= {int(k) for k in (sn or {}).get('ifs', {}) if str(k).isdigit()} | set(c.get('wan_ifs', []))
+        idxs |= {int(k) for k in (sn or {}).get('past', {}) if str(k).isdigit()}      # (2.6.0) iface:<sstp-user> = every session
         for idx in sorted(idxs):
             info = iface(c, idx, 0, 0, (), sn)
             if name in (info['name'].lower(), info['snmp_name'].lower()):
                 out.append((dev, idx))
     return out
+
+DYN_INDEX = 1 << 23        # (2.6.0) RouterOS numbers its dynamic interfaces from about 15,000,000 on
+
+
+def iface_dynamic(c, idx, name):
+    """(2.6.0) A dynamic interface — one a session makes and takes away (a MikroTik VPN or PPPoE client: «<sstp-user>»,
+    a new index each time) -> the name its sessions share ('' = an earlier one whose name nobody kept); None otherwise."""
+    name = name or ''
+    if len(name) > 2 and name.startswith('<') and name.endswith('>'):
+        return name
+    if name == f'if {idx}' and idx >= DYN_INDEX and 'mikrotik' in str(c.get('vendor', '')).lower():
+        return ''
+    return None
+
 
 def if_capacity(c, idx, auto_mbps):
     """(1.12.0) What an interface can carry, Mbit/s in and out: the operator's own figures (an ISP contract of 300 / 50
@@ -2066,7 +2082,9 @@ def api_capacity(q):
                           'peak_pct': pct(peak), 'p95_pct': pct(p95), 'trend': tr_ and {**{k: tr_[k] for k in ('slope', 'level', 'busy', 'days')}, 'last_day': first + tr_['last'] * 86400},
                           'forecast': fc, 'status': capacity.status(pct(peak), pct(p95), fc)}
         worst = min(('in', 'out'), key=lambda k: (capacity.RANK[dirs[k]['status']], -(dirs[k]['p95_pct'] or 0), -dirs[k]['p95']))
+        dyn = iface_dynamic(c, idx, info['name'])
         out.append({'device': dev, 'device_name': c.get('name') or dev, 'index': idx, 'name': info['name'], 'role': info['role'],
+                    'dynamic': dyn is not None, 'dyn_name': dyn or '',      # (2.6.0) the page folds them into one row
                     'cap_in': info['cap_in'], 'cap_out': info['cap_out'], 'cap_own': info['cap_own'], 'cap_auto': info['cap_auto'],
                     'in': dirs['in'], 'out': dirs['out'], 'worst': worst, 'status': dirs[worst]['status'],
                     'source': src if ctr else 'flows', 'seen_pct': seen if src else None, 'counters': src,

@@ -1268,9 +1268,11 @@ function vCapacity(){
     fill('capDaysBox', seg('capDays', [7, 30, 90, 180, 365].map(n => [String(n), T('{n} d', {n}), n > d.max_days ? T('Your edition shows {n} days', {n:d.max_days}) : '']), String(d.days)));
     document.querySelectorAll('#capDays button').forEach(b => { if (+b.dataset.v > d.max_days) b.disabled = true; });
     wireSeg('capDays', n => { if (+n === d.days || +n > d.max_days) return; state.capDays = +n; render(); });
-    const all = d.interfaces, st = CAP_STATUS();
+    // (2.6.0) dynamic interfaces (a MikroTik VPN session each: <sstp-user>, a new index every time) are no links to plan:
+    // they leave the cards and the picker and fold into one row per device, by the name their sessions share
+    const every = d.interfaces, dyn = every.filter(x => x.dynamic), all = every.filter(x => !x.dynamic), st = CAP_STATUS();
     const skip = (d.unfiltered || []).map(k => FILTER_LABEL[k] || k), skipNote = skip.length ? `<p class="note evskip">${T('Not applied here')}: ${esc(skip.join(', '))}</p>` : '';
-    if (!all.length) { done('capTable', skipNote + `<div class="empty">${state.filters.some(f => f.k === 'device' || f.k === 'iface') ? T('No link matches these filters') : T('No interface traffic in this period')}</div>`); ['capChart', 'capHeat', 'capHosts', 'capSvcs'].forEach(id => done(id, '')); return; }
+    if (!every.length) { done('capTable', skipNote + `<div class="empty">${state.filters.some(f => f.k === 'device' || f.k === 'iface') ? T('No link matches these filters') : T('No interface traffic in this period')}</div>`); ['capChart', 'capHeat', 'capHosts', 'capSvcs'].forEach(id => done(id, '')); return; }
     // the cards
     const kc = (ic, k, val, sub, col) => `<section class="glass panel kcard s3" style="grid-template-columns:auto 1fr"><span class="ico">${icon(ICO[ic] || ic, 22)}</span><span class="k">${k}</span><span class="v"${col ? ` style="color:${col}"` : ''}>${val}</span><span class="nat" style="grid-column:2">${sub}</span></section>`;
     const near = all.filter(x => x.status === 'over' || x.status === 'full'), soon = all.filter(x => x.status === 'soon');
@@ -1309,10 +1311,24 @@ function vCapacity(){
       return `<svg class="ldspark capspark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${cy ? `<line x1="0" x2="${w}" y1="${cy}" y2="${cy}" stroke="var(--ink3)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>` : ''}${line(1, CAP_IN)}${line(2, CAP_OUT)}</svg>`; };
     const capTxt = x => !x.cap_in && !x.cap_out ? `<span class="nat">${T('unknown')}</span>` : `<span class="mono">${x.cap_in === x.cap_out ? fmtR(x.cap_in * 1e6) : `${fmtR(x.cap_in * 1e6)} ↓<br>${fmtR(x.cap_out * 1e6)} ↑`}</span><div class="nat">${x.cap_own ? T('your figures') : T('port speed')}</div>`;
     const key = x => `${x.device}|${x.index}`;
-    if (!all.some(x => key(x) === state.capSel)) state.capSel = key(all[0]);
+    if (!every.some(x => key(x) === state.capSel)) state.capSel = key(all[0] || every[0]);
+    const groups = [...dyn.reduce((m, x) => { const g = m.get(x.device) || {dev:x.device, name:x.device_name, rows:[]}; g.rows.push(x); return m.set(x.device, g); }, new Map()).values()];
+    const dynHtml = g => { const open = (state.capDynOpen || []).includes(g.dev), b = r => r.in.bytes + r.out.bytes;
+      const by = [...g.rows.reduce((m, x) => { const e = m.get(x.dyn_name) || {name:x.dyn_name, rows:[]}; e.rows.push(x); return m.set(x.dyn_name, e); }, new Map()).values()]
+        .map(e => ({...e, b:e.rows.reduce((a, r) => a + b(r), 0), inb:e.rows.reduce((a, r) => a + r.in.bytes, 0), outb:e.rows.reduce((a, r) => a + r.out.bytes, 0),
+          peak:Math.max(...e.rows.map(r => Math.max(r.in.peak, r.out.peak))), last:Math.max(...e.rows.map(r => (r.days[r.days.length - 1] || [0])[0])),
+          newest:e.rows.reduce((a, r) => ((r.days[r.days.length - 1] || [0])[0] >= ((a.days[a.days.length - 1] || [0])[0]) ? r : a))}))
+        .sort((a, z) => (a.name === '') - (z.name === '') || z.b - a.b);
+      const total = by.reduce((a, e) => a + e.b, 0);
+      return `<tr class="capdyn" data-dev="${esc(g.dev)}" tabindex="0" aria-expanded="${open}"><td><span class="pill">${T('dynamic')}</span></td>
+        <td colspan="20"><b><span class="dynarr">${open ? '▾' : '▸'}</span> ${T('Dynamic interfaces')}</b> <span class="nat">${esc(g.name)} · ${Tn(g.rows.length, '{n} session', '{n} sessions')} · ${Tn(by.filter(e => e.name).length, '{n} name', '{n} names')} · ${fmtB(total)}</span>
+        <div class="nat">${T('A VPN or PPPoE session makes its own interface on the device, with a new number each time: they are no links to plan, so they are shown here by name.')}</div></td></tr>`
+        + by.map(e => `<tr class="caprow capdynrow" data-g="${esc(g.dev)}" data-k="${esc(key(e.newest))}" tabindex="0" aria-selected="${key(e.newest) === state.capSel}"${open ? '' : ' hidden'}><td></td>
+          <td><b class="mono">${esc(e.name || T('earlier sessions'))}</b><div class="nat">${e.name ? Tn(e.rows.length, '{n} session', '{n} sessions') : Tn(e.rows.length, '{n} session from before names were kept', '{n} sessions from before names were kept')} · ${T('last {date}', {date:dMon(e.last)})}</div></td>
+          <td colspan="20"><span class="mono">↓ ${fmtB(e.inb)} · ↑ ${fmtB(e.outb)}</span> <span class="nat mono">${T('peak')} ${fmtR(e.peak)}</span></td></tr>`).join(''); };
     done('capTable', skipNote + `<div class="tw"><table class="compact ldtable captable"><thead><tr><th>${T('Status')}</th><th>${T('Interface')}</th><th>${T('Capacity')}</th><th>${T('In (95th percentile)')}</th><th>${T('Out (95th percentile)')}</th><th>${T('Trend')}</th><th>${T('Reaches {pct}%', {pct:d.full_pct})}</th><th title="${T('Bytes in the flows against the interface\'s own counters, the days both have')}">${T('Flows see')}</th><th>${T('Day by day')} <span class="nat" style="font-weight:500"><span style="color:${CAP_IN}">— ${T('in')}</span> <span style="color:${CAP_OUT}">— ${T('out')}</span></span></th></tr></thead><tbody>
       ${all.map(x => `<tr class="caprow" data-k="${esc(key(x))}" tabindex="0" aria-selected="${key(x) === state.capSel}"><td><span class="pill ${st[x.status][1]}">${st[x.status][0]}</span></td>
-        <td><b>${esc(x.name)}</b> ${x.role === 'wan' ? '<span class="pill warn">WAN</span>' : ''}<div class="nat">${esc(x.device_name)}${x.counters ? ` · <span class="capsrc${x.source === 'flows' ? ' soon' : ''}" title="${x.source === 'flows' ? T('Counters read since {date}: the days take their figures once the counters cover most of the period; what the flows see shows after 3 hours.', {date:dMon(x.counters_since)}) : T('The interface\'s own counters: every octet, the busiest minute')}">${x.counters === 'snmp' ? T('SNMP counters') : T('sFlow counters')}${x.source === 'flows' && x.counters_since ? ' ' + T('since {date}', {date:dMon(x.counters_since)}) : ''}</span>` : ''}</div></td><td>${capTxt(x)}</td>${dirCell(x, 'in')}${dirCell(x, 'out')}${trendCell(x)}${whenCell(x)}${seenCell(x)}<td>${spark(x)}</td></tr>`).join('')}</tbody></table></div>
+        <td><b>${esc(x.name)}</b> ${x.role === 'wan' ? '<span class="pill warn">WAN</span>' : ''}<div class="nat">${esc(x.device_name)}${x.counters ? ` · <span class="capsrc${x.source === 'flows' ? ' soon' : ''}" title="${x.source === 'flows' ? T('Counters read since {date}: the days take their figures once the counters cover most of the period; what the flows see shows after 3 hours.', {date:dMon(x.counters_since)}) : T('The interface\'s own counters: every octet, the busiest minute')}">${x.counters === 'snmp' ? T('SNMP counters') : T('sFlow counters')}${x.source === 'flows' && x.counters_since ? ' ' + T('since {date}', {date:dMon(x.counters_since)}) : ''}</span>` : ''}</div></td><td>${capTxt(x)}</td>${dirCell(x, 'in')}${dirCell(x, 'out')}${trendCell(x)}${whenCell(x)}${seenCell(x)}<td>${spark(x)}</td></tr>`).join('')}${groups.map(dynHtml).join('')}</tbody></table></div>
       <p class="note">${T('95th percentile = the load of the busy hours: only 5% of the 5-minute periods were busier. The trend compares days a whole number of weeks apart, so quiet weekends are no decline, and a forecast never reaches further than twice the history it rests on. In = entering the device through the interface, out = leaving through it.')}
       ${isAdmin() ? ` <button class="lnk" id="capCaps">${T('Set capacities')} →</button>` : ''}</p>`);
     const cb = document.getElementById('capCaps');
@@ -1320,8 +1336,12 @@ function vCapacity(){
     const pickLink = (k, scroll) => { state.capSel = k; state.capDir = null;
       document.querySelectorAll('.caprow').forEach(o => o.setAttribute('aria-selected', String(o.dataset.k === k)));
       const ps = document.getElementById('capPick'); if (ps) ps.value = k;
-      capDetail(all.find(x => key(x) === k), seq);
+      capDetail(every.find(x => key(x) === k), seq);
       if (scroll) { const el = document.getElementById('capDetailS'); if (el) el.scrollIntoView({behavior:'smooth', block:'start'}); } };
+    document.querySelectorAll('.capdyn').forEach(r => { const flip = () => { const o = new Set(state.capDynOpen || []), op = !o.has(r.dataset.dev);   // (2.6.0) open / close a device's dynamic interfaces in place
+        op ? o.add(r.dataset.dev) : o.delete(r.dataset.dev); state.capDynOpen = [...o]; r.setAttribute('aria-expanded', String(op)); r.querySelector('.dynarr').textContent = op ? '▾' : '▸';
+        document.querySelectorAll('.capdynrow').forEach(x => { if (x.dataset.g === r.dataset.dev) x.hidden = !op; }); };
+      r.onclick = flip; r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } }; });
     document.querySelectorAll('.caprow').forEach(r => { r.onclick = () => pickLink(r.dataset.k, true);
       r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickLink(r.dataset.k, true); } }; });
     fill('capPickBox', `<label class="sel glass" title="${T('Link')}">${icon(ICO.ip, 16)}<select id="capPick" aria-label="${T('Link')}">${all.map(x => `<option value="${esc(key(x))}"${key(x) === state.capSel ? ' selected' : ''}>${esc(x.name)} · ${esc(x.device_name)}</option>`).join('')}</select></label>`);
