@@ -3620,15 +3620,45 @@ function vGeneral(){
       T('only in this browser'))}
     ${card(USER_ICON, T('Account'), esc(ME.display || ME.name), `${ME.role === 'admin' ? T('Administrator') : T('Viewer')}${ME.source === 'ldap' ? ` · ${T('directory account')}` : ` · <button class="lnk" id="myPass">${T('Change my password')}</button>`}`)}
     ${isAdmin() ? `<section class="glass panel s12" id="keepBox">${ph(DISK_ICON, T('Data retention'), T('how many days flow details are kept · at most what your license allows'))}<div id="keepBody" class="loading"></div></section>` : ''}
+    ${isAdmin() ? `<section class="glass panel s12" id="dnsBox">${ph('search', T('Host names from DNS'), T('reverse DNS (PTR) names of your inside hosts · what FlowSphera asks your DNS server'))}<div id="dnsBody" class="loading"></div></section>` : ''}
     ${isAdmin() ? `<section class="glass panel s12" id="mailBox">${ph(MAIL_ICON, T('Mail server'), T('e-mail (SMTP) for the reports and the e-mail notifications'))}<div id="mailBody" class="loading"></div></section>` : ''}</div>`;
   if (isAdmin()) (async () => { const el = document.getElementById('mailBody');
     try { const r = await fetch('api/mail'); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); mailPanel(el, j);
       if (state.goMail) { state.goMail = false; document.getElementById('mailBox').scrollIntoView({block:'start', behavior:'smooth'}); const h = document.getElementById('rmHost'); if (h) h.focus({preventScroll:true}); } }
     catch (e) { el.classList.remove('loading'); el.innerHTML = `<p class="err">${esc(e.message)}</p>`; } })();
-  if (isAdmin()) keepPanel();
+  if (isAdmin()) { keepPanel(); dnsPanel(); }
   document.getElementById('langSel').onchange = e => { if (e.target.value !== LANG) setLang(e.target.value); };
   document.getElementById('toLic').onclick = () => { state.setTab = 'license'; render(); };
   const mp = document.getElementById('myPass'); if (mp) mp.onclick = openPassword;
+}
+// (2.6.0) Host names from DNS: off / only the hosts a page shows / also in the background at 5, 20 or 50 lookups a
+// second — a big network's DNS server, or one that forwards private PTR queries outside, is the administrator's call
+async function dnsPanel(){
+  const el = document.getElementById('dnsBody'); if (!el) return;
+  let d; try { d = await fetch('api/dns').then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }); }
+  catch (e) { el.classList.remove('loading'); el.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  let mode = d.mode, rate = d.rate;
+  const when = t => new Date(t * 1000).toLocaleString(LOC, {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+  const say = {off:T('FlowSphera asks your DNS server nothing; hosts show the names you give them (Settings → Flow configuration → Hosts) or their address.'),
+    shown:T('Only the inside hosts a page shows are looked up, each at most once an hour — as before 2.5. The search box finds a host by its DNS name only after it was shown.'),
+    background:T('Also the inside hosts of the last {days} days, the busiest first (at most {max}), once a day each — so the search box finds any of them by name. At most {rate} lookups a second and 4 at a time: a slow DNS server gets fewer.', {days:d.days, max:d.max_hosts.toLocaleString(LOC), rate:'{rate}'})};
+  const draw = () => {
+    el.classList.remove('loading');
+    el.innerHTML = `<div class="dnsrow">${seg('dnsMode', [['off', T('Off')], ['shown', T('Only shown hosts')], ['background', T('In the background')]], mode)}
+      <label class="sel glass"${mode === 'background' ? '' : ' hidden'}><select id="dnsRate" aria-label="${T('Lookups a second')}">${d.rates.map(r => `<option value="${r}"${r === rate ? ' selected' : ''}>${T('{n} lookups a second', {n:r})}</option>`).join('')}</select></label>
+      <button class="btn primary" id="dnsSave" disabled>${T('Save')}</button> <span class="nat" id="dnsMsg" role="status"></span></div>
+      <p class="note">${say[mode].replace('{rate}', rate)}</p>
+      <p class="nat">${mode === 'off' ? '' : T('Known now: {named} names for {asked} inside addresses asked.', {named:d.named.toLocaleString(LOC), asked:d.asked.toLocaleString(LOC)})}${d.last_pass && mode === 'background' ? ' ' + T('Last background pass {when}: {n} hosts.', {when:when(d.last_pass), n:d.last_hosts.toLocaleString(LOC)}) : ''}
+      ${T('Only private addresses are looked up, with this server\'s own resolver. Turn it off or slow it down when your DNS server forwards private PTR queries to your provider.')}</p>`;
+    const dirty = () => { document.getElementById('dnsSave').disabled = mode === d.mode && rate === d.rate; };
+    wireSeg('dnsMode', v => { mode = v; draw(); dirty(); });
+    document.getElementById('dnsRate').onchange = e => { rate = +e.target.value; draw(); dirty(); };
+    document.getElementById('dnsSave').onclick = async () => { const m = document.getElementById('dnsMsg');
+      try { d = await apiPost('dns', {mode, rate}); mode = d.mode; rate = d.rate; draw(); document.getElementById('dnsMsg').textContent = T('Saved.'); }
+      catch (e) { m.textContent = e.message; m.style.color = 'var(--crit)'; } };
+    dirty();
+  };
+  draw();
 }
 // (2.0.0 build 4) Data retention: the administrator keeps fewer days than the license allows (a small disk). Visual
 // first: what the data takes now, per day, and after the choice; then the choice. Fewer days than kept now delete the

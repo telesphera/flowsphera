@@ -2145,5 +2145,20 @@
  "at most {n} lists by URL": "не більше {n} списків за URL",
  "list by URL: not an http(s) address: {value}": "список за URL: це не адреса http(s): {value}",
  "spam sources": "джерела спаму",
- "a known source of spam": "відоме джерело спаму"
+ "a known source of spam": "відоме джерело спаму",
+ "Host names from DNS": "Назви хостів з DNS",
+ "reverse DNS (PTR) names of your inside hosts · what FlowSphera asks your DNS server": "зворотні імена DNS (PTR) ваших внутрішніх хостів · що FlowSphera питає у вашого DNS-сервера",
+ "FlowSphera asks your DNS server nothing; hosts show the names you give them (Settings → Flow configuration → Hosts) or their address.": "FlowSphera нічого не питає у вашого DNS-сервера; хости показуються з назвами, які ви їм дали (Налаштування → Налаштування трафіку → Хости), або з адресою.",
+ "Only the inside hosts a page shows are looked up, each at most once an hour — as before 2.5. The search box finds a host by its DNS name only after it was shown.": "Питаються лише внутрішні хости, які показує сторінка, кожен не частіше разу на годину — як до 2.5. Пошук знаходить хост за іменем DNS лише після того, як його було показано.",
+ "Also the inside hosts of the last {days} days, the busiest first (at most {max}), once a day each — so the search box finds any of them by name. At most {rate} lookups a second and 4 at a time: a slow DNS server gets fewer.": "Також внутрішні хости за останні {days} днів, найактивніші першими (не більше {max}), кожен раз на добу — тож пошук знаходить будь-який з них за іменем. Не більше {rate} запитів за секунду і 4 одночасно: повільний DNS-сервер отримує менше.",
+ "Off": "Вимкнено",
+ "Only shown hosts": "Лише показані хости",
+ "In the background": "У фоні",
+ "Lookups a second": "Запитів за секунду",
+ "{n} lookups a second": "{n} запитів за секунду",
+ "Known now: {named} names for {asked} inside addresses asked.": "Відомих імен зараз: {named}, опитано внутрішніх адрес: {asked}.",
+ "Last background pass {when}: {n} hosts.": "Останній фоновий прохід {when}, хостів: {n}.",
+ "Only private addresses are looked up, with this server's own resolver. Turn it off or slow it down when your DNS server forwards private PTR queries to your provider.": "Питаються лише приватні адреси, через резолвер цього сервера. Вимкніть або сповільніть, якщо ваш DNS-сервер пересилає приватні PTR-запити провайдеру.",
+ "Host names from DNS: off, shown or background": "Назви хостів з DNS: off, shown або background",
+ "Lookups a second: one of {rates}": "Запитів за секунду: одне з {rates}"
 }

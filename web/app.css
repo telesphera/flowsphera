@@ -900,3 +900,5 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
 .evu select[data-uk=category]{min-width:230px}
 /* (2.6.0) Settings → Devices: a device's dynamic interfaces (VPN sessions), one line per name under the others */
 tr.ifdyn td{background:rgba(255,255,255,.025)}
+/* (2.6.0) Settings → General: host names from DNS */
+.dnsrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}

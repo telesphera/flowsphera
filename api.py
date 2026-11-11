@@ -166,6 +166,43 @@ DNS_REFRESH = 86400        # a name (or its absence) is looked up again after a 
 DNS_KEEP = 30 * 86400      # names of hosts not seen for a month are forgotten
 DNS_HOSTS = 20000          # at most this many hosts per pass, the busiest first
 DNS_RATE = 20              # lookups per second at most: the network's DNS server is not flooded
+# (2.6.0) the administrator decides (Settings → General → Host names from DNS): off = no reverse DNS at all; shown = only
+# for the hosts a page shows (as before 2.5); background = also the inside hosts of the week, at most `rate` a second.
+# FT_DNS_RATE in /etc/flowsphera/env gives the default for a fresh install: 0 / off, shown, or 5 / 20 / 50.
+DNS_SETTINGS = os.path.join(STATE_DIR, 'dns.json')
+DNS_MODES = ('off', 'shown', 'background')
+DNS_RATES = (5, 20, 50)
+_dns_set = [None, None]
+
+
+def dns_default():
+    v = os.environ.get('FT_DNS_RATE', '').strip().lower()
+    if v in ('0', 'off'):
+        return {'mode': 'off', 'rate': DNS_RATE}
+    if v == 'shown':
+        return {'mode': 'shown', 'rate': DNS_RATE}
+    return {'mode': 'background', 'rate': int(v) if v.isdigit() and int(v) in DNS_RATES else DNS_RATE}
+
+
+def dns_settings():
+    """(2.6.0) {mode, rate}: the administrator's choice, else FT_DNS_RATE, else background at DNS_RATE a second."""
+    try:
+        mt = os.path.getmtime(DNS_SETTINGS)
+    except OSError:
+        mt = 0
+    if mt != _dns_set[0]:
+        d = dns_default()
+        try:
+            with open(DNS_SETTINGS) as f:
+                raw = json.load(f)
+            if raw.get('mode') in DNS_MODES:
+                d['mode'] = raw['mode']
+            if raw.get('rate') in DNS_RATES:
+                d['rate'] = raw['rate']
+        except (OSError, ValueError, AttributeError):
+            pass
+        _dns_set[:] = [mt, d]
+    return dict(_dns_set[1])
 
 
 class Names:
@@ -178,6 +215,7 @@ class Names:
         self.cache, self.pending = {}, set()
         self.lock = threading.Lock()
         self.dirty = False
+        self.last_pass = (0, 0)               # (2.6.0) when the background pass ended, how many hosts it went over
         self.load_cache()
         self.reload()
 
@@ -226,11 +264,13 @@ class Names:
 
     def get(self, ip, lookup=True):
         """lookup=False (1.14.1): only names known already — an export of 100,000 hosts must not queue as many
-        reverse DNS lookups"""
+        reverse DNS lookups. (2.6.0) DNS switched off: no lookup and no DNS name."""
         if ip in self.manual:
             return self.manual[ip]
         if ip in self.self_ips:
             return self.self_ips[ip]
+        if dns_settings()['mode'] == 'off':
+            return ''
         with self.lock:
             hit = self.cache.get(ip)
             if lookup and (hit is None or time.time() - hit[1] > 3600) and ip not in self.pending and is_private(ip):
@@ -245,7 +285,7 @@ class Names:
         if not t:
             return []
         with self.lock:
-            dns = {ip: n for ip, (n, _) in self.cache.items() if n}
+            dns = {ip: n for ip, (n, _) in self.cache.items() if n} if dns_settings()['mode'] != 'off' else {}
         seen, out = set(), []
         for src, names in (('manual', self.manual), ('device', self.self_ips), ('dns', dns)):
             for ip, name in names.items():
@@ -307,14 +347,39 @@ def dns_indexer(stop, every=3600, first=120):
         if wait > 0:
             continue
         wait = every
+        ds = dns_settings()
+        if ds['mode'] != 'background':          # (2.6.0) switched off, or only for the hosts a page shows
+            continue
         try:
             with web_query(f'ftd-{os.urandom(3).hex()}', {'max_execution_time': 120, 'priority': 9}):
                 ips = inside_hosts()
         except (CHError, OSError) as e:
             print(f'[flowsphera-api] host names: cannot list the inside hosts: {e}', flush=True)
             continue
-        NAMES.index(ips, stop)
+        NAMES.index(ips, stop, rate=ds['rate'])
         NAMES.save_cache()
+        NAMES.last_pass = (int(time.time()), len(ips))
+
+
+def get_dns():
+    """(2.6.0) Settings → General → Host names from DNS: the choice and what the cache holds."""
+    with NAMES.lock:
+        n, named = len(NAMES.cache), sum(1 for v in NAMES.cache.values() if v[0])
+    return {**dns_settings(), 'rates': list(DNS_RATES), 'asked': n, 'named': named, 'last_pass': NAMES.last_pass[0],
+            'last_hosts': NAMES.last_pass[1], 'days': DNS_DAYS, 'max_hosts': DNS_HOSTS, 'env': os.environ.get('FT_DNS_RATE', '')}
+
+
+def post_dns(body):
+    mode, rate = body.get('mode'), body.get('rate', DNS_RATE)
+    if mode not in DNS_MODES:
+        raise BadRequest(tr('Host names from DNS: off, shown or background'))
+    if rate not in DNS_RATES:
+        raise BadRequest(tr('Lookups a second: one of {rates}', rates=', '.join(map(str, DNS_RATES))))
+    tmp = DNS_SETTINGS + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'mode': mode, 'rate': rate}, f)
+    os.replace(tmp, DNS_SETTINGS)
+    return get_dns()
 
 
 def api_hosts_find(q):
@@ -3228,7 +3293,7 @@ STATIC = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', 
 
 AUTH = None
 POLLER = snmp.Poller()
-ADMIN_GET = {'/api/devices/export', '/api/retention', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
+ADMIN_GET = {'/api/devices/export', '/api/retention', '/api/dns', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
 # (1.11.0) what an API token can never do, whatever its scope: people's accounts, the tokens themselves, the license,
 # deleting backups, and what only a browser session has
 TOKEN_DENY = {'/api/devices/import', '/api/retention', '/api/users', '/api/users/update', '/api/users/delete', '/api/tokens', '/api/tokens/delete', '/api/ldap', '/api/ldap/test', '/api/mail/delete', '/api/license',
@@ -3360,6 +3425,8 @@ class H(BaseHTTPRequestHandler):
                     return self.json(200, get_mail())
                 if u.path == '/api/retention':
                     return self.json(200, get_retention())
+                if u.path == '/api/dns':
+                    return self.json(200, get_dns())
                 if u.path == '/api/devices/export':
                     return self.json(200, get_devices_export())
                 if u.path == '/api/tokens':
@@ -3499,6 +3566,7 @@ class H(BaseHTTPRequestHandler):
                 '/api/backups/verify': lambda: post_backups_verify(body),
                 '/api/backups/delete': lambda: post_backups_delete(body, user, self.client_ip()),
                 '/api/retention': lambda: post_retention(body, user, self.client_ip()),
+                '/api/dns': lambda: post_dns(body),            # (2.6.0)
                 '/api/backups/test': lambda: post_backups_test(body),
                 '/api/reports/save': lambda: post_report_save(body),
                 '/api/reports/delete': lambda: post_report_delete(body),
