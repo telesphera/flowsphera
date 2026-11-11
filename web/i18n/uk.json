@@ -2143,5 +2143,7 @@
  "weekly": "щотижня",
  "My blocklist": "Мій список",
  "at most {n} lists by URL": "не більше {n} списків за URL",
- "list by URL: not an http(s) address: {value}": "список за URL: це не адреса http(s): {value}"
+ "list by URL: not an http(s) address: {value}": "список за URL: це не адреса http(s): {value}",
+ "spam sources": "джерела спаму",
+ "a known source of spam": "відоме джерело спаму"
 }

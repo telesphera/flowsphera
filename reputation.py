@@ -77,7 +77,7 @@ LISTS = {
 # refresh seconds, url, title)}, set from the events configuration by use_url_lists(); name = 'url_<id>'
 EXTRA = {}
 URL_MAX = 10
-URL_CATS = ('malware', 'drop', 'attack', 'anon')
+URL_CATS = ('malware', 'drop', 'attack', 'spam', 'anon')      # spam: (2.6.0) mail spam sources (Spamhaus SBL/CSS, UCEPROTECT …)
 URL_HOURS = (1, 6, 12, 24, 168)
 
 
@@ -358,6 +358,6 @@ def _segments(ranges):
 
 
 def category(names):
-    """The worst category among list names: malware > drop > attack > anon (own list counts as attack)."""
+    """The worst category among list names: malware > drop > attack > spam > anon (own list counts as attack)."""
     cats = {_def(n)[0] if _def(n) else 'attack' for n in names}
-    return next((c for c in ('malware', 'drop', 'attack', 'anon') if c in cats), '')
+    return next((c for c in ('malware', 'drop', 'attack', 'spam', 'anon') if c in cats), '')

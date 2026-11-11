@@ -2966,7 +2966,7 @@ function vEventsCfg(){
       } catch (e) { say(e.message, true); } };
     document.getElementById('tgTest').onclick = async () => { say(T('Sending…'));
       try { await apiPost('notify/test', collectNotify()); say(T('Sent — check the chat.')); } catch (e) { say(e.message, true); } };
-    const cats = {malware:T('malware: botnet controllers, malware hosts'), drop:T('criminal netblocks'), attack:T('hosts seen attacking'), anon:T('Tor exit relays')};
+    const cats = {malware:T('malware: botnet controllers, malware hosts'), drop:T('criminal netblocks'), attack:T('hosts seen attacking'), spam:T('spam sources'), anon:T('Tor exit relays')};
     const when = t => t ? new Date(t * 1000).toLocaleString(LOC, {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}) : '';
     // (1.16.2) a key per list (a publisher may ask for one: abuse.ch ThreatFox since 2025); the saved key never comes back
     const noKey = l => l.key_need && !l.key_set;

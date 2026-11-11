@@ -1133,7 +1133,7 @@ def _describe(r):
         cat = reputation.category(i.get('lists', []))
         what = {'malware': tr('a botnet controller or malware host'),
                 'drop': tr('a netblock run by criminals (do not route)'),
-                'anon': tr('a Tor exit relay')}.get(cat, tr('a host seen attacking others'))
+                'spam': tr('a known source of spam'), 'anon': tr('a Tor exit relay')}.get(cat, tr('a host seen attacking others'))
         ok = i.get('sessions', 0) - i.get('failed', 0)
         n = i.get('sessions', 0)
         text = trn(n, '{who} opened {n} session to {dst}, ports {ports} — {what} ({lists}).', '{who} opened {n} sessions to {dst}, ports {ports} — {what} ({lists}).',

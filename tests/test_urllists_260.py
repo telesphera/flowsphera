@@ -55,6 +55,10 @@ class Settings(unittest.TestCase):
         self.assertNotIn('url_b2', en)
         reputation.use_url_lists(cfg['url_lists'])
         self.assertEqual((reputation.title('url_a1'), reputation.title('feodo'), reputation.category(['url_a1'])), ('A', 'abuse.ch Feodo Tracker', 'drop'))
+        reputation.use_url_lists([{'id': 's1', 'name': 'S', 'url': 'https://x.org/s', 'category': 'spam', 'hours': 24}])
+        self.assertEqual((reputation.category(['url_s1']), reputation.category(['url_s1', 'tor_exit']), reputation.category(['url_s1', 'cins'])),
+                         ('spam', 'spam', 'attack'))      # (2.6.0) spam: below attack, above Tor
+        self.assertEqual(detect.url_lists([{'url': 'https://x.org/s', 'category': 'spam'}])[0]['category'], 'spam')
         reputation.use_url_lists([])
 
     def test_saved_and_read_back(self):
