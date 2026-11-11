@@ -30,6 +30,7 @@ JSON over HTTP — with the session cookie of the UI, or with an **API token** (
 | `GET/POST /api/retention` | admin, no API tokens: days kept, the license's most, the choice, sizes; POST `{days, password}` (password when fewer days) |
 | `GET /api/top?dim=net`, `GET /api/series?by=net` | traffic by your named networks |
 | `GET /api/networks`, `GET /api/hosts/names`, `GET /api/ports` | your names of networks, hosts and ports |
+| `GET /api/hosts/find?q=&limit=` | (2.5.0) hosts whose name holds `q` (any case): `hosts` [{ip, name, src = `manual` / `device` / `dns`}], names that begin with it first; `limit` 1–50 (default 10) |
 | `GET /api/backups` | backups, their schedule and the last result |
 | `POST /api/login`, `/api/logout`, `/api/me/password`, `/api/me/prefs` | session, own password, own preferences (e.g. the default Path analysis view) |
 | `GET/POST /api/users…`, `POST /api/devices/save`, `/api/devices/delete` | admin only |

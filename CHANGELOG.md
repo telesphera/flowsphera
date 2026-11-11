@@ -4,6 +4,18 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.5.0 — 2026-11-11
+
+### Added
+- **Search by host name.** Type part of a name in the search box and it offers every host whose name holds it, with
+  its address and where the name comes from: a name you set (Settings → Flow configuration → Hosts), a device's own
+  address, or reverse DNS. Taking one filters every page by that host (`ip:`). (Forum request)
+- **Reverse DNS names of the whole network.** FlowSphera now looks up in the background the names of the inside hosts
+  seen in the last 7 days, the busiest first and at most 20 lookups a second, refreshes them daily and keeps them
+  across restarts (`/var/lib/flowsphera/dns_names.json`). Before, a name was asked only when a page showed the host
+  and was forgotten at a restart. As before, only private addresses are looked up, with the server's own resolver.
+- API: `GET /api/hosts/find?q=&limit=` — hosts by name.
+
 ## 2.4.2 — 2026-11-11
 
 ### Fixed
