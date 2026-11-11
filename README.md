@@ -189,6 +189,12 @@ the minute; the link keeps it, so an incident view can be shared.
 
 <p align="center"><img src="docs/media/en/search.webp" alt="Search box with filter guide" width="80%"></p>
 
+Hosts are found by name too: type part of a name and the box offers every host whose name holds it — names you set
+and names from reverse DNS. FlowSphera looks up the reverse DNS names of the week's inside hosts in the background and
+keeps them across restarts, so a host is found even if no page has shown it yet.
+
+<p align="center"><img src="docs/media/en/search-names.webp" alt="Typing «laptop» offers four hosts: laptop-guest.office.lan from reverse DNS and three names set by hand, each with its address" width="80%"></p>
+
 ### Security events
 
 Port scans, password guessing on SSH / RDP / management ports, floods and DDoS against your usual peak, inside hosts
