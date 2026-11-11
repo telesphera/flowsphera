@@ -2132,5 +2132,6 @@
  "A VPN or PPPoE session makes its own interface on the device, with a new number each time: they are no links to plan, so they are shown here by name.": "Кожна сесія VPN чи PPPoE створює на пристрої власний інтерфейс, щоразу з новим номером: це не канали для планування, тому тут вони зібрані за назвою.",
  "earlier sessions": "попередні сесії",
  "{n} sessions from before names were kept": {"one": "{n} сесія без збереженої назви", "few": "{n} сесії без збереженої назви", "many": "{n} сесій без збереженої назви", "other": "{n} сесії без збереженої назви"},
- "last {date}": "остання {date}"
+ "last {date}": "остання {date}",
+ "VPN users (SSTP, L2TP, PPTP, OpenVPN, PPPoE): a static binding keeps one interface per user, not a new one each session": "Користувачі VPN (SSTP, L2TP, PPTP, OpenVPN, PPPoE): статична прив'язка дає один інтерфейс на користувача, а не новий на кожну сесію"
 }

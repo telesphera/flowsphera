@@ -3095,9 +3095,10 @@ const VENDORS = {
   Cisco:{netflow9:ciscoFnf('netflow-v9'), ipfix:ciscoFnf('ipfix'),
     sflow:named(rated((ip, port, o) => `! ${T('Cisco Nexus (NX-OS); IOS routers export NetFlow / IPFIX')}\nfeature sflow\nsflow sampling-rate ${sfRate(o, 1024)}\nsflow counter-poll-interval 20\nsflow collector-ip ${ip} vrf default\nsflow collector-port ${port}\nsflow agent-ip <${T('address of this device')}>\n! ${SFLOW_NOTE()}${each(o, ['ethernet 1/1'], n => `\nsflow data-source interface ${n}`)}`)),
     netflow5:named(rated((ip, port, o) => `! ${T('classic NetFlow (older IOS): IPv4 only')}\n${o.rate > 1 ? `flow-sampler-map FT-SAMP\n mode random one-out-of ${o.rate}\n` : ''}ip flow-export version 5\nip flow-export destination ${ip} ${port}\nip flow-cache timeout active 1\n! ${T('on every interface to watch (WAN and LAN)')}${each(o, ['GigabitEthernet0/0/0'], n => o.rate > 1 ? `\ninterface ${n}\n flow-sampler FT-SAMP` : `\ninterface ${n}\n ip flow ingress\n ip flow egress`)}${o.rate > 1 ? `\n! ${T('a sampler counts the traffic coming in: no ip flow ingress / egress on these interfaces (full NetFlow would override it)')}` : ''}`))},
-  MikroTik:{netflow9:named(rated((ip, port, o) => `/ip traffic-flow set enabled=yes interfaces=${mtIfs(o)} active-flow-timeout=1m${mtSamp(o)}\n/ip traffic-flow target add dst-address=${ip} port=${port} version=9`)),
-    ipfix:named(rated((ip, port, o) => `/ip traffic-flow set enabled=yes interfaces=${mtIfs(o)} active-flow-timeout=1m${mtSamp(o)}\n/ip traffic-flow target add dst-address=${ip} port=${port} version=ipfix`)),
-    netflow5:named(rated((ip, port, o) => `/ip traffic-flow set enabled=yes interfaces=${mtIfs(o)} active-flow-timeout=1m${mtSamp(o)}\n/ip traffic-flow target add dst-address=${ip} port=${port} version=5`))},
+  // (2.6.0) RouterOS makes a new interface (a new SNMP index) for each VPN / PPPoE session: a static binding keeps one per user
+  MikroTik:{netflow9:named(rated((ip, port, o) => `/ip traffic-flow set enabled=yes interfaces=${mtIfs(o)} active-flow-timeout=1m${mtSamp(o)}\n/ip traffic-flow target add dst-address=${ip} port=${port} version=9${mtVpn()}`)),
+    ipfix:named(rated((ip, port, o) => `/ip traffic-flow set enabled=yes interfaces=${mtIfs(o)} active-flow-timeout=1m${mtSamp(o)}\n/ip traffic-flow target add dst-address=${ip} port=${port} version=ipfix${mtVpn()}`)),
+    netflow5:named(rated((ip, port, o) => `/ip traffic-flow set enabled=yes interfaces=${mtIfs(o)} active-flow-timeout=1m${mtSamp(o)}\n/ip traffic-flow target add dst-address=${ip} port=${port} version=5${mtVpn()}`))},
   Juniper:{ipfix:juniper('version-ipfix', 'version-ipfix'), netflow9:juniper('version9', 'version9'),
     sflow:named(rated((ip, port, o) => `# ${T('EX / QFX switches')}\nset protocols sflow collector ${ip} udp-port ${port}\nset protocols sflow sample-rate ingress ${sfRate(o, 1000)}\nset protocols sflow polling-interval 20\n# ${SFLOW_NOTE()}${each(o, ['ge-0/0/0'], n => `\nset protocols sflow interfaces ${n}`)}`))},
   'Palo Alto':{netflow9:steps((ip, port) => [T('Device → Server Profiles → NetFlow → Add: name FlowSphera, active timeout 1 min, template refresh 1 min.'),
@@ -3147,6 +3148,7 @@ const SNMP_LABEL = {SHA:'SHA1', AES:'AES-128'};
 const snmpDefaults = vendor => ({Fortinet:['SHA-256', 'AES-256'], MikroTik:['SHA', 'AES']}[vendor] || ['SHA-256', 'AES']);
 // a protocol the vendor does not take moves to its strongest one
 const snmpFit = (vendor, s) => { for (const [k, f] of [['auth', 'auth_proto'], ['priv', 'priv_proto']]) { const c = snmpChoices(vendor, k); if (!c.includes(s[f])) s[f] = c[c.length - 1]; } };
+const mtVpn = () => `\n# ${T('VPN users (SSTP, L2TP, PPTP, OpenVPN, PPPoE): a static binding keeps one interface per user, not a new one each session')}\n# /interface sstp-server add name=sstp-USER user=USER`;
 const SNMP_VENDORS = {
   Fortinet:(ip, s) => (s.version === '3'
     ? `config system snmp sysinfo\n    set status enable\nend\nconfig system snmp user\n    edit "${snmpVal(s, 'user', 'user')}"\n        set trap-status disable\n        # ${T('FortiOS answers SNMPv3 queries only from these hosts')}\n        set notify-hosts ${ip}\n        set queries enable\n        set query-port ${s.port || 161}\n        set security-level ${{noAuthNoPriv:'no-auth-no-priv', authNoPriv:'auth-no-priv', authPriv:'auth-priv'}[s.level]}${s.level !== 'noAuthNoPriv' ? `\n        set auth-proto ${{MD5:'md5', SHA:'sha', 'SHA-224':'sha224', 'SHA-256':'sha256', 'SHA-384':'sha384', 'SHA-512':'sha512'}[s.auth_proto]}\n        set auth-pwd ${snmpVal(s, 'auth_pass', 'auth-password')}` : ''}${s.level === 'authPriv' ? `\n        set priv-proto ${{DES:'des', AES:'aes', 'AES-192':'aes', 'AES-256':'aes256'}[s.priv_proto]}\n        set priv-pwd ${snmpVal(s, 'priv_pass', 'priv-password')}` : ''}\n    next\nend\n# ${T('SNMP access on the interface FlowSphera reaches the device through')}\nconfig system interface\n    edit "internal"\n        append allowaccess snmp\n    next\nend\n# ${T('No answer after this? Restart the SNMP agent once')}:\n# diagnose test application snmpd 99`
@@ -4393,7 +4395,8 @@ function openDevice(dev){
   // the interfaces the device configuration names: ticked from what SNMP found (with SNMP on), else typed by hand
   let ifSel = [...(c.export_ifs || [])], snIfs = st.ok && st.ifs ? st.ifs : null;
   const exportIfs = () => ifSel;
-  const pickIfs = () => { if (!ifSel.length && snIfs) ifSel = snIfs.filter(i => i.up && i.addrs.length && !/^(lo|loopback)/i.test(i.name)).map(i => i.name); };
+  // (2.6.0) never a dynamic interface by default (a MikroTik VPN session «<sstp-user>»: gone with the session, the command would fail)
+  const pickIfs = () => { if (!ifSel.length && snIfs) ifSel = snIfs.filter(i => i.up && i.addrs.length && !/^(lo|loopback)/i.test(i.name) && !/^<.+>$/.test(i.name)).map(i => i.name); };
   pickIfs();
   const wanIdx = () => new Set(String((document.getElementById('fWan') || {}).value ?? (c.wan_ifs || []).join(',')).split(',').map(x => parseInt(x, 10)));
   const IF_EXAMPLE = {Fortinet:'wan1, internal', Cisco:'GigabitEthernet0/0/0', MikroTik:'ether1, bridge', Juniper:'ge-0/0/0.0', Huawei:'GigabitEthernet0/0/1',
