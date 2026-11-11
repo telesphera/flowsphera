@@ -24,7 +24,7 @@ EXP = {'192.0.2.1': {'name': 'fw', 'wan_ifs': [1], 'if_names': {'1': 'wan', '5':
 
 
 def named(nets):
-    path = os.path.join(TMP, 'state', 'networks.json')
+    path = common.UI_NETWORKS          # the module's STATE_DIR: the first test module imported set it
     with open(path, 'w') as f:
         json.dump(nets, f)
     os.utime(path, (time.time() + len(nets), time.time() + len(nets)))      # a new time: read again

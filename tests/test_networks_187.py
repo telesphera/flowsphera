@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 TMP = tempfile.mkdtemp()
 os.makedirs(TMP + '/cfg', exist_ok=True), os.makedirs(TMP + '/state', exist_ok=True)
@@ -64,7 +65,8 @@ class Networks(unittest.TestCase):
 
     def test_no_networks(self):
         save([])
-        self.assertEqual(api.net_expr('int_ip', {}), "''")
+        with mock.patch.object(api, 'auto_networks', return_value=[]):      # (2.6.0) no interface known either: the /24 guess
+            self.assertEqual(api.net_expr('int_ip', {}), api.GUESS_NET.format(c='int_ip'))
 
 
 if __name__ == '__main__':
