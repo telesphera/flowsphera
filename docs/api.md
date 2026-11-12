@@ -37,6 +37,28 @@ JSON over HTTP — with the session cookie of the UI, or with an **API token** (
 | `POST /api/login`, `/api/logout`, `/api/me/password`, `/api/me/prefs` | session, own password, own preferences (e.g. the default Path analysis view) |
 | `GET/POST /api/users…`, `POST /api/devices/save`, `/api/devices/delete` | admin only |
 
+## Names a row at a time
+
+Scripts keep the port, host and network names up to date without sending the whole table. Each call is all or nothing
+(one bad row and nothing is saved) and answers the table as saved. A *write* API token is enough.
+
+| Endpoint | Body | Answer adds |
+|---|---|---|
+| `POST /api/hosts/names/add` | `{"items": [{"ip": "10.0.0.15", "name": "NAS"}]}` | `added`, `changed` |
+| `POST /api/networks/add` | `{"items": [{"net": "10.0.0.0/24", "name": "Office"}]}` | `added`, `changed` |
+| `POST /api/ports/add` | `{"items": [{"proto": "tcp", "port": 8443, "name": "HTTPS management"}]}` (no `proto` = TCP) | `added`, `changed` |
+| `POST /api/hosts/names/delete` | `{"items": ["10.0.0.15"]}` or `{"all": true}` | `removed`, `missing` |
+| `POST /api/networks/delete` | `{"items": ["10.0.0.0/24"]}`, `{"names": ["Office"]}` or `{"all": true}` | `removed`, `missing` |
+| `POST /api/ports/delete` | `{"items": ["tcp/8443", "514/udp"]}` or `{"all": true}` | `removed`, `missing` |
+
+A row with the same address / network / port is replaced; `missing` lists what was asked for but not in the table.
+
+```bash
+curl -k -H "Authorization: Bearer ftapi_…" -H "Content-Type: application/json" \
+     -d '{"items": [{"ip": "10.0.0.15", "name": "NAS in the office"}]}' \
+     https://flowsphera.example.com:3030/api/hosts/names/add
+```
+
 ## API tokens
 
 For scripts, monitoring (Zabbix, Grafana, your own) and integrations: *Settings → API → New token*. A token is shown

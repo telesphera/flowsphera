@@ -4,6 +4,19 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.7.0 — 2026-11-12
+
+### Added
+- **Delete all, and an import that replaces the whole table** (issue #7): Settings → Flow configuration has
+  *Delete all…* next to *Export CSV* / *Import CSV…* for port, host and network names — one step instead of a
+  confirmation per row, with an *Export CSV* offered first. When the file leaves out rows that are in the table, the
+  import offers *Replace the whole table*: Export CSV → edit in Excel → Import is a clean round trip.
+- **Names a row at a time through the API** (issue #7): `POST /api/hosts/names/add` / `/delete`, `/api/networks/add` /
+  `/delete`, `/api/ports/add` / `/delete`. *add* takes `items` and replaces a row with the same address / network /
+  port, keeping the rest; *delete* takes `items` (addresses, networks, `tcp/8443`), `names` (networks of that name) or
+  `all: true`. Every call is all or nothing, answers the table as saved with `added` / `changed` or `removed` /
+  `missing`, and works with a *write* API token.
+
 ## 2.6.1 — 2026-11-11
 
 ### Fixed
