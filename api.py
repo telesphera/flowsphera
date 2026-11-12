@@ -2937,6 +2937,90 @@ def post_ports(body):
     return api_ports({})
 
 
+
+# (2.7.0, GitHub issue #7) the name tables a row at a time and all at once, for scripts and the «Delete all» button.
+# Each call reads the saved table, changes it and saves it through the whole-table function above, so every rule
+# (and the limit) stays the same; one lock keeps two calls from losing each other's change. A whole call is all or
+# nothing: one bad row and nothing is saved. Answer = the table as now saved + what the call did.
+NAMES_LOCK = threading.Lock()
+NAME_TABLES = {   # table: (read, save, key of an item, key of a delete entry)
+    'hosts': (lambda: api_host_names({})['items'], post_host_names, lambda x: _host_key(x.get('ip')), lambda v: _host_key(v)),
+    'networks': (lambda: api_networks({})['items'], post_networks, lambda x: net_value(x.get('net', '')), lambda v: net_value(v)),
+    'ports': (lambda: [{k: x[k] for k in ('proto', 'port', 'name')} for x in api_ports({})['items']], post_ports,
+              lambda x: _port_key(x.get('proto', 'tcp'), x.get('port')), lambda v: _port_key(*_port_spec(v))),
+}
+
+
+def _host_key(v):
+    try:
+        return str(ipaddress.ip_address(str(v or '').strip()))
+    except ValueError:
+        raise BadRequest(tr('not an IP address: {value}', value=str(v)[:60])) from None
+
+
+def _port_key(proto, port):
+    pr = str(proto or 'tcp').lower()
+    if pr not in ('tcp', 'udp', 'sctp') or not str(port).isdigit() or not 1 <= int(port) <= 65535:
+        raise BadRequest(tr('not a port: {port}', port=f'{proto}/{port}'[:40]))
+    return f'{pr}/{int(port)}'
+
+
+def _port_spec(v):
+    """'tcp/8443', '8443/udp', '8443' (TCP) or {proto, port} -> (proto, port)."""
+    if isinstance(v, dict):
+        return v.get('proto', 'tcp'), v.get('port')
+    m = re.fullmatch(r'(?:(tcp|udp|sctp)[/:])?(\d{1,5})(?:/(tcp|udp|sctp))?', str(v).strip().lower())
+    if not m:
+        raise BadRequest(tr('not a port: {port}', port=str(v)[:40]))
+    return m.group(1) or m.group(3) or 'tcp', m.group(2)
+
+
+def post_names_add(table, body):
+    """POST /api/<table>/add {items: [...]} (hosts/names: {ip, name}; networks: {net, name}; ports: {proto, port, name}):
+    adds the rows and replaces the ones with the same address / network / port; the rest of the table stays."""
+    read, save, key, _ = NAME_TABLES[table]
+    items = body.get('items')
+    if not isinstance(items, list) or not all(isinstance(x, dict) for x in items):
+        raise BadRequest('items')
+    with NAMES_LOCK:
+        cur = read()
+        at = {key(x): i for i, x in enumerate(cur)}
+        added = changed = 0
+        for it in items:
+            if table == 'ports':
+                it = {**it, 'proto': str(it.get('proto') or 'tcp').lower()}
+            k = key(it)
+            if k in at:
+                changed += cur[at[k]].get('name') != ' '.join(str(it.get('name', '')).split())
+                cur[at[k]] = it
+            else:
+                at[k] = len(cur)
+                cur.append(it)
+                added += 1
+        out = save({'items': cur})
+    return {**out, 'added': added, 'changed': changed}
+
+
+def post_names_delete(table, body):
+    """POST /api/<table>/delete {all: true} | {items: [keys]} (an address / a network / 'tcp/8443'; networks also
+    {names: [...]} = every network of that name). Keys not in the table are listed in 'missing', not an error."""
+    read, save, key, dkey = NAME_TABLES[table]
+    with NAMES_LOCK:
+        cur = read()
+        if body.get('all') is True:
+            gone, missing = cur, []
+        else:
+            want, names = body.get('items') or [], body.get('names') or []
+            if not isinstance(want, list) or not isinstance(names, list) or (table != 'networks' and names) or not (want or names):
+                raise BadRequest(tr('say what to delete: «all», «items» or «names»'))
+            keys = {dkey(v) for v in want}
+            low = {str(n).strip().lower() for n in names}
+            gone = [x for x in cur if key(x) in keys or str(x.get('name', '')).lower() in low]
+            have = {key(x) for x in cur}
+            missing = sorted(keys - have) + sorted(n for n in low if not any(str(x.get('name', '')).lower() == n for x in cur))
+        out = save({'items': [x for x in cur if x not in gone]})
+    return {**out, 'removed': len(gone), 'missing': missing}
+
 def post_events_exclude(body):
     try:
         detect.add_exclusion({k: body.get(k) for k in ('src', 'dst', 'port', 'dir')})
@@ -3566,6 +3650,12 @@ class H(BaseHTTPRequestHandler):
                 '/api/hosts/names': lambda: post_host_names(body),
                 '/api/networks': lambda: post_networks(body),
                 '/api/ports': lambda: post_ports(body),
+                '/api/hosts/names/add': lambda: post_names_add('hosts', body),           # (2.7.0, issue #7)
+                '/api/hosts/names/delete': lambda: post_names_delete('hosts', body),
+                '/api/networks/add': lambda: post_names_add('networks', body),
+                '/api/networks/delete': lambda: post_names_delete('networks', body),
+                '/api/ports/add': lambda: post_names_add('ports', body),
+                '/api/ports/delete': lambda: post_names_delete('ports', body),
                 '/api/notify': lambda: post_notify(body),
                 '/api/notify/test': lambda: post_notify_test(body),
                 '/api/notify/chats': lambda: post_notify_chats(body),

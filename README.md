@@ -280,7 +280,9 @@ When a firewall starts exporting from another address, **Change address…** mov
 names, roles, capacities, SNMP — and keeps the old address as its alias, so its history continues as one device on every
 page. Devices go to another server as a JSON file (checked device by device, all or nothing, no SNMP secrets), and a
 source that sends but is not described can be **ignored**. Port, host and network names come and go as **CSV** — straight
-from Excel in any language — with a preview of what is new, changed or unreadable before anything is saved.
+from Excel in any language — with a preview of what is new, changed or unreadable before anything is saved; an import
+can **replace the whole table**, and **Delete all** empties one in a step. Scripts add and remove names a row at a time
+through the API ([how](docs/api.md#names-a-row-at-a-time)).
 
 **City and country are enough.** Type the city and the device is on the connection map and the globe: FlowSphera
 offers the places of that country as you type (about 150,000, from the GeoIP data it already has — offline, no online

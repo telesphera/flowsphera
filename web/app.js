@@ -3809,8 +3809,10 @@ function csvParse(text){
   return rows.map(r => r.map(x => x.trim())).filter(r => r.some(Boolean));
 }
 const csvCell = v => /[",;\n\r]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
-const csvBtns = id => `<span class="csvbtns"><button type="button" class="btn sm" id="${id}CsvOut">${T('Export CSV')}</button><button type="button" class="btn sm" id="${id}CsvIn">${T('Import CSV…')}</button><input type="file" id="${id}CsvFile" accept=".csv,text/csv,text/plain" hidden></span>`;
-// o: {id, file, header: [..], toRow(item) -> cells, fromRow(cells) -> item | {err}, key(item), items() -> current, save(list)}
+const csvBtns = id => `<span class="csvbtns"><button type="button" class="btn sm" id="${id}CsvOut">${T('Export CSV')}</button><button type="button" class="btn sm" id="${id}CsvIn">${T('Import CSV…')}</button><button type="button" class="btn sm danger" id="${id}CsvDel">${T('Delete all…')}</button><input type="file" id="${id}CsvFile" accept=".csv,text/csv,text/plain" hidden></span>`;
+// o: {id, file, header: [..], toRow(item) -> cells, fromRow(cells) -> item | {err}, key(item), items() -> current, save(list), del (API path)}
+// (2.7.0, GitHub issue #7) «Delete all…» empties the table in one step (an Export CSV is offered first), and an import
+// may replace the whole table with the file: Export CSV → edit → Import is a clean round trip.
 function csvTools(o){
   const out = document.getElementById(`${o.id}CsvOut`), inp = document.getElementById(`${o.id}CsvIn`), file = document.getElementById(`${o.id}CsvFile`);
   if (!out || !inp || !file) return;
@@ -3818,6 +3820,16 @@ function csvTools(o){
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'text/csv;charset=utf-8'}));
     a.download = `flowsphera-${o.file}-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
   inp.onclick = () => { file.value = ''; file.click(); };
+  const del = document.getElementById(`${o.id}CsvDel`);
+  if (del) del.onclick = () => { const n = o.items().length;
+    const md = openModal(T('Delete all'), '', `<div class="form" style="padding:4px 2px">
+      <p class="note" style="margin:0">${n ? Tn(n, 'The only row of this table is deleted. Export CSV first if you may want it back: Import CSV puts it back.', 'All {n} rows of this table are deleted. Export CSV first if you may want them back: Import CSV puts them back.') : T('The table is empty.')}</p>
+      <p class="err" id="csvDelErr" hidden></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${n ? `<button class="btn" id="csvDelOut">${T('Export CSV')}</button><button class="btn danger" id="csvDelOk">${T('Delete all')}</button>` : ''}<button class="btn" id="csvDelNo">${n ? T('Cancel') : T('Close')}</button></div></div>`);
+    document.getElementById('csvDelNo').onclick = md.close;
+    if (!n) return;
+    document.getElementById('csvDelOut').onclick = () => out.onclick();
+    document.getElementById('csvDelOk').onclick = async () => { try { await apiPost(o.del, {all:true}); if (o.cleared) o.cleared(); md.close(); render(); } catch (err) { formErr('csvDelErr', err.message); } }; };
   file.onchange = async () => { const f = file.files[0]; if (!f) return;
     let rows = csvParse(await f.text()), skip = 0;
     if (rows.length && rows[0].map(x => x.toLowerCase()).join() === o.header.map(x => x.toLowerCase()).join()) { rows = rows.slice(1); skip = 1; }
@@ -3826,14 +3838,20 @@ function csvTools(o){
     const cur = o.items(), byKey = new Map(cur.map(x => [o.key(x), x])), seen = new Map();
     got.forEach(x => seen.set(o.key(x), x));
     const fresh = [...seen.values()].filter(x => !byKey.has(o.key(x))), changed = [...seen.values()].filter(x => byKey.has(o.key(x)) && JSON.stringify(o.toRow(byKey.get(o.key(x)))) !== JSON.stringify(o.toRow(x)));
-    const list = [...cur.map(x => seen.get(o.key(x)) || x), ...fresh];
+    const merged = [...cur.map(x => seen.get(o.key(x)) || x), ...fresh], gone = cur.filter(x => !seen.has(o.key(x))).length;
+    let whole = false;
+    const say = () => whole ? T('{a} new, {c} changed, {d} deleted: the table becomes the file.', {a: fresh.length, c: changed.length, d: gone})
+      : T('{a} new, {c} changed, {k} kept as they are. Rows already here and not in the file stay.', {a: fresh.length, c: changed.length, k: cur.length - changed.length});
     const md = openModal(T('Import CSV'), esc(f.name), `<div class="form" style="padding:4px 2px">
-      <p class="note" style="margin:0">${T('{a} new, {c} changed, {k} kept as they are. Rows already here and not in the file stay.', {a: fresh.length, c: changed.length, k: cur.length - changed.length})}</p>
+      <p class="note" style="margin:0" id="csvSay">${say()}</p>
+      ${gone ? `<label class="chk"><input type="checkbox" id="csvWhole"> ${Tn(gone, 'Replace the whole table: delete the {n} row that is not in the file', 'Replace the whole table: delete the {n} rows that are not in the file')}</label>` : ''}
       ${bad.length ? `<p class="err" style="margin:0">${T('{n} lines could not be read and are left out:', {n: bad.length})}<br>${bad.slice(0, 8).map(esc).join('<br>')}${bad.length > 8 ? '<br>…' : ''}</p>` : ''}
       <p class="err" id="csvErr" hidden></p>
       <div style="display:flex;gap:8px"><button class="btn primary" id="csvOk" ${fresh.length + changed.length ? '' : 'disabled'}>${T('Import')}</button><button class="btn" id="csvNo">${T('Cancel')}</button></div></div>`);
     document.getElementById('csvNo').onclick = md.close;
-    document.getElementById('csvOk').onclick = async () => { try { await o.save(list); md.close(); render(); } catch (err) { formErr('csvErr', err.message); } }; };
+    const wb = document.getElementById('csvWhole'), ok = document.getElementById('csvOk');
+    if (wb) wb.onchange = () => { whole = wb.checked; document.getElementById('csvSay').textContent = say(); ok.disabled = !(fresh.length + changed.length + (whole ? gone : 0)); };
+    ok.onclick = async () => { try { await o.save(whole ? [...seen.values()] : merged); md.close(); render(); } catch (err) { formErr('csvErr', err.message); } }; };
 }
 function vFlowCfg(){
   const admin = isAdmin();
@@ -3904,7 +3922,7 @@ function vFlowCfg(){
     } };
   api('ports').then(d => { draw(d);
     csvTools({id:'pn', file:'port-names', header:['protocol', 'port', 'name'], items:() => items, key:x => `${x.proto}/${x.port}`,
-      toRow:x => [x.proto, x.port, x.name], save,
+      toRow:x => [x.proto, x.port, x.name], save, del:'ports/delete',
       fromRow:([pr = '', port = '', ...rest]) => { const name = rest.join(' ').trim(), p = pr.toLowerCase();
         if (!['tcp', 'udp'].includes(p)) return {err:T('the protocol must be TCP or UDP')};
         if (!portOk(port)) return {err:T('A port is a number from 1 to 65535.')};
@@ -3925,7 +3943,7 @@ function vFlowCfg(){
       save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; return r.items; },
       delAsk:it => T('Delete the name «{name}» of {ip}?', {name:it.name, ip:it.ip}),
       empty:T('No own host names yet.') + (admin ? ' ' + T('Example: 10.0.0.15 → NAS in the office.') : '')});
-    csvTools({id:'hn', file:'host-names', header:['ip', 'name'], items:() => cur, key:x => x.ip, toRow:x => [x.ip, x.name],
+    csvTools({id:'hn', file:'host-names', header:['ip', 'name'], items:() => cur, key:x => x.ip, toRow:x => [x.ip, x.name], del:'hosts/names/delete',
       save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; },
       fromRow:([ip = '', ...rest]) => { const name = rest.join(' ').trim(), c = addrCheck(ip);
         return !c.ok || c.net ? {err:T('Not an IP address: {v}', {v:ip})} : name ? {ip:c.v, name} : {err:T('no name')}; }});
@@ -3948,7 +3966,7 @@ function vFlowCfg(){
       save:async list => { const r = await apiPost('networks', {items:list}); cur = r.items; META.networks = r.items; return r.items; },
       delAsk:it => T('Delete the name «{name}» of {net}?', {name:it.name, net:it.net}),
       empty:T('No named networks yet.') + (admin ? ' ' + T('Example: 172.16.0.0/24 → Office.') : '')});
-    csvTools({id:'nn', file:'network-names', header:['network', 'name'], items:() => cur, key:x => norm(x.net) || x.net, toRow:x => [x.net, x.name],
+    csvTools({id:'nn', file:'network-names', header:['network', 'name'], items:() => cur, key:x => norm(x.net) || x.net, toRow:x => [x.net, x.name], del:'networks/delete', cleared:() => { META.networks = []; },
       save:async list => { const r = await apiPost('networks', {items:list}); cur = r.items; META.networks = r.items; },
       fromRow:([net = '', ...rest]) => { const name = rest.join(' ').trim(), n = norm(net);
         return !n ? {err:T('Write the network with its mask: {v}/24', {v:net})} : name ? {net:n, name} : {err:T('no name')}; }});

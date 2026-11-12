@@ -2160,5 +2160,12 @@
  "Last background pass {when}: {n} hosts.": "Останній фоновий прохід {when}, хостів: {n}.",
  "Only private addresses are looked up, with this server's own resolver. Turn it off or slow it down when your DNS server forwards private PTR queries to your provider.": "Питаються лише приватні адреси, через резолвер цього сервера. Вимкніть або сповільніть, якщо ваш DNS-сервер пересилає приватні PTR-запити провайдеру.",
  "Host names from DNS: off, shown or background": "Назви хостів з DNS: off, shown або background",
- "Lookups a second: one of {rates}": "Запитів за секунду: одне з {rates}"
+ "Lookups a second: one of {rates}": "Запитів за секунду: одне з {rates}",
+ "say what to delete: «all», «items» or «names»": "скажіть, що видалити: «all», «items» або «names»",
+ "Delete all…": "Видалити все…",
+ "Delete all": "Видалити все",
+ "All {n} rows of this table are deleted. Export CSV first if you may want them back: Import CSV puts them back.": {"one": "Буде видалено {n} рядок цієї таблиці. Якщо він ще може знадобитися, спершу зробіть Export CSV: Import CSV поверне його.", "few": "Буде видалено всі {n} рядки цієї таблиці. Якщо вони ще можуть знадобитися, спершу зробіть Export CSV: Import CSV поверне їх.", "many": "Буде видалено всі {n} рядків цієї таблиці. Якщо вони ще можуть знадобитися, спершу зробіть Export CSV: Import CSV поверне їх.", "other": "Буде видалено всі {n} рядка цієї таблиці. Якщо вони ще можуть знадобитися, спершу зробіть Export CSV: Import CSV поверне їх."},
+ "The table is empty.": "Таблиця порожня.",
+ "{a} new, {c} changed, {d} deleted: the table becomes the file.": "Нових: {a}, змінених: {c}, видалених: {d}: таблиця стане такою, як файл.",
+ "Replace the whole table: delete the {n} rows that are not in the file": {"one": "Замінити всю таблицю: видалити {n} рядок, якого немає у файлі", "few": "Замінити всю таблицю: видалити {n} рядки, яких немає у файлі", "many": "Замінити всю таблицю: видалити {n} рядків, яких немає у файлі", "other": "Замінити всю таблицю: видалити {n} рядка, яких немає у файлі"}
 }
