@@ -293,7 +293,8 @@ def collect(r, t0, t1, call):
     if 'qos' in sec:              # (2.4.0) the QoS page: traffic classes and re-marking
         d['qos'] = call('/api/qos', q())
     if 'events' in sec:
-        d['events'] = call('/api/alerts', q(tz=r['tz']))['alerts']
+        a = call('/api/alerts', q(tz=r['tz'], hosts=10))      # (2.8.0) with the «By host» lanes of the ten busiest
+        d['events'], d['event_lanes'] = a['alerts'], a.get('lanes')
     if 'devices' in sec or 'interfaces' in sec:
         dv = call('/api/devices', {})
         d['devices'], d['ignored'] = dv['devices'], dv.get('ignored') or []
@@ -470,6 +471,50 @@ def events_charts(ev, t0, t1, tz_name, W, tz):
         out += [Paragraph(esc_x(trn(st['before'], '{n} event began before the period and is not drawn here.', '{n} events began before the period and are not drawn here.')),
                           ParagraphStyle('evb', fontName='FT', fontSize=7, leading=9, textColor=C(INK3))), Spacer(0, 1.5 * mm)]
     return out
+
+
+def events_lanes(ln, t0, t1, W, tz):
+    """(2.8.0, GitHub #9) The Events page's «By host» lanes on paper: the hosts with the most events (its name, else
+    the address; outside ones with their country), a bar per stretch of one kind in its colour, the period's time below."""
+    from reportlab.graphics.shapes import Drawing, Line, Rect, String
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph, Spacer
+    C = colors.HexColor
+    rows = (ln or {}).get('rows') or []
+    if not rows:
+        return []
+    rh, bm = 4.6 * mm, 5.5 * mm
+    label = lambda h: (h.get('name') or h['ip'])[:30]                                  # noqa: E731
+    lw = min(max(len(label(h)) * 3.75 + (12 if not h.get('name') and h.get('country') else 0) for h in rows) + 6, W * 0.34)
+    pw = W - lw - 2
+    d = Drawing(W, rh * len(rows) + bm + 2)
+    x = lambda t: lw + pw * (min(max(t, t0), t1) - t0) / max(t1 - t0, 1)                # noqa: E731
+    top = bm + rh * len(rows)
+    for i, h in enumerate(rows):
+        y0 = top - (i + 1) * rh
+        if i % 2 == 0:
+            d.add(Rect(lw, y0, pw, rh, fillColor=C(PANEL), strokeColor=None))
+        d.add(String(lw - 4 - (12 if not h.get('name') and h.get('country') else 0), y0 + rh / 2 - 2.2, label(h), fontName='FT', fontSize=6.6,
+                     fillColor=C(INK), textAnchor='end'))
+        if not h.get('name') and h.get('country'):
+            d.add(String(lw - 4, y0 + rh / 2 - 2.2, h['country'], fontName='FT', fontSize=5.8, fillColor=C(INK3), textAnchor='end'))
+        for a, b, k, _, _ in h['spans']:
+            w = max(x(b) - x(a), 1.4)
+            d.add(Rect(x(a) - (w - (x(b) - x(a))) / 2, y0 + rh * 0.22, w, rh * 0.56, fillColor=C(EV_COLORS.get(k, INK3)), strokeColor=None))
+    d.add(Line(lw, bm, lw + pw, bm, strokeColor=C(INK3), strokeWidth=0.6))
+    span = t1 - t0
+    fmt = '%d.%m' if span > 4 * 86400 else '%d.%m %H:%M' if span > 86400 + 3600 else '%H:%M'
+    for i in range(7):
+        t = t0 + span * i / 6
+        d.add(String(x(t), 0.5, datetime.datetime.fromtimestamp(t, tz).strftime(fmt), fontName='FT', fontSize=6.1, fillColor=C(INK3),
+                     textAnchor='start' if i == 0 else 'end' if i == 6 else 'middle'))
+    head = ParagraphStyle('evl', fontName='FT-Bold', fontSize=7.4, leading=9, textColor=C(INK2))
+    title = tr('BY HOST · WHEN EACH HOST\'S EVENTS RAN')
+    if ln.get('hosts', 0) > len(rows):
+        title += ' · ' + tr('THE {n} WITH THE MOST EVENTS OF {all}', n=len(rows), all=ln['hosts'])
+    return [Paragraph(esc_x(title), head), Spacer(0, 1.5 * mm), d, Spacer(0, 3 * mm)]
 
 
 def esc_x(s):
@@ -924,7 +969,7 @@ def render(r, data, t0, t1, version='', now=None):
                     k['sev'] = e['sev']
             order = sorted(kinds.items(), key=lambda kv: (list(SEV).index(kv[1]['sev']), -kv[1]['n']))
             # (1.17.0) how many began in each step, by kind, and the share of each kind — the Events page's two charts
-            graphs = events_charts(ev, t0, t1, r['tz'], W, tz)
+            graphs = events_charts(ev, t0, t1, r['tz'], W, tz) + events_lanes(data.get('event_lanes'), t0, t1, W, tz)
             cells = [x for k, v in order for x in (dot(EV_COLORS.get(k, INK3)), Paragraph(f'{esc(v["title"])} <b>{v["n"]}</b> '
                                                                                        f'<font color="{INK3}" size="7">{100 * v["n"] / len(ev):.0f}%</font>', P))]
             cells += [''] * (-len(cells) % 4)          # (1.16.1) two columns: long names of kinds stay on one line

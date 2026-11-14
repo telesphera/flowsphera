@@ -98,6 +98,44 @@ class Api(unittest.TestCase):
             api.api_alerts({'limit': ['30'], 'hosts': ['x']})
 
 
+class Report(unittest.TestCase):
+    """The PDF report's events section gets the lanes of the ten busiest hosts (one /api/alerts call, hosts=10)."""
+    def test_collect_asks_for_lanes_once(self):
+        import reports
+        calls = []
+
+        def call(path, q):
+            calls.append((path, q))
+            if path == '/api/alerts':
+                return {'alerts': [], 'lanes': {'rows': [], 'hosts': 0}}
+            return {'rows': [], 'total': 0, 'devices': [], 'series': {'step': 300, 'rows': []}}
+        d = reports.collect({'f': [], 't': 'internet', 'tz': 'UTC', 'sections': ['events']}, T0, T1, call)
+        al = [q for p, q in calls if p == '/api/alerts']
+        self.assertEqual(len(al), 1)
+        self.assertEqual(al[0]['hosts'], ['10'])
+        self.assertEqual(d['event_lanes'], {'rows': [], 'hosts': 0})
+
+    def test_drawing_has_a_lane_per_host_and_a_bar_per_stretch(self):
+        import reports
+        from reportlab.graphics.shapes import Drawing, Rect, String
+        from reportlab.lib import colors
+        reports._register()
+        ln = {'hosts': 12, 'rows': [
+            {'ip': '10.0.0.5', 'name': 'nas', 'country': '', 'spans': [[T0 + 3600, T0 + 7200, 'malware_contact', 2, 5], [T1 - 60, T1 - 60, 'burst', 1, 1]]},
+            {'ip': '81.20.30.5', 'name': '', 'country': 'NL', 'spans': [[T0 + 600, T0 + 600, 'port_scan', 1, 1]]}]}
+        out = reports.events_lanes(ln, T0, T1, 180 * 2.835, datetime.timezone.utc)
+        d = next(x for x in out if isinstance(x, Drawing))
+        texts = [x.text for x in d.contents if isinstance(x, String)]
+        self.assertIn('nas', texts)
+        self.assertIn('81.20.30.5', texts)
+        self.assertIn('NL', texts)
+        bars = [x for x in d.contents if isinstance(x, Rect) and x.fillColor != colors.HexColor(reports.PANEL)]
+        self.assertEqual(len(bars), 3)
+        self.assertTrue(all(b.width >= 1.4 for b in bars))       # a moment is still a visible bar
+        self.assertIn('OF 12', out[0].text)                       # «the 2 … of 12» in the title
+        self.assertEqual(reports.events_lanes({'rows': [], 'hosts': 0}, T0, T1, 500, datetime.timezone.utc), [])
+
+
 class Page(unittest.TestCase):
     def test_events_page_asks_for_lanes_and_draws_them(self):
         with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'web', 'app.js'), encoding='utf-8') as f:

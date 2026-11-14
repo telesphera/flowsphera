@@ -2694,6 +2694,8 @@ def api_alerts(q):
     # every event as before (reports, older clients)
     if 'limit' not in q:
         res['alerts'] = out
+        if 'hosts' in q:        # (2.8.0) the PDF report's «By host» lanes, of every event
+            res['lanes'] = _event_lanes(out, t0, t1, q)
         return res
     sev, kind, text = q1(q, 'sev', ''), q1(q, 'kind', ''), q1(q, 'q', '').strip().lower()
     sel = [a for a in out if (not sev or a['sev'] == sev) and (not kind or a['kind'] == kind)
@@ -2705,16 +2707,21 @@ def api_alerts(q):
         raise BadRequest('bad limit / offset')
     res.update(alerts=sel[offset:offset + limit], matched=len(sel), offset=offset)
     if 'hosts' in q:            # (2.8.0, #9) the «By host» lanes of the same priority / kind / text
-        try:
-            top = max(0, int(q1(q, 'hosts', '10')))
-        except ValueError:
-            raise BadRequest('bad hosts') from None
-        ln = detect.lanes(sel, t0, t1, top)
-        for h in ln['rows']:
-            h['name'] = NAMES.get(h['ip'], lookup=False) or ''
-            h['inside'] = is_private(h['ip'])
-        res['lanes'] = ln
+        res['lanes'] = _event_lanes(sel, t0, t1, q)
     return res
+
+
+def _event_lanes(events, t0, t1, q):
+    """(2.8.0, #9) detect.lanes of these events (`hosts` = how many, 0 = all) with each host's name and inside flag."""
+    try:
+        top = max(0, int(q1(q, 'hosts', '10')))
+    except ValueError:
+        raise BadRequest('bad hosts') from None
+    ln = detect.lanes(events, t0, t1, top)
+    for h in ln['rows']:
+        h['name'] = NAMES.get(h['ip'], lookup=False) or ''
+        h['inside'] = is_private(h['ip'])
+    return ln
 
 
 def get_events_config():

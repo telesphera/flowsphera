@@ -2175,5 +2175,7 @@
  "Top 10": "Топ 10",
  "Top 50": "Топ 50",
  "The {n} hosts with the most events of {all}.": "{n} хостів із найбільшою кількістю подій із {all}.",
- "No host events of this priority or kind": "Немає подій хостів цього пріоритету чи типу"
+ "No host events of this priority or kind": "Немає подій хостів цього пріоритету чи типу",
+ "BY HOST · WHEN EACH HOST'S EVENTS RAN": "ЗА ХОСТАМИ · КОЛИ ВІДБУВАЛИСЯ ПОДІЇ КОЖНОГО ХОСТА",
+ "THE {n} WITH THE MOST EVENTS OF {all}": "{n} З НАЙБІЛЬШОЮ КІЛЬКІСТЮ ПОДІЙ ІЗ {all}"
 }
