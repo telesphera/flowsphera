@@ -49,7 +49,7 @@ class PortOnlyExclusion(unittest.TestCase):
 
 
 class UserSearch(unittest.TestCase):
-    NAMES = ['corp\\anna', 'yegor@corp.example', 'myname@domain.something', 'bob@corp.example', 'Anna.K@corp.example']
+    NAMES = ['corp\\anna', 'carl@corp.example', 'myname@domain.something', 'bob@corp.example', 'Anna.K@corp.example']
 
     def setUp(self):
         api._users.update(t=0.0, names=[])
@@ -60,7 +60,7 @@ class UserSearch(unittest.TestCase):
             self.assertEqual(api.find_users('DOMAIN'), ['myname@domain.something'])
             # names that begin with the text first, then in the order given (the busiest first)
             self.assertEqual(api.find_users('anna'), ['Anna.K@corp.example', 'corp\\anna'])
-            self.assertEqual(api.find_users('corp', limit=2), ['corp\\anna', 'yegor@corp.example'])
+            self.assertEqual(api.find_users('corp', limit=2), ['corp\\anna', 'carl@corp.example'])
             self.assertEqual(api.find_users('  '), [])
 
     def test_endpoint_and_cache(self):
