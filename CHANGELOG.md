@@ -4,6 +4,21 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.7.1 — 2026-11-14
+
+### Fixed
+- **Overview keeps itself up to date** (issue #10): the cards, *Traffic trend*, top services, hosts and conversations
+  and *Recent flows* now reload by themselves, as the live map above them already did: every minute for periods up to
+  24 hours, every 5 minutes for 7 and 30 days. Quietly (the new numbers replace the old ones, no waiting picture),
+  only while the tab is visible; a custom period stays as it is.
+- **Events → Exceptions takes a target port alone** (issue #13): a rule such as *outgoing, any source, any target,
+  port 3478* (STUN from every inside host) is accepted; the form said «an empty field means any» but still asked for
+  a source or a target. A rule with nothing in it is still refused, and a port rule never hides an interface load
+  event (its «port» is an interface number).
+- **The search box finds users by a part of the name** (issue #14): typing `user:myna`, or just `domain`, offers the
+  user names your devices sent (Palo Alto User-ID), as host names are offered; the filter itself still matches the
+  whole name. New `GET /api/users/find?q=&limit=`.
+
 ## 2.7.0 — 2026-11-12
 
 ### Added
