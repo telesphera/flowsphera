@@ -2168,5 +2168,12 @@
  "The table is empty.": "Таблиця порожня.",
  "{a} new, {c} changed, {d} deleted: the table becomes the file.": "Нових: {a}, змінених: {c}, видалених: {d}: таблиця стане такою, як файл.",
  "Replace the whole table: delete the {n} rows that are not in the file": {"one": "Замінити всю таблицю: видалити {n} рядок, якого немає у файлі", "few": "Замінити всю таблицю: видалити {n} рядки, яких немає у файлі", "many": "Замінити всю таблицю: видалити {n} рядків, яких немає у файлі", "other": "Замінити всю таблицю: видалити {n} рядка, яких немає у файлі"},
- "exactly this name": "саме це ім'я"
+ "exactly this name": "саме це ім'я",
+ "By host": "За хостами",
+ "when each host's events ran": "коли відбувалися події кожного хоста",
+ "when each host's events ran · by kind · click a host to show only it": "коли відбувалися події кожного хоста · за типом · клацніть хост, щоб показати лише його",
+ "Top 10": "Топ 10",
+ "Top 50": "Топ 50",
+ "The {n} hosts with the most events of {all}.": "{n} хостів із найбільшою кількістю подій із {all}.",
+ "No host events of this priority or kind": "Немає подій хостів цього пріоритету чи типу"
 }

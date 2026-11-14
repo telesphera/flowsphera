@@ -30,7 +30,7 @@ from zoneinfo import ZoneInfo
 
 import notify
 import reputation
-from common import STATE_DIR, CHError, N_, ch, tr, trn
+from common import STATE_DIR, CHError, N_, ch, is_private, tr, trn
 
 CONFIG = os.path.join(STATE_DIR, 'events.json')
 STATE = os.path.join(STATE_DIR, 'detect_state.json')
@@ -1177,6 +1177,45 @@ def ev_time(s):
 
 
 SEV_RANK = {'crit': 0, 'warn': 1, 'info': 2}
+LANES_MAX = 200          # (2.8.0) «All» on the Events page's host lanes: the busiest this many
+
+
+def lanes(out, t0, t1, top=10):
+    """(2.8.0, GitHub #9) The Events page's «By host» lanes: per host (an event's `ip`: the inside host for what we
+    send, the outside address for what arrives) when its events ran, as spans [start, end, kind, events, hits] cut to
+    the period; spans of one kind closer than ~1/300 of the period are joined (one pixel of the chart). The hosts with
+    the most events first (then the highest priority); `top` 0 = all, at most LANES_MAX. Events without a host (the
+    collector's health) or without a time are left out. -> {'rows': [...], 'hosts': all hosts, 'from', 'to'}"""
+    gap = max(60, (t1 - t0) // 300)
+    by = {}
+    for a in out:
+        ip, t = a.get('ip'), ev_time(a.get('first') or a.get('when'))
+        if not ip or t is None:
+            continue
+        e = ev_time(a.get('last')) or t
+        s_, e_ = max(t, t0), min(max(e, t), t1)
+        if s_ > t1 or e_ < t0:
+            continue
+        h = by.setdefault(ip, {'ip': ip, 'n': 0, 'sev': 'info', 'kinds': {}, 'raw': [], 'country': '', 'org': ''})
+        h['n'] += 1
+        h['kinds'][a['kind']] = h['kinds'].get(a['kind'], 0) + 1
+        if SEV_RANK.get(a['sev'], 3) < SEV_RANK.get(h['sev'], 3):
+            h['sev'] = a['sev']
+        if not h['country'] and a.get('country') and not is_private(ip):     # the event's country is the outside party's
+            h['country'], h['org'] = a.get('country', ''), a.get('org', '')
+        h['raw'].append((s_, e_, a['kind'], int(a.get('hits') or 1)))
+    rows = sorted(by.values(), key=lambda h: (-h['n'], SEV_RANK.get(h['sev'], 3), h['ip']))
+    cut = rows[:min(top, LANES_MAX) if top else LANES_MAX]
+    for h in cut:
+        spans = []
+        for s_, e_, k, hits in sorted(h.pop('raw'), key=lambda x: (x[2], x[0])):
+            last = spans[-1] if spans and spans[-1][2] == k else None
+            if last and s_ <= last[1] + gap:
+                last[1], last[3], last[4] = max(last[1], e_), last[3] + 1, last[4] + hits
+            else:
+                spans.append([s_, e_, k, 1, hits])
+        h['spans'] = sorted(spans)
+    return {'rows': cut, 'hosts': len(rows), 'from': t0, 'to': t1}
 EV_STEPS = (300, 600, 1800, 3600, 3 * 3600, 6 * 3600, 86400)
 
 

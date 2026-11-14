@@ -2704,6 +2704,16 @@ def api_alerts(q):
     except ValueError:
         raise BadRequest('bad limit / offset')
     res.update(alerts=sel[offset:offset + limit], matched=len(sel), offset=offset)
+    if 'hosts' in q:            # (2.8.0, #9) the «By host» lanes of the same priority / kind / text
+        try:
+            top = max(0, int(q1(q, 'hosts', '10')))
+        except ValueError:
+            raise BadRequest('bad hosts') from None
+        ln = detect.lanes(sel, t0, t1, top)
+        for h in ln['rows']:
+            h['name'] = NAMES.get(h['ip'], lookup=False) or ''
+            h['inside'] = is_private(h['ip'])
+        res['lanes'] = ln
     return res
 
 

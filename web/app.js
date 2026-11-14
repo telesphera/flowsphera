@@ -2726,12 +2726,14 @@ function vThreats(){
     <div id="evKpi" style="display:contents"></div>
     <section class="glass panel s8 evfill">${ph('chart', T('Events over time'), `<span id="evChartSub">${T('how many began, by kind · click a kind to show only it')}</span>`)}<div id="evChart" class="loading" data-wait="bars" style="height:320px"></div><p class="note" id="evChartNote" hidden></p></section>
     <section class="glass panel s4">${ph('pie', T('By kind'), `<span id="evPieSub">${T('of the events in the period')}</span>`)}<div id="evPie" class="loading"></div></section>
+    <section class="glass panel s12">${ph('users', T('By host'), `<span id="evLaneSub">${T('when each host\'s events ran')}</span>`, seg('evLaneN', [['10', T('Top 10')], ['50', T('Top 50')], ['0', T('All')]], String(state.evLanes ?? 10)))}<div id="evLanes" class="loading" data-wait="bars" style="height:300px"></div><p class="note" id="evLaneNote" hidden></p></section>
     <section class="glass panel s8">${ph('list', T('Latest events'), `<span id="evListSub">${T('the newest 30')}</span>`)}<div id="alBox" class="loading"></div></section>
     <section class="glass panel s4">${ph('search', T('What is watched'), '', isAdmin() ? `<button class="btn" id="evCfg">${T('Configure')}</button>` : '')}<div id="watchBox" class="loading"></div></section></div>`;
   if (isAdmin()) document.getElementById('evCfg').onclick = () => { state.view = 'settings'; state.setTab = 'events'; render(); };
   document.getElementById('evAllTop').onclick = () => { state.view = 'events'; state.evPage = 0; render(); };
   const seq = renderSeq, done = (id, html) => { const el = fill(id, html); if (el) el.classList.remove('loading'); return el; };
-  let chart = null, pie = null, first = true;
+  let chart = null, pie = null, lane = null, first = true;
+  wireSeg('evLaneN', v => { state.evLanes = +v; document.querySelectorAll('#evLaneN button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); reload(); });
   // (1.16.1) the kind under the pointer is brought forward after a short pause and the others fade over 0.3 s — the
   // built-in focus of ECharts darkened the whole chart at once on every segment the pointer crossed
   // (ECharts does not animate a changed opacity, so the fade is stepped here, frame by frame)
@@ -2808,6 +2810,44 @@ function vThreats(){
       pel.querySelector('.evleg').innerHTML = pri.map(([k, o]) => `<i class="idot" style="background:${evColor(k)}"></i><button class="link${kind === k ? ' on' : ''}" data-kind="${k}">${esc(o.title)}</button><span class="p">${pct(o.n, priN)}</span><span class="t">${fmtN(o.n)}</span>`).join('');
       pel.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => { state.evKind = state.evKind === b.dataset.kind ? '' : b.dataset.kind; reload(); });
     }
+    // (2.8.0, GitHub #9) by host: when each host's events ran — a lane per host (its name, else the address; outside
+    // ones with their country), a bar per stretch of one kind in its colour; the chosen priority and kind apply;
+    // Top 10 / 50 / All; a click on a host or a bar filters every page to that host
+    const L = res.lanes, lel = document.getElementById('evLanes');
+    if (L && lel) { lel.classList.remove('loading', 'wshow'); delete lel.dataset.w;
+      const rows = L.rows, n = rows.length, by = Object.fromEntries(rows.map(h => [h.ip, h]));
+      fill('evLaneSub', `${T('when each host\'s events ran · by kind · click a host to show only it')}${chosen ? ` · <b class="evwhat">${esc(chosen)}</b>` : ''}`);
+      const ln = document.getElementById('evLaneNote'); ln.hidden = L.hosts <= n;
+      ln.textContent = L.hosts > n ? T('The {n} hosts with the most events of {all}.', {n:fmtN(n), all:fmtN(L.hosts)}) : '';
+      if (!n) { if (lane && !lane.isDisposed()) lane.dispose(); lane = null; lel.style.height = '';
+        lel.innerHTML = `<div class="empty evnone">${all ? T('No host events of this priority or kind') : T('No events — all quiet')}</div>`; }
+      else {
+        const H = Math.max(150, n * 28 + 52);
+        if (!lane || !lel.querySelector('.evlanes')) { lel.innerHTML = '<div class="chart evlanes" style="height:100%"></div>'; lane = mkChart(lel.firstChild); zoomable(lane);
+          lane.on('click', p => { const ip = p.componentType === 'yAxis' ? p.value : p.data && p.data.ip; const h = ip && lane._by[ip];
+            if (h) setTimeout(() => addFilter(h.inside ? 'ip' : 'dst', h.ip, false)); }); }
+        lane._by = by; lel.style.height = H + 'px'; lane.resize();
+        const cut = t => t.length > 26 ? t.slice(0, 25) + '…' : t, when = t => `${L.to - L.from > 86400 ? dmy(t) + ' ' : ''}${hhmm(t)}`;
+        const data = rows.flatMap((h, i) => h.spans.map(([a, b, k, ne, hits]) => ({ip:h.ip, k, ne, hits, value:[i, a * 1000, b * 1000], itemStyle:{color:evColor(k)}})));
+        // the label column measured here: ECharts' containLabel misjudged rich labels and cut a long name at the left edge
+        const lw = Math.ceil(Math.max(...rows.map(h => (h.name ? cut(h.name).length : h.ip.length) * 7 + (!h.name && h.country ? 26 : 0)))) + 14;
+        lane.setOption({animation:false, grid:{left:lw, right:16, top:8, bottom:24, containLabel:false},
+          tooltip:{...tipBase(), trigger:'item', formatter:p => { const d = p.data, h = by[d.ip], k = st.kinds[d.k];
+            return `<b>${esc(h.name || h.ip)}</b>${h.name ? ` <span style="color:${C.ink3}">${esc(h.ip)}</span>` : ''}${h.country ? ` · ${esc(h.country)}${h.org ? ' ' + esc(h.org) : ''}` : ''}<br>`
+              + `${p.marker}${esc(k ? k.title : d.k)} · <b>${Tn(d.ne, '{n} event', '{n} events')}</b><br>`
+              + `${esc(when(d.value[1] / 1000))}${d.value[2] > d.value[1] ? ' – ' + esc(when(d.value[2] / 1000)) : ''}`; }},
+          xAxis:{...axisX(null), min:L.from * 1000, max:L.to * 1000},
+          yAxis:{type:'category', inverse:true, data:rows.map(h => h.ip), triggerEvent:true, axisLine:{lineStyle:{color:C.hair}}, axisTick:{show:false},
+            splitArea:{show:true, areaStyle:{color:['rgba(140,170,255,.035)', 'rgba(0,0,0,0)']}},
+            axisLabel:{color:C.ink2, fontFamily:'JetBrains Mono', fontSize:11.5, formatter:ip => { const h = by[ip]; return h.name ? `{n|${cut(h.name)}}` : `{n|${ip}}${h.country ? `  {c|${h.country}}` : ''}`; },
+              rich:{n:{color:C.ink, fontFamily:'JetBrains Mono', fontSize:11.5}, c:{color:C.ink3, fontFamily:'Manrope', fontSize:10.5}}}},
+          series:[{type:'custom', encode:{x:[1, 2], y:0}, data,
+            renderItem:(prm, api) => { const y = api.value(0), a = api.coord([api.value(1), y]), b = api.coord([api.value(2), y]), h = api.size([0, 1])[1] * .52;
+              const w = Math.max(5, b[0] - a[0]), c = prm.coordSys;
+              const r = echarts.graphic.clipRectByRect({x:a[0] - (w > b[0] - a[0] ? (w - (b[0] - a[0])) / 2 : 0), y:a[1] - h / 2, width:w, height:h}, {x:c.x, y:c.y, width:c.width, height:c.height});
+              return r && {type:'rect', shape:{...r, r:3}, style:api.style(), emphasis:{style:{shadowBlur:10, shadowColor:api.visual('color')}}}; }}]}, {notMerge:true});
+      }
+    }
     // the newest events of the chosen priority / kind
     const what = [cur !== 'all' ? sevs[cur] : '', kind ? st.kinds[kind].title : ''].filter(Boolean);
     fill('evListSub', (res.matched > res.alerts.length ? T('the newest {n} of {all}', {n:res.alerts.length, all:fmtN(res.matched)}) : Tn(res.matched, '{n} event', '{n} events'))
@@ -2819,9 +2859,9 @@ function vThreats(){
         + (res.matched > res.alerts.length ? `<div class="evmore"><button class="btn primary" id="evAll">${T('All events ({n})', {n:fmtN(res.matched)})} →</button></div>` : '')));
     if (box) { wireFilters(box); wireEvActs(box, reload); const b = document.getElementById('evAll'); if (b) b.onclick = () => { state.view = 'events'; state.evPage = 0; render(); }; }
   };
-  const load = () => api('alerts', evQuery({limit:30}));
+  const load = () => api('alerts', evQuery({limit:30, hosts:state.evLanes ?? 10}));
   const reload = () => load().then(r => { if (seq === renderSeq) draw(r); }).catch(e => fill('alBox', errBox(e)));
-  load().then(r => { if (seq === renderSeq) draw(r); }).catch(e => { ['evChart', 'evPie', 'alBox'].forEach(id => done(id, errBox(e))); });
+  load().then(r => { if (seq === renderSeq) draw(r); }).catch(e => { ['evChart', 'evPie', 'evLanes', 'alBox'].forEach(id => done(id, errBox(e))); });
   if (!isCustom()) every(60000, reload);
 }
 // (1.17.0) every event of the period, a page of 50 at a time: priority, kind, a text search; the newest first
