@@ -2171,11 +2171,11 @@
  "exactly this name": "саме це ім'я",
  "By host": "За хостами",
  "when each host's events ran": "коли відбувалися події кожного хоста",
- "when each host's events ran · by kind · click a host to show only it": "коли відбувалися події кожного хоста · за типом · клацніть хост, щоб показати лише його",
+ "when each host's events ran · by kind · click a host to show only it": "коли відбувалися події кожного хоста · за видами · клацніть хост, щоб показати лише його",
  "Top 10": "Топ 10",
  "Top 50": "Топ 50",
  "The {n} hosts with the most events of {all}.": "{n} хостів із найбільшою кількістю подій із {all}.",
- "No host events of this priority or kind": "Немає подій хостів цього пріоритету чи типу",
+ "No host events of this priority or kind": "Немає подій хостів цього пріоритету чи виду",
  "BY HOST · WHEN EACH HOST'S EVENTS RAN": "ЗА ХОСТАМИ · КОЛИ ВІДБУВАЛИСЯ ПОДІЇ КОЖНОГО ХОСТА",
  "THE {n} WITH THE MOST EVENTS OF {all}": "{n} З НАЙБІЛЬШОЮ КІЛЬКІСТЮ ПОДІЙ ІЗ {all}"
 }
