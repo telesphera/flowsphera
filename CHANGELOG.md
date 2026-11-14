@@ -4,6 +4,16 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.8.0 — 2026-11-14
+
+### Added
+- **Events by host** (issue #9): the Events page has a **By host** panel between the charts and the list: a lane for
+  each host with the most events (its name, or the address with its country) and a bar in the kind's colour for each
+  stretch of time its events ran. *Top 10 / Top 50 / All* (up to 200); the chosen priority or kind applies, so
+  *Contact with a listed address* shows at once which machines and when; a click on a host or a bar filters every page
+  to it. The *Security events* part of the PDF reports draws the same lanes for the ten busiest hosts.
+  `GET /api/alerts` takes `hosts=10|50|0` and then answers `lanes`.
+
 ## 2.7.1 — 2026-11-14
 
 ### Fixed
