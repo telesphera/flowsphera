@@ -1152,7 +1152,7 @@
  "Do not show events of this connection in this direction": "Не показувати події цього з'єднання в цьому напрямку",
  "Exclude": "Виключити",
  "exclusion: not an address or network: {value}": "виключення: це не адреса й не мережа: {value}",
- "exclusion: give a source or a target address": "виключення: вкажіть адресу джерела або цілі",
+ "exclusion: give a source, a target or a target port": "виключення: вкажіть джерело, ціль або порт цілі",
  "at most 1000 exclusions": "не більше 1000 виключень",
  "Port names": "Назви портів",
  "your own names of ports: they replace the protocol FlowSphera names (e.g. TCP other) in every report": "власні назви портів: замінюють протокол, який визначає FlowSphera (наприклад, TCP other), у всіх звітах",
@@ -1185,7 +1185,7 @@
  "Find a service: address or port": "Знайти сервіс: адреса або порт",
  "Show all {n} services": "Показати всі сервіси ({n})",
  "No service matches.": "Жоден сервіс не підходить.",
- "A source or a target is needed: an address or a network (10.0.0.0/24); an empty field means any. Outgoing = what we send or call out (uploads, contacts, scans from inside); incoming = what arrives (scans, guessing, floods).": "Потрібне джерело або ціль: адреса чи мережа (10.0.0.0/24); порожнє поле означає «будь-яке». Вихідні — те, що ми надсилаємо або куди звертаємося (вивантаження, контакти, сканування зсередини); вхідні — те, що приходить до нас (сканування, підбір паролів, флуд).",
+ "Give a source, a target or a target port: an address or a network (10.0.0.0/24); an empty field means any. Outgoing = what we send or call out (uploads, contacts, scans from inside); incoming = what arrives (scans, guessing, floods).": "Вкажіть джерело, ціль або порт цілі: адресу чи мережу (10.0.0.0/24); порожнє поле означає «будь-яке». Вихідні — те, що ми надсилаємо або куди звертаємося (вивантаження, контакти, сканування зсередини); вхідні — те, що приходить до нас (сканування, підбір паролів, флуд).",
  "ASN": "ASN",
  "Address, network or ASN": "Адреса, мережа або ASN",
  "All names: Settings → Flow configuration.": "Усі назви: Налаштування → Налаштування трафіку.",
@@ -1198,7 +1198,7 @@
  "Example: 10.0.0.15 → NAS in the office.": "Наприклад: 10.0.0.15 → NAS в офісі.",
  "Exclude connections": "Виключені з'єднання",
  "FlowSphera calls it: {name}": "FlowSphera називає його: {name}",
- "Give a source or a target address.": "Вкажіть джерело або ціль.",
+ "Give a source, a target or a target port.": "Вкажіть джерело, ціль або порт цілі.",
  "Give this port a name of yours": "Дати порту власну назву",
  "Host names": "Назви хостів",
  "IP address": "IP-адреса",
@@ -2167,5 +2167,6 @@
  "All {n} rows of this table are deleted. Export CSV first if you may want them back: Import CSV puts them back.": {"one": "Буде видалено {n} рядок цієї таблиці. Якщо він ще може знадобитися, спершу зробіть Export CSV: Import CSV поверне його.", "few": "Буде видалено всі {n} рядки цієї таблиці. Якщо вони ще можуть знадобитися, спершу зробіть Export CSV: Import CSV поверне їх.", "many": "Буде видалено всі {n} рядків цієї таблиці. Якщо вони ще можуть знадобитися, спершу зробіть Export CSV: Import CSV поверне їх.", "other": "Буде видалено всі {n} рядка цієї таблиці. Якщо вони ще можуть знадобитися, спершу зробіть Export CSV: Import CSV поверне їх."},
  "The table is empty.": "Таблиця порожня.",
  "{a} new, {c} changed, {d} deleted: the table becomes the file.": "Нових: {a}, змінених: {c}, видалених: {d}: таблиця стане такою, як файл.",
- "Replace the whole table: delete the {n} rows that are not in the file": {"one": "Замінити всю таблицю: видалити {n} рядок, якого немає у файлі", "few": "Замінити всю таблицю: видалити {n} рядки, яких немає у файлі", "many": "Замінити всю таблицю: видалити {n} рядків, яких немає у файлі", "other": "Замінити всю таблицю: видалити {n} рядка, яких немає у файлі"}
+ "Replace the whole table: delete the {n} rows that are not in the file": {"one": "Замінити всю таблицю: видалити {n} рядок, якого немає у файлі", "few": "Замінити всю таблицю: видалити {n} рядки, яких немає у файлі", "many": "Замінити всю таблицю: видалити {n} рядків, яких немає у файлі", "other": "Замінити всю таблицю: видалити {n} рядка, яких немає у файлі"},
+ "exactly this name": "саме це ім'я"
 }

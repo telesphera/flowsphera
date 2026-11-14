@@ -55,7 +55,7 @@ class Exclusions(unittest.TestCase):
                                {'src': '', 'dst': '10.0.0.0/24', 'port': 0, 'dir': 'down'}])
         self.assertEqual(r[0], {'src': '10.0.0.5', 'dst': '203.0.113.7', 'port': 443, 'dir': 'up'})
         self.assertEqual(r[1]['dst'], '10.0.0.0/24')
-        for bad in ({'src': 'x', 'dir': 'up'}, {'dir': 'up', 'port': 80}, {'src': '10.0.0.1', 'port': 70000}, {'src': '10.0.0.1', 'dir': 'side'}):
+        for bad in ({'src': 'x', 'dir': 'up'}, {'dir': 'up', 'port': 0}, {'src': '10.0.0.1', 'port': 70000}, {'src': '10.0.0.1', 'dir': 'side'}):
             with self.assertRaises(ValueError):
                 detect.exclusions([bad])
 

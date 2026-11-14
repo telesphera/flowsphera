@@ -3047,13 +3047,13 @@ function vEventsCfg(){
     exc = rowTable(document.getElementById('excBox'), {id:'ex', admin:true, items:rows, cols:'minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) 100px auto',
       fields:[{k:'dir', label:T('Direction'), opts:DIRS}, {k:'src', label:T('Source (who opens it)'), ph:T('any'), mono:true, max:50},
         {k:'dst', label:T('Target'), ph:T('any'), mono:true, max:50}, {k:'port', label:T('Target port'), ph:T('any'), mono:true, num:true, max:5}],
-      hint:T('A source or a target is needed: an address or a network (10.0.0.0/24); an empty field means any. Outgoing = what we send or call out (uploads, contacts, scans from inside); incoming = what arrives (scans, guessing, floods).'),
+      hint:T('Give a source, a target or a target port: an address or a network (10.0.0.0/24); an empty field means any. Outgoing = what we send or call out (uploads, contacts, scans from inside); incoming = what arrives (scans, guessing, floods).'),
       check:(r, at) => { const bad = [];
         if (r.src && !addrOk(r.src, true, false)) bad.push('src');
         if (r.dst && !addrOk(r.dst, true, false)) bad.push('dst');
         if (r.port && !(+r.port >= 1 && +r.port <= 65535)) bad.push('port');
         if (bad.length) return {bad, err:bad.includes('port') ? T('A port is a number from 1 to 65535.') : T('Not an address or network: {v}', {v:r[bad[0]]})};
-        if (!r.src && !r.dst) return {bad:['src', 'dst'], err:T('Give a source or a target address.')};
+        if (!r.src && !r.dst && !r.port) return {bad:['src', 'dst', 'port'], err:T('Give a source, a target or a target port.')};      // (2.7.1, issue #13) a port alone will do
         if (cur.some((x, i) => i !== at && same(x, r))) return {err:T('This rule is already in the list.')};
         return {hint:T('Events of this connection will no longer be shown or notified.')}; },
       show:(it, k) => k === 'dir' ? `<span class="tag">${dirShort[it.dir]}</span>` : k === 'port' ? anyCell(it.port) : anyCell(it[k]),
@@ -5156,6 +5156,24 @@ function hostFind(w, redraw){
   }, 150);
   return [];
 }
+// (2.7.1, issue #14) user names (User-ID) by a part of the name, asked from the server as host names are
+const userHits = new Map();
+let userAsk = null;
+function userFind(w, redraw){
+  const k = w.trim().toLowerCase();
+  if (k.length < 2 || /\s/.test(k)) return [];
+  const hit = userHits.get(k);
+  if (hit && Date.now() - hit.t < 60000) return hit.list || [];
+  clearTimeout(userAsk);
+  userAsk = setTimeout(async () => {
+    userHits.set(k, {t:Date.now(), list:null});
+    try { const r = await fetch(`api/users/find?q=${encodeURIComponent(k)}&limit=6`).then(x => x.ok ? x.json() : {users:[]}); userHits.set(k, {t:Date.now(), list:r.users || []}); }
+    catch (e) { userHits.delete(k); return; }
+    if (userHits.size > 200) userHits.delete(userHits.keys().next().value);
+    if (redraw) redraw();
+  }, 150);
+  return [];
+}
 function qSuggest(word, redraw){
   const neg = word.startsWith('-'), w = neg ? word.slice(1) : word, pre = neg ? '-' : '', info = QKEY_INFO(), out = [];
   const i = w.indexOf(':'), key = i > 0 ? w.slice(0, i).toLowerCase() : '', val = i > 0 ? w.slice(i + 1) : '';
@@ -5167,6 +5185,8 @@ function qSuggest(word, redraw){
     else if (key === 'net') netNames().filter(n => !val || n.toLowerCase().includes(val.replace(/_/g, ' ').toLowerCase())).slice(0, 8)
       .forEach(n => out.push({text:`${pre}net:${netTyped(n)}`, label:`${pre}net:${netTyped(n)}`, note:(META.networks || []).filter(x => x.name === n).map(x => x.net).join(', '), apply:true}));
     if (key === 'net' && !out.length && (val || !netNames().length)) out.push({err:qParse(`net:${val || '?'}`).err});
+    else if (key === 'user' && val) { userFind(val, redraw).forEach(u => out.push({text:`${pre}user:${u}`, label:`${pre}user:${u}`, note:info[key][1], apply:true}));
+      if (!userHits.get(val.trim().toLowerCase())?.list?.some(u => u.toLowerCase() === val.trim().toLowerCase())) out.push({text:word, label:`${pre}user:${val}`, note:T('exactly this name'), apply:true}); }
     else if (key === 'proto') [['6', 'TCP'], ['17', 'UDP'], ['1', 'ICMP'], ['47', 'GRE'], ['50', 'ESP']].filter(([v]) => v.startsWith(val))
       .forEach(([v, l]) => out.push({text:`${pre}proto:${v}`, label:`proto:${v}`, note:l, apply:true}));
     else if (val) { const r = qParse(word); if (r.err) out.push({err:r.err});
@@ -5177,10 +5197,12 @@ function qSuggest(word, redraw){
   if (!w) return null;                                  // empty: the whole guide
   const hosts = hostFind(w, redraw);
   hosts.forEach(h => out.push({text:`${pre}ip:${h.ip}`, label:h.name, note:`${h.ip} · ${hostSrc(h.src)}`, apply:true}));
+  const users = userFind(w, redraw);       // (2.7.1) and users whose name holds the word
+  users.forEach(u => out.push({text:`${pre}user:${u}`, label:u, note:info.user ? info.user[1] : T('user'), apply:true}));
   // (2.2.0) the whole key typed («app», «ip») still offers «app:» — it used to vanish just when it was spelled out
   Object.keys(info).filter(k => k.startsWith(w.toLowerCase())).forEach(k => out.push({text:`${pre}${k}:`, label:`${pre}${k}:`, note:info[k][1], key:true}));
   const r = qParse(word);
-  if (r.err) { if (!hosts.length) out.push({err:r.err}); }      // (2.5.0) a host found by name: no error for the word
+  if (r.err) { if (!hosts.length && !users.length) out.push({err:r.err}); }      // (2.5.0) a host found by name: no error for the word
   else if (r.f) {
     const addr = r.f.k === 'ip' || r.f.k === 'dst', alt = addr ? (r.f.k === 'ip' ? 'dst' : 'ip') : null;
     const note = f => f.v.includes('/') ? (f.k === 'ip' ? T('inside network') : T('outside network')) : info[f.k][1];

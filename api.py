@@ -391,6 +391,44 @@ def api_hosts_find(q):
     return {'hosts': NAMES.find(q.get('q', [''])[0][:100], limit)}
 
 
+# (2.7.1, issue #14) user names the devices sent (Palo Alto User-ID, FortiGate) for the search box: typing a part of
+# «anna@corp.example» or «corp\anna» offers the whole name, as host names are offered; the names of the last
+# USER_DAYS from the rollups, the busiest first, kept USER_TTL seconds
+USER_DAYS, USER_TTL, USER_MAX = 30, 300, 20000
+_users = {'t': 0.0, 'names': []}
+_users_lock = threading.Lock()
+
+
+def user_names():
+    with _users_lock:
+        if time.time() - _users['t'] < USER_TTL:
+            return _users['names']
+        src, _ = rollups.source(['user_name'], int(time.time()) - USER_DAYS * 86400, None, set(), use=USE_ROLLUPS)
+        rows = ch(f"""SELECT toString(user_name) AS u, sum(bytes) AS b FROM {src} WHERE user_name != ''
+            GROUP BY u ORDER BY b DESC LIMIT {USER_MAX}""", fmt='JSON')
+        _users.update(t=time.time(), names=[r['u'] for r in rows])
+        return _users['names']
+
+
+def find_users(text, limit=10):
+    """Users whose name holds `text` (any case): names that begin with it first, then the busiest."""
+    t = text.strip().lower()
+    if not t:
+        return []
+    hits = [(i, u) for i, u in enumerate(user_names()) if t in u.lower()]
+    hits.sort(key=lambda x: (not x[1].lower().startswith(t), x[0]))
+    return [u for _, u in hits[:limit]]
+
+
+def api_users_find(q):
+    """(2.7.1) GET /api/users/find?q=text[&limit=N]: user names (User-ID) for the search box."""
+    try:
+        limit = max(1, min(50, int(q.get('limit', ['10'])[0])))
+    except ValueError:
+        limit = 10
+    return {'users': find_users(q.get('q', [''])[0][:100], limit)}
+
+
 def api_geo_places(q):
     """(2.6.0) GET /api/geo/places?country=CC&q=text[&limit=N]: places of a country by name (the device form's City),
     from the DB-IP place index; `ready` false = the index is not built yet."""
@@ -3376,7 +3414,7 @@ class Cache:
 
 
 CACHE = Cache()
-ROUTES = {'/api/hosts/find': api_hosts_find, '/api/geo/places': api_geo_places, '/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
+ROUTES = {'/api/hosts/find': api_hosts_find, '/api/users/find': api_users_find, '/api/geo/places': api_geo_places, '/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
           '/api/flows': api_flows, '/api/paths': api_paths, '/api/devmap': api_devmap, '/api/topology': api_topology, '/api/path': api_path, '/api/live': api_live, '/api/ports': api_ports, '/api/hosts/names': api_host_names, '/api/networks': api_networks, '/api/geo': api_geo, '/api/devices': api_devices, '/api/host': api_host,
           '/api/alerts': api_alerts, '/api/ifload': api_ifload, '/api/ingest': api_ingest, '/api/apps': api_apps,
           '/api/capacity': api_capacity, '/api/capacity/iface': api_capacity_iface, '/api/usage': api_usage, '/api/qos': api_qos, '/api/conversations': api_conversations}

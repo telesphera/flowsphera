@@ -269,8 +269,10 @@ def exclusions(rules):
         if d not in DIRECTIONS:
             raise ValueError('dir')
         x = {'src': _net(r.get('src')), 'dst': _net(r.get('dst')), 'port': port, 'dir': d}
-        if not x['src'] and not x['dst']:
-            raise ValueError(tr('exclusion: give a source or a target address'))
+        # (2.7.1, issue #13) a port alone is a rule too (STUN 3478 from every inside host); a rule of nothing would
+        # hide every event of its direction
+        if not x['src'] and not x['dst'] and not port:
+            raise ValueError(tr('exclusion: give a source, a target or a target port'))
         if x not in out:
             out.append(x)
     if len(out) > 1000:
@@ -297,6 +299,8 @@ class Exclude:
 
     def __call__(self, kind, src, dst, port):
         if not self.rules:
+            return False
+        if kind == 'link_load':         # (2.7.1) its «port» is an interface index, no connection: never excluded
             return False
         d = 'up' if kind in UPLOAD_KINDS else 'down'
         return any((rd == 'any' or rd == d) and (not rp or rp == int(port or 0)) and self._in(src, rs) and self._in(dst, rt)
