@@ -937,7 +937,12 @@ function vOverview(){
   };
   Object.values(loaders).forEach(f => f());
   Object.entries(loaders).forEach(([id, f]) => { const sec = document.getElementById(id).closest('section'); if (sec) sec._reload = f; });
-  api('series').then(s => { const el = document.getElementById('cTrend'); if (el) trendChart(el, s); }).catch(e => fill('cTrend', errBox(e)));
+  const trend = () => api('series').then(s => { const el = document.getElementById('cTrend'); if (el) trendChart(el, s); }).catch(e => fill('cTrend', errBox(e)));
+  trend();
+  // (2.7.1, issue #10) the cards, the trend and the lists move on with the time as the map does: quietly (the new answer
+  // replaces the old one, no waiting picture) once a minute, every 5 minutes over a 7- or 30-day range; paused while the
+  // tab is hidden (every); a custom period is fixed and stays as it is
+  if (!isCustom()) every(rangeSecs() <= 86400 ? 60000 : 300000, () => { section('kpis', kpiCards); Object.values(loaders).forEach(f => f()); trend(); });
 }
 
 // filters that describe a river selection (a host, an outside address, or a conversation band); none for «Others»

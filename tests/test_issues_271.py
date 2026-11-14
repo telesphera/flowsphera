@@ -84,5 +84,19 @@ class UserSearch(unittest.TestCase):
         self.assertTrue(re.search(r"key === 'user' && val\) \{ userFind\(val", js))
 
 
+
+class OverviewRefresh(unittest.TestCase):
+    """(2.7.1, #10) Overview's cards, trend and lists reload by themselves (the browser check overview_refresh_check.js
+    drives the clock); here: the timer exists in vOverview, skips a custom period and reloads every panel."""
+    def test_overview_reloads_its_panels(self):
+        with open(os.path.join(ROOT, 'web', 'app.js'), encoding='utf-8') as f:
+            js = f.read()
+        body = js[js.index('function vOverview(){'):js.index('function selFilters(')]
+        m = re.search(r"if \(!isCustom\(\)\) every\(rangeSecs\(\) <= 86400 \? 60000 : 300000, \(\) => \{(.*?)\}\);", body)
+        self.assertTrue(m, 'no refresh timer in vOverview')
+        for part in ("section('kpis', kpiCards)", 'Object.values(loaders).forEach(f => f())', 'trend()'):
+            self.assertIn(part, m.group(1))
+
+
 if __name__ == '__main__':
     unittest.main()
