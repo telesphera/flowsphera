@@ -211,16 +211,14 @@ The page shows the picture first: how many events of each priority, how their nu
 and the share of each kind. Pick a priority or a kind and the chart, the ring and the list follow it. Below — the newest
 30 events with Filter / Exclude / Ignore; **All events** pages through the rest with a search by address or text.
 
-<p align="center"><img src="docs/media/en/url-lists.webp" alt="IP reputation: lists by URL — name, address, what it holds, how often it is downloaded" width="100%"></p>
-
-<p align="center"><img src="docs/media/en/events.webp" alt="Events page: cards by priority, events over time by kind, the share of each kind, the newest events with Filter / Exclude / Ignore" width="100%"></p>
-
 **By host** (2.8.0) shows who is behind them: a lane for each host with the most events — its name, or the address
 with its country — and a bar in the kind's colour for each stretch of time its events ran. Top 10, Top 50 or all of
 them; the chosen priority or kind applies here too, so *Contact with a listed address* shows at once which machines
 and when. Click a host to see only its events.
 
-<p align="center"><img src="docs/media/en/events-hosts.webp" alt="Events by host: a lane per host, bars by kind over the period, Top 10 / Top 50 / All" width="100%"></p>
+<p align="center"><img src="docs/media/en/url-lists.webp" alt="IP reputation: lists by URL — name, address, what it holds, how often it is downloaded" width="100%"></p>
+
+<p align="center"><img src="docs/media/en/events.webp" alt="Events page: cards by priority, events over time by kind, the share of each kind and the hosts behind them over the period" width="100%"></p>
 
 The same charts open the *Security events* part of every PDF report, with the ten busiest hosts:
 
