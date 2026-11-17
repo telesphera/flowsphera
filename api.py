@@ -33,6 +33,7 @@ import licensing  # noqa: E402
 import rollups  # noqa: E402
 import snmp  # noqa: E402
 import topology  # noqa: E402
+import neighbours  # noqa: E402
 from common import (web_query, BUILD, COMMUNITY, STATE_DIR, VERSION, CHError, ch, describe_listeners, edition, exporters_mtime, save_license, deactivate_license, license_checkin, license_refresh, iface_addrs, is_private, listen_signature,  # noqa: E402
                     listen_label, load_exporters, load_json, load_ui_exporter, open_listeners, save_ui_exporter, set_lang, tr,
                     trn, N_, get_lang, languages)
@@ -1427,15 +1428,16 @@ def network_topology(q):
     where, p, rng, step = scope({**nq, 't': ['all']})
     where, live = live_window(q, where, p, default='0')
     cfg = exporters_cfg()
+    fixed = neighbours.fixed(cfg)    # (2.9.0) links set by hand and read from LLDP
     if live:                         # two minutes of records: everything from them, as it is now
-        topo = topology.build(cfg, *topology.query(ch, where, p, _known(cfg)))
+        topo = topology.build(cfg, *topology.query(ch, where, p, _known(cfg)), fixed=fixed)
         if narrow:
             topology.set_volumes(topo, topology.iface_volumes(ch, f'{where} AND {narrow}', p))
     else:                            # the neighbours of the last hour, the volumes of the period from the totals
         near, exp_h, pairs = topo_structure(cfg)
         tot, _ = rollups.source(['in_if', 'out_if'], p['_t0'], p['_t1'], p['_fcols'], use=USE_ROLLUPS, table=p.get('_flows', 'flows'), turn=p.get('_turn'))
         ifaces = topology.iface_volumes(ch, p['_filt'], p, table=tot)
-        topo = topology.build(cfg, near, ifaces, {r['exporter'] for r in ifaces} | set(exp_h), pairs)
+        topo = topology.build(cfg, near, ifaces, {r['exporter'] for r in ifaces} | set(exp_h), pairs, fixed=fixed)
         if narrow:
             topology.set_volumes(topo, topology.iface_volumes(ch, f"{p['_filt']} AND {narrow}", p, table=tot))
     hints = iface_hints()
@@ -1443,7 +1445,7 @@ def network_topology(q):
         seen = {}
         for e in ('a', 'b'):
             i = lk[e + '_if']
-            lk[e + '_name'] = (cfg.get(lk[e], {}).get('if_names', {}).get(str(i)) or f'if {i}') if i is not None else ''
+            lk[e + '_name'] = (cfg.get(lk[e], {}).get('if_names', {}).get(str(i)) or f'if {i}') if i is not None else (lk.get(e + '_port') or '')
             seen[e] = hints.get(lk[e], {}).get(i, []) if i is not None else []
         # the address of each end: from the settings or SNMP, else (like Through device) what the records show on
         # that interface — a network both ends share first (the link's own subnet)
@@ -1553,10 +1555,12 @@ def api_geo(q):
     return {'rows': rows, 'live': live, 'window': p.get('win', 0), 'window_end': p.get('wend', 0)}
 
 
-def iface(c, idx, nbytes, ext, seen=(), sn=None):
-    """c: the configured device (raw); sn: what SNMP found on it (or None)"""
+def iface(c, idx, nbytes, ext, seen=(), sn=None, nb=None):
+    """c: the configured device (raw); sn: what SNMP found on it (or None); nb: (2.9.0) {ifIndex: [neighbour]} of
+    this device (neighbours.by_interface)"""
     names = c.get('if_names', {})
-    role = 'wan' if idx in c.get('wan_ifs', []) else 'local' if c.get('local_if') == idx and c.get('local_if') is not None else 'lan'
+    role = ('wan' if idx in c.get('wan_ifs', []) else 'local' if c.get('local_if') == idx and c.get('local_if') is not None
+            else 'mgmt' if idx in (c.get('mgmt_ifs') or []) else 'lan')
     custom = names.get(str(idx), '')
     si = (sn or {}).get('ifs', {}).get(str(idx), {})
     past = (sn or {}).get('past', {}).get(str(idx), '')        # (2.6.0) the name a gone index had
@@ -1566,6 +1570,7 @@ def iface(c, idx, nbytes, ext, seen=(), sn=None):
             'addrs': c.get('if_addrs', {}).get(str(idx), []), 'seen_addrs': list(seen),
             'snmp_name': si.get('name', ''), 'snmp_alias': si.get('alias', ''), 'snmp_up': si.get('oper') == 1 if si else None,
             'snmp_speed': si.get('speed') or 0, 'snmp_addrs': (sn or {}).get('addrs', {}).get(str(idx), []),
+            'neighbours': (nb or {}).get(idx, []), 'snmp_descr': si.get('descr', ''),
             **if_capacity(c, idx, si.get('speed') or 0)}
 
 
@@ -1608,23 +1613,24 @@ def if_capacity(c, idx, auto_mbps):
     return {'cap_in': auto_mbps, 'cap_out': auto_mbps, 'cap_own': False, 'cap_auto': auto_mbps}
 
 
-def interfaces_of(c, rows, seen_addrs, sn=None, cnt=None):
+def interfaces_of(c, rows, seen_addrs, sn=None, cnt=None, nb=None):
     """Interfaces seen in the data, those the sFlow counters report (a switch port without sampled traffic), plus those
-    only mentioned in the settings (so a WAN index that never shows up in the data is visible and can be corrected)."""
+    only mentioned in the settings (so a WAN index that never shows up in the data is visible and can be corrected)
+    and (2.9.0) those with a neighbour (LLDP: the physical port under a LAG / VLAN unit, a link set by hand)."""
     cnt = cnt or {}
-    out = [iface(c, int(r['i']), int(r['bytes']), int(r['ext']), seen_addrs.get(int(r['i']), ()), sn) for r in rows]
-    out += [iface(c, idx, 0, 0, (), sn) for idx in sorted(set(cnt) - {i['index'] for i in out})]
+    out = [iface(c, int(r['i']), int(r['bytes']), int(r['ext']), seen_addrs.get(int(r['i']), ()), sn, nb) for r in rows]
+    out += [iface(c, idx, 0, 0, (), sn, nb) for idx in sorted((set(cnt) | set(nb or {})) - {i['index'] for i in out})]
     for i in out:
         i['counters'] = cnt.get(i['index'])
         sp = int((i['counters'] or {}).get('speed') or 0) // 1_000_000     # sFlow ifSpeed (bit/s) when SNMP knows none
         if sp and not i['cap_auto']:
             i.update(cap_auto=sp, **({} if i['cap_own'] else {'cap_in': sp, 'cap_out': sp}))
     seen = {i['index'] for i in out}
-    configured = set(c.get('wan_ifs', [])) | {int(k) for key in ('if_names', 'if_addrs') for k in c.get(key, {}) if str(k).isdigit()}
+    configured = set(c.get('wan_ifs', [])) | set(c.get('mgmt_ifs') or []) | {int(k) for key in ('if_names', 'if_addrs', 'links') for k in c.get(key) or {} if str(k).isdigit()}
     if c.get('local_if') is not None:
         configured.add(int(c['local_if']))
     for idx in sorted(configured - seen):
-        out.append({**iface(c, idx, 0, 0, (), sn), 'unseen': True})
+        out.append({**iface(c, idx, 0, 0, (), sn, nb), 'unseen': True})
     return sorted(out, key=lambda i: i['index'])
 
 
@@ -1827,9 +1833,27 @@ def snmp_error_text(code, e, ip):
 BIG_BODY = 8 << 20           # (2.4.2) the largest request an administrator may send
 
 
+def device_neighbours(sset=None, sdata=None):
+    """(2.9.0) {device: {ifIndex: [{peer, peer_name, peer_if, peer_if_name, port, peer_port, how}]}} — the LLDP
+    neighbours and the links set by hand, for Settings → Devices."""
+    cfg = exporters_cfg()
+    sset = snmp.load_settings() if sset is None else sset
+    sdata = snmp.load_data() if sdata is None else sdata
+    out = {}
+    for (dev, idx), lst in neighbours.by_interface(neighbours.fixed(cfg, sdata, sset)).items():
+        for n in lst:
+            pc, y = cfg.get(n['peer'], {}), n['peer_if']
+            si = (sdata.get(n['peer']) or {}).get('ifs', {}).get(str(y), {}) if y is not None else {}
+            n.update(peer_name=pc.get('name') or n['peer'],
+                     peer_if_name=((pc.get('if_names') or {}).get(str(y)) or si.get('name') or f'if {y}') if y is not None else n['peer_port'])
+        out.setdefault(dev, {})[idx] = lst
+    return out
+
+
 def api_devices(q):
     exp = exporters_cfg(raw=True)
     sset, sdata = snmp.load_settings(), snmp.load_data()
+    nbs = device_neighbours(sset, sdata)
     cnt = sflow_counters()
     stats = ch("""SELECT exporter, argMax(version, ts) AS version, sum(packets) AS packets, sum(records) AS records, sum(lost) AS lost,
             sum(no_template) AS no_template, sum(decode_errors) AS errors, argMax(templates, ts) AS templates, argMax(sampling, ts) AS sampling_n,
@@ -1894,11 +1918,11 @@ def api_devices(q):
                     'sampling': f"1:{int(s['sampling_n'])}" if int(s.get('sampling_n') or 0) > 1 and int(s['last']) > cfg_changed + 120 else c.get('sampling', '1:1'),
                     'wan_ifs': c.get('wan_ifs', []), 'configured': s['exporter'] in exp,
                     'aliases': [str(a) for a in c.get('aliases') or []],      # (2.4.0) its earlier addresses (reports)
-                    'config': {k: c.get(k) for k in ('name', 'vendor', 'protocol', 'model', 'wan_ifs', 'local_if', 'public_ips', 'city', 'country', 'lat', 'lon', 'sampling', 'export_ifs')},
+                    'config': {k: c.get(k) for k in ('name', 'vendor', 'protocol', 'model', 'wan_ifs', 'local_if', 'public_ips', 'city', 'country', 'lat', 'lon', 'sampling', 'export_ifs', 'mgmt_ifs')},
                     'snmp': snmp_status(s['exporter'], sset, sdata),
                     'interfaces': interfaces_of(c, [r for r in ifs if r['exporter'] == s['exporter']], seen_addrs.get(s['exporter'], {}),
                                                 sdata.get(s['exporter']) if sset.get(s['exporter'], {}).get('enabled') else None,
-                                                cnt.get(s['exporter'], {}))})
+                                                cnt.get(s['exporter'], {}), nbs.get(s['exporter'], {}))})
     # (2.4.2) 'now' = the server's clock: a device's «last» is compared with it, not with the browser's clock
     return {'devices': out, 'now': int(time.time()), 'collector': collector_health(), 'listen': listen_info(), 'snmp_tools': snmp.available(),
             'ignored': sorted(ignored)}      # (2.4.0) sources an administrator ignores
@@ -3174,6 +3198,12 @@ def snmp_from_body(ip, b):
 
 def post_device_save(body, user):
     ip, cfg = device_from_body(body)
+    # (2.9.0) what the dialog has no fields for stays: own capacities, earlier addresses, management roles, links
+    # (before, saving the dialog dropped the capacities and earlier addresses)
+    old = load_ui_exporter(ip)
+    for k in ('if_caps', 'aliases', 'mgmt_ifs', 'links'):
+        if old.get(k) and k not in cfg:
+            cfg[k] = old[k]
     sn = snmp_from_body(ip, body['snmp']) if isinstance(body.get('snmp'), dict) else None
     save_ui_exporter(ip, cfg)
     if sn is not None and (sn.get('enabled') or ip in snmp.load_settings()):
@@ -3220,7 +3250,9 @@ def post_device_interfaces(body, user):
     items = body.get('interfaces')
     if not isinstance(items, list) or len(items) > 1024:
         raise BadRequest(tr('A list of interfaces is expected'))
-    names, addrs, wan, local, caps = {}, {}, [], None, {}
+    names, addrs, wan, local, caps, mg, links = {}, {}, [], None, {}, [], {}
+    known = exporters_cfg(raw=True)
+    alias = common.device_aliases(known)
     for it in items:
         try:
             idx = int(it.get('index'))
@@ -3262,20 +3294,44 @@ def post_device_interfaces(body, user):
             if local is not None:
                 raise BadRequest(tr('Only one interface can have the role «the device itself»'))
             local = idx
+        elif role == 'mgmt':          # (2.9.0) an out-of-band management network: never a link on a path
+            mg.append(idx)
         elif role != 'lan':
-            raise BadRequest(tr('Role: lan, wan or local'))
-    merged = exporters_cfg(raw=True).get(ip, {})
+            raise BadRequest(tr('Role: lan, wan, mgmt or local'))
+        # (2.9.0, issue #12) the device at the other end, set by hand: {device, index} (index may be empty)
+        peer = it.get('peer')
+        if peer:
+            try:
+                pdev = str(ipaddress.ip_address(str(peer.get('device', '')).strip()))
+                pdev = alias.get(pdev, pdev)
+                pif = None if peer.get('index') in (None, '') else int(peer['index'])
+                assert pdev in known and pdev != ip and (pif is None or 0 <= pif < 2**32)
+            except (TypeError, ValueError, AttributeError, AssertionError):
+                raise BadRequest(tr('Interface {idx}: the other end must be another configured device and its interface index', idx=idx)) from None
+            links[str(idx)] = [pdev, pif]
+    merged = known.get(ip, {})
     entry = load_ui_exporter(ip)
-    entry.update({'if_names': names, 'if_addrs': addrs, 'wan_ifs': sorted(set(wan)), 'local_if': local, 'if_caps': caps})
+    entry.update({'if_names': names, 'if_addrs': addrs, 'wan_ifs': sorted(set(wan)), 'local_if': local, 'if_caps': caps,
+                  'mgmt_ifs': sorted(set(mg)), 'links': links})
     entry.setdefault('name', merged.get('name', ip))
     save_ui_exporter(ip, entry)
+    # one link is kept once: the other device forgets the links it had to these interfaces and on the far ends now set
+    posted = {str(it.get('index')) for it in items}
+    ends = {(v[0], v[1]) for v in links.values() if v[1] is not None}
+    for dev, c in known.items():
+        if dev == ip or not c.get('links'):
+            continue
+        keep = {k: v for k, v in c['links'].items()
+                if not ((alias.get(v[0], v[0]) == ip and str(v[1]) in posted) or (dev, int(k)) in ends)}
+        if keep != c['links']:
+            save_ui_exporter(dev, {**load_ui_exporter(dev), 'links': keep})
     NAMES.reload()
     return {'ok': True}
 
 
 DEVICES_FORMAT = 'flowsphera-devices'
 DEVICE_KEYS = ('name', 'vendor', 'model', 'protocol', 'city', 'country', 'lat', 'lon', 'sampling', 'wan_ifs', 'local_if', 'public_ips',
-               'export_ifs', 'if_names', 'if_addrs', 'if_caps', 'aliases')
+               'export_ifs', 'if_names', 'if_addrs', 'if_caps', 'aliases', 'mgmt_ifs', 'links')
 
 
 def get_devices_export():
@@ -3302,9 +3358,15 @@ def _device_extra(ip, c):
                 raise ValueError
             caps[str(int(k))] = [a, b]
         aliases = [str(ipaddress.ip_address(str(x))) for x in (c.get('aliases') or [])][:16]
+        mg = sorted({int(x) for x in (c.get('mgmt_ifs') or []) if 0 <= int(x) < 2**32})          # (2.9.0)
+        links = {str(int(k)): [str(ipaddress.ip_address(str(v[0]))), None if v[1] in (None, '') else int(v[1])]
+                 for k, v in (c.get('links') or {}).items()}
+        if len(links) > 1024 or len(mg) > 1024:
+            raise ValueError
     except (TypeError, ValueError, AttributeError, IndexError):
         raise BadRequest(tr('{ip}: interface names, addresses, capacities or earlier addresses are not valid', ip=ip))
-    for k, v in (('if_names', names), ('if_addrs', addrs), ('if_caps', caps), ('aliases', [a for a in aliases if a != ip])):
+    for k, v in (('if_names', names), ('if_addrs', addrs), ('if_caps', caps), ('aliases', [a for a in aliases if a != ip]),
+                 ('mgmt_ifs', mg), ('links', links)):
         if v:
             out[k] = v
     return out

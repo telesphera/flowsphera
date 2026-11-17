@@ -204,6 +204,7 @@ class Session:
         fd = os.open(os.path.join(self.dir, 'snmp.conf'), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as f:
             f.write(_conf(entry))
+        self.raw = False
         self.env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'SNMPCONFPATH': self.dir, 'SNMP_PERSISTENT_DIR': self.dir,
                     'HOME': self.dir, 'MIBS': '', 'MIBDIRS': '/dev/null'}
 
@@ -222,7 +223,7 @@ class Session:
             r = subprocess.run(cmd, env=self.env, capture_output=True, text=True, errors='replace', timeout=300)
         except subprocess.TimeoutExpired:
             raise SnmpError('timeout', f'{tool} ran over 5 minutes')
-        rows = parse(r.stdout)
+        rows = parse(r.stdout, self.raw)
         err = '\n'.join(x for x in (r.stderr.strip() or r.stdout.strip()).splitlines() if not x.startswith('Created directory'))
         if r.returncode and not rows:
             raise SnmpError(classify(err), err.splitlines()[0] if err else f'{tool} exit {r.returncode}')
@@ -231,16 +232,22 @@ class Session:
     def get(self, *oids):
         return self.run('snmpget', [], oids)
 
-    def walk(self, oid):
-        return self.run('snmpbulkwalk', ['-Cr25'], [oid])
+    def walk(self, oid, raw=False):
+        """raw: octet strings as lowercase hex (LLDP chassis / port IDs are often MAC addresses)"""
+        self.raw = raw
+        try:
+            return self.run('snmpbulkwalk', ['-Cr25'], [oid])
+        finally:
+            self.raw = False
 
 
 LINE = re.compile(r'^\.?([\d.]+) = (?:([A-Za-z][\w-]*): ?)?(.*)$')
 NO_VALUE = ('No Such Object', 'No Such Instance', 'No more variables')
 
 
-def parse(out):
-    """net-snmp -On output -> [(oid, type, value)]; a long Hex-STRING continues on the next lines."""
+def parse(out, raw=False):
+    """net-snmp -On output -> [(oid, type, value)]; a long Hex-STRING continues on the next lines. raw: Hex-STRING
+    values stay hex (lowercase, no spaces)."""
     rows = []
     for line in out.splitlines():
         m = LINE.match(line)
@@ -248,11 +255,15 @@ def parse(out):
             rows.append([m[1], m[2] or '', m[3]])
         elif rows and line.strip():
             rows[-1][2] += ' ' + line.strip()
-    return [(o, t, value(t, v)) for o, t, v in rows if not (not t and v.startswith(NO_VALUE))]
+    return [(o, t, value(t, v, raw)) for o, t, v in rows if not (not t and v.startswith(NO_VALUE))]
 
 
-def value(t, v):
+def value(t, v, raw=False):
     v = v.strip()
+    if t == 'Hex-STRING' and raw:
+        return re.sub(r'[^0-9a-fA-F]', '', v).lower()
+    if raw and (t == 'STRING' or (not t and v.startswith('"'))):
+        return value(t, v).encode('utf-8', 'replace').hex()
     if t == 'Hex-STRING':
         try:
             return bytes.fromhex(v.replace(' ', '')).decode('utf-8', 'replace')
@@ -354,9 +365,77 @@ def poll(ip, entry):
                 add(idx, ipaddress.ip_interface(f'{a}/{n if n is not None else a.max_prefixlen}'))
             except ValueError:
                 pass
+        lldp, stack = _lldp(s)
     for i in ifs.values():
         i['name'] = (i.get('name') or i.get('descr') or '').strip()
-    return {'sys': info, 'ifs': ifs, 'addrs': addrs}
+    return {'sys': info, 'ifs': ifs, 'addrs': addrs, 'lldp': lldp, 'stack': stack}
+
+
+# (2.9.0, issue #12) LLDP-MIB (IEEE 802.1AB): who is at the other end of each port, with no addresses needed — the
+# only way to see unnumbered links. And IF-MIB ifStackTable: LLDP speaks of the physical port, NetFlow of the logical
+# interface over it (a VLAN unit of a LAG: Juniper ae1.3, Cisco Po1.2111).
+LLDP_LOC, LLDP_REM, LLDP_MAN = '1.0.8802.1.1.2.1.3', '1.0.8802.1.1.2.1.4.1.1', '1.0.8802.1.1.2.1.4.2.1'
+IF_STACK = '1.3.6.1.2.1.31.1.2.1.3'
+
+
+def _text(h):
+    try:
+        return bytes.fromhex(h).decode('utf-8', 'replace').strip('\x00 ').strip()
+    except (ValueError, TypeError):
+        return str(h or '')
+
+
+def _lldp(s):
+    """-> (lldp, stack). lldp: {'chassis': [subtype, hex], 'name': sysName, 'ports': {local port: [subtype, hex, desc]},
+    'rem': [[local port, chassis subtype, chassis hex, port subtype, port hex, port desc, sysName, [addresses]]]} or None
+    (no LLDP-MIB); stack: {lower ifIndex: [higher ifIndex…]}. A device without them answers nothing: never an error."""
+    try:
+        loc = s.walk(LLDP_LOC, raw=True)
+        rem = s.walk(LLDP_REM, raw=True)
+        man = s.walk(LLDP_MAN, raw=True) if rem else []
+    except SnmpError:
+        loc, rem, man = [], [], []
+    try:
+        st = s.walk(IF_STACK)
+    except SnmpError:
+        st = []
+    stack = {}
+    for o, _, v in st:
+        k = (_suffix(o, IF_STACK) or '').split('.')
+        if len(k) == 2 and all(x.isdigit() for x in k) and '0' not in k and v == 1:     # 1 = active
+            stack.setdefault(k[1], []).append(int(k[0]))
+    if not loc and not rem:
+        return None, stack
+    out = {'chassis': ['', ''], 'name': '', 'ports': {}, 'rem': []}
+    for o, _, v in loc:
+        k = _suffix(o, LLDP_LOC) or ''
+        if k == '1.0':
+            out['chassis'][0] = v
+        elif k == '2.0':
+            out['chassis'][1] = v
+        elif k == '3.0':
+            out['name'] = _text(v)
+        elif k.startswith('7.1.'):
+            col, _, port = k[4:].partition('.')
+            if port.isdigit() and col in ('2', '3', '4'):
+                p = out['ports'].setdefault(port, [0, '', ''])
+                p[int(col) - 2] = _text(v) if col == '4' else v
+    rows = {}
+    for o, _, v in rem:
+        k = (_suffix(o, LLDP_REM) or '').split('.')
+        if len(k) == 4 and all(x.isdigit() for x in k) and k[0] in ('4', '5', '6', '7', '8', '9'):
+            r = rows.setdefault(tuple(k[2:]), [int(k[2]), 0, '', 0, '', '', '', []])
+            col = int(k[0])
+            r[col - 3] = _text(v) if col in (8, 9) else v
+    for o, _, v in man:
+        k = (_suffix(o, LLDP_MAN) or '').split('.')
+        if len(k) > 6 and k[0] == '1' and all(x.isdigit() for x in k):       # lldpRemManAddrSubtype: the index holds the address
+            a = _inet([int(x) for x in k[4:]])
+            r = rows.get((k[2], k[3]))
+            if a is not None and r is not None and str(a) not in r[7]:
+                r[7].append(str(a))
+    out['rem'] = [rows[k] for k in sorted(rows, key=lambda x: (int(x[0]), int(x[1])))]
+    return out, stack
 
 
 def summary(found):
@@ -446,7 +525,7 @@ def poll_and_store(ip, entry=None):
             return rec                                   # switched off while polling
         if not rec['ok']:
             prev = d.get(ip, {})
-            rec.update({k: prev[k] for k in ('sys', 'ifs', 'addrs') if k in prev})
+            rec.update({k: prev[k] for k in ('sys', 'ifs', 'addrs', 'lldp', 'stack') if k in prev})
             rec['t_ok'] = prev.get('t_ok') or (prev.get('t') if prev.get('ok') else 0)
         else:
             rec['t_ok'] = now

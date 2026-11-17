@@ -1624,7 +1624,7 @@ function vPaths(){
     // an address or network that identifies the interface: entered by hand, else what the flows show
     const ifAddr = idx => { const i = ifs.get(idx); return i ? (ifAddrs(i)[0] || '') : ''; };
     const ifNamed = idx => { const i = ifs.get(idx); return !!(i && (i.custom_name || i.snmp_name)) || idx === 0; };
-    const ifRole = idx => { const r = (ifs.get(idx) || {}).role || 'lan'; return r === 'wan' ? 'WAN' : r === 'local' ? T('device itself') : 'LAN'; };
+    const ifRole = idx => { const r = (ifs.get(idx) || {}).role || 'lan'; return r === 'wan' ? 'WAN' : r === 'local' ? T('device itself') : r === 'mgmt' ? T('management') : 'LAN'; };
     const unit = state.metric === 'bytes' ? fmtB : fmtN;
     const draw = d => {
       const rows = d.rows.filter(r => r.v > 0), total = rows.reduce((a, r) => a + r.v, 0);
@@ -2304,7 +2304,7 @@ function vNetwork(){
       <div class="netviews" id="netViews" role="group" aria-label="${T('Map view')}"></div>
       <div class="legend" style="margin:-6px 0 10px"><span><i class="bar" style="background:${C.down}"></i>${T('from the internet')}</span><span><i class="bar" style="background:${C.up}"></i>${T('to the internet')}</span><span><i class="bar" style="background:${C.int}"></i>${T('internal')}</span><span><i class="bar dash" style="border-color:${RED}"></i>${T('no observation / gap')}</span><span><i class="bar dash" style="border-color:#AABEE6"></i>${T('L3 adjacency, no traffic')}</span></div>
       <div class="river netmap" id="cNet"></div>
-      <p class="note">${T('Devices are neighbours when their interfaces share a subnet (Settings → Devices → Interfaces) or when one records the other’s addresses on an interface. The volumes on the links follow the selector at the top (Internet, Internal or All traffic); neighbours, gaps and the path search always use all traffic, and the device filter does not apply — choose the Point of View instead.')}</p></section>
+      <p class="note">${T('Devices are neighbours when LLDP shows them at each other’s ports (SNMP on), when a link is set by hand, when their interfaces share a subnet (Settings → Devices → Interfaces) or when one records the other’s addresses on an interface. The volumes on the links follow the selector at the top (Internet, Internal or All traffic); neighbours, gaps and the path search always use all traffic, and the device filter does not apply — choose the Point of View instead.')}</p></section>
     <div class="col s3">
       <div id="nKpi" class="col"></div>
       <section class="glass panel">${ph('search', T('Path'), T('the hops from a source to a destination'))}
@@ -2351,8 +2351,8 @@ function vNetwork(){
         return `<tr><td>${row(l.a, l.a_name, l.a_addr, l.a_seen)}</td><td class="nat">↔</td><td>${inet ? `<b>${T('Internet')}</b>` : row(l.b, l.b_name, l.b_addr, l.b_seen)}</td>
           <td><span class="tag" title="${esc(LINK_STATE[l.state][1])}"${bad ? ` style="color:${RED};border-color:${hexA(RED, .5)}"` : l.state === 'silent' ? ` style="color:${AMBER};border-color:${hexA(AMBER, .5)}"` : ''}>${LINK_STATE[l.state][0]}</span>${(h => h.length ? `<details class="lhints"><summary>${l.state === 'gap' || l.state === 'silent' ? T('what to check') : T('why the ends differ')}</summary>${h.map(x => `<p>${x}</p>`).join('')}</details>` : '')(linkHints(l, d => esc(nm(d)), !!topo.live))}</td>
           <td class="num">${sr(l.a_out, l.b_in, inet)}</td><td class="num">${inet ? `<b class="mono">${fmtB(l.a_in)}</b>` : sr(l.b_out, l.a_in)}</td>
-          <td class="nat">${l.evidence === 'subnet' ? T('subnet') + ' ' + esc(l.net) : l.evidence === 'wan' ? T('WAN interface') : T('addresses in the records')}</td></tr>`; }).join('')}</tbody></table></div>`
-      : `<div class="empty">${T('This device has no layer-3 neighbours among the devices: set interface addresses in Settings → Devices → Interfaces, or wait for traffic between the devices.')}</div>`);
+          <td class="nat">${l.evidence === 'subnet' ? T('subnet') + ' ' + esc(l.net) : l.evidence === 'wan' ? T('WAN interface') : l.evidence === 'lldp' ? T('LLDP neighbours') : l.evidence === 'manual' ? T('set by hand') : T('addresses in the records')}</td></tr>`; }).join('')}</tbody></table></div>`
+      : `<div class="empty">${T('This device has no neighbours among the devices yet: in Settings → Devices → Interfaces set the interface addresses or the device at the other end, turn SNMP on (LLDP neighbours), or wait for traffic between the devices.')}</div>`);
     if (tb) tb.classList.remove('loading');
   };
   const drawPath = () => {
@@ -4349,12 +4349,21 @@ function collectorBar(c, listen){
     ${cell(T('Loss'), (lost ? pct.toFixed(pct < 0.01 ? 3 : 2) : '0') + '%', T('Share of packets the collector did not process'), lost)}${where}</div>`;
 }
 // generic centered dialog; returns {root, close}
-const ROLE_UI = {lan:'LAN', wan:T('WAN (internet)'), local:T('The device itself')};
+const ROLE_UI = {lan:'LAN', wan:T('WAN (internet)'), mgmt:T('Management (out of band)'), local:T('The device itself')};
+// (2.9.0) the usual names of out-of-band management ports: the table suggests the role, never sets it
+const MGMT_NAME = /^(fxp\d|em0|me\d|re\d:mgmt|mgmt|management|mgmteth|gigabitethernet0$|gi0$)/i;
+// (2.9.0, issue #12) the other end of an interface: LLDP neighbours and the link set by hand
+const nbText = n => `<span class="ipl">${esc(n.peer_name)}</span>${n.peer_if_name ? ` · <span class="mono">${esc(n.peer_if_name)}</span>` : ''} <span class="tag" title="${n.how === 'lldp' ? T('Read from the device over SNMP (LLDP-MIB)') : T('Set by hand')}">${n.how === 'lldp' ? 'LLDP' : T('by hand')}</span>`;
+let devicesAll = [];
+// (2.9.0) <option>s of a device's interfaces for the far end of a link set by hand
+const peerIfOptions = (ip, sel) => { const d = (devicesAll || []).find(z => z.ip === ip); const ifs = d ? d.interfaces.filter(i => i.dyn == null) : [];
+  return `<option value="">${T('interface not known')}</option>` + ifs.map(i => `<option value="${i.index}"${i.index === sel ? ' selected' : ''}>${esc(i.name)} (${i.index})</option>`).join(''); };
 function showIfaces(devices){
   document.querySelectorAll('#dBox tr[data-pick]').forEach(tr => tr.classList.toggle('picked', tr.dataset.pick === state.ifDev));
   const x = devices.find(d => d.ip === state.ifDev), box = document.getElementById('ifBox'); if (!box) return;
   box.classList.remove('loading');
   if (!x) { box.innerHTML = `<div class="empty">${T('No device has sent data yet')}</div>`; return; }
+  devicesAll = devices;
   box.innerHTML = ifaceTable(x, state.ifEdit === x.ip);
   wireIfaces(box, x, devices);
 }
@@ -4383,11 +4392,16 @@ function ifaceTable(x, edit){
       <td>${[...new Set(l.flatMap(i => [...(i.snmp_addrs || []), ...(i.addrs || [])]))].slice(0, 3).map(a => `<span class="mono nat">${esc(a)}</span>`).join(' ')}</td><td><span class="tag">${T('dynamic')}</span></td><td></td>
       <td class="num mono">${fmtB(l.reduce((a, i) => a + i.bytes, 0))}</td><td class="num mono">${Math.round(100 * l.reduce((a, i) => a + i.ext_share * i.bytes, 0) / Math.max(1, l.reduce((a, i) => a + i.bytes, 0)))}%</td><td colspan="20"></td></tr>`).join('');
   const rows = x.interfaces.filter(i => i.dyn == null).map(i => {
-    const hint = i.index === best && i.role !== 'wan' ? `<span class="pill info" title="${T('{pct}% of this interface’s traffic is from/to public addresses; much less on the others', {pct: Math.round(i.ext_share * 100)})}">${T('looks like WAN')}</span>` : '';
+    const hint = i.index === best && i.role !== 'wan' ? `<span class="pill info" title="${T('{pct}% of this interface’s traffic is from/to public addresses; much less on the others', {pct: Math.round(i.ext_share * 100)})}">${T('looks like WAN')}</span>`
+      : i.role === 'lan' && [i.snmp_name, i.custom_name, i.snmp_descr].some(n => n && MGMT_NAME.test(n)) ? `<span class="pill info" title="${T('A management port is not on the paths traffic takes: with the role «Management» Path analysis draws no link through it')}">${T('looks like management')}</span>` : '';
+    const nbs = i.neighbours || [], man = nbs.find(n => n.how === 'manual');
+    const others = (devicesAll || []).filter(d => d.ip !== x.ip);
+    const peerSel = !edit ? '' : `<span class="ifpeer"><select class="ifpeerdev" data-idx="${i.index}" aria-label="${T('Interface {idx}: device at the other end', {idx: i.index})}"><option value="">${nbs.some(n => n.how === 'lldp') ? T('as LLDP shows') : '—'}</option>${others.map(d => `<option value="${esc(d.ip)}"${man && man.peer === d.ip ? ' selected' : ''}>${esc(d.name)}</option>`).join('')}</select><select class="ifpeerif" data-idx="${i.index}" aria-label="${T('Interface {idx}: its interface at the other end', {idx: i.index})}"${man ? '' : ' hidden'}>${man ? peerIfOptions(man.peer, man.peer_if) : ''}</select></span>${nbs.filter(n => n.how === 'lldp').map(n => `<div class="nat">${nbText(n)}</div>`).join('')}`;
+    const nbCell = edit ? peerSel : nbs.length ? nbs.map(n => `<div>${nbText(n)}</div>`).join('') : '<span class="nat">—</span>';
     const name = edit ? `<input class="ifname" data-idx="${i.index}" value="${esc(i.custom_name)}" placeholder="${esc(i.snmp_name || (i.role === 'local' ? 'local' : 'if ' + i.index))}" maxlength="32" aria-label="${T('Interface {idx} name', {idx: i.index})}">`
                       : `<b class="ipl"${i.snmp_alias ? ` title="${esc(i.snmp_alias)}"` : ''}>${esc(i.name)}</b>${i.snmp_up === false ? ` <span class="tag" title="ifOperStatus">${T('down')}</span>` : ''}${i.snmp_alias && i.snmp_alias !== i.name ? `<div class="nat">${esc(i.snmp_alias)}</div>` : ''}`;
     const role = edit ? `<select class="ifrole" data-idx="${i.index}" aria-label="${T('Interface {idx} role', {idx: i.index})}">${Object.entries(ROLE_UI).map(([k, l]) => `<option value="${k}"${k === i.role ? ' selected' : ''}>${l}</option>`).join('')}</select>`
-                      : (i.role === 'wan' ? '<span class="pill warn">WAN</span>' : i.role === 'local' ? `<span class="tag">${T('the device itself')}</span>` : '<span class="tag">LAN</span>');
+                      : (i.role === 'wan' ? '<span class="pill warn">WAN</span>' : i.role === 'local' ? `<span class="tag">${T('the device itself')}</span>` : i.role === 'mgmt' ? `<span class="tag">${T('management')}</span>` : '<span class="tag">LAN</span>');
     const addrs = edit ? `<input class="ifaddr" data-idx="${i.index}" value="${esc(i.addrs.join(', '))}" placeholder="${esc((i.snmp_addrs || []).join(', ') || T('IP or IP/mask, comma-separated'))}" aria-label="${T('Interface {idx} IP addresses', {idx: i.index})}">${i.seen_addrs.length ? `<div class="nat ifseen">${T('in the data')}: ${i.seen_addrs.map(esc).join(', ')}</div>` : ''}`
                        : addrHtml(i);
     const unseen = i.unseen ? ` <span class="pill warn" title="${T('The index is in the settings but did not appear in the data for 24 h — it may be wrong')}">${T('not seen in 24 h')}</span>` : '';
@@ -4395,7 +4409,7 @@ function ifaceTable(x, edit){
     const capv = v => v ? (v >= 1000 && v % 1000 === 0 ? `${v / 1000} G` : `${v} M`) : '';
     const cap = edit ? `<span class="ifcap"><input class="ifcapin" data-idx="${i.index}" type="number" min="0" step="any" value="${i.cap_own ? i.cap_in : ''}" placeholder="${i.cap_auto || '—'}" aria-label="${T('Interface {idx} capacity in, Mbit/s', {idx: i.index})}"><span>↓</span><input class="ifcapout" data-idx="${i.index}" type="number" min="0" step="any" value="${i.cap_own ? i.cap_out : ''}" placeholder="${i.cap_auto || '—'}" aria-label="${T('Interface {idx} capacity out, Mbit/s', {idx: i.index})}"><span>↑</span></span>`
       : !i.cap_in && !i.cap_out ? '<span class="nat">—</span>' : `<span class="mono">${i.cap_in === i.cap_out ? capv(i.cap_in) : `${capv(i.cap_in)} ↓ ${capv(i.cap_out)} ↑`}</span>${i.cap_own ? ` <span class="tag" title="${T('your figures')}">${T('own')}</span>` : ''}`;
-    return `<tr${i.unseen ? ' class="unseen"' : ''}><td class="num mono">${i.index}</td><td>${name}</td><td>${addrs}</td><td>${role} ${hint}${unseen}</td><td class="nowrap">${cap}</td><td class="num mono">${i.unseen ? '—' : fmtB(i.bytes)}</td><td class="num mono">${i.unseen ? '—' : Math.round(i.ext_share * 100) + '%'}</td>${counted ? `<td class="ifcnt">${ifCounters(i.counters)}</td>` : ''}</tr>`;
+    return `<tr${i.unseen ? ' class="unseen"' : ''}><td class="num mono">${i.index}</td><td>${name}</td><td>${addrs}</td><td>${role} ${hint}${unseen}</td><td class="ifnb">${nbCell}</td><td class="nowrap">${cap}</td><td class="num mono">${i.unseen ? '—' : fmtB(i.bytes)}</td><td class="num mono">${i.unseen ? '—' : Math.round(i.ext_share * 100) + '%'}</td>${counted ? `<td class="ifcnt">${ifCounters(i.counters)}</td>` : ''}</tr>`;
   }).join('');
   const sn = x.snmp || {}, when = t => new Date(t * 1000).toLocaleString(LOC, {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
   const snmpLine = !sn.enabled ? '' : `<div class="ifsnmp">${sn.polled ? (sn.ok ? `<span class="pill ok">SNMP</span> <span class="nat">${esc(sn.sys && sn.sys.name || '')}${sn.sys && sn.sys.name ? ' · ' : ''}${T('{ifs} interfaces, {addrs} addresses · polled {when}', {ifs: sn.interfaces, addrs: sn.addresses, when: when(sn.polled)})}${sn.counters ? ' · ' + (sn.counters.ok ? T('traffic counters every minute, read {when}', {when: when(sn.counters.t)}) : T('traffic counters not read: {err}', {err: sn.counters.error || '?'})) : ''}</span>`
@@ -4404,7 +4418,7 @@ function ifaceTable(x, edit){
   const btns = !admin || !x.interfaces.length ? '' : edit ? `<span class="nat ifmsg"></span><button class="btn ifcancel">${T('Cancel')}</button><button class="btn primary ifsave" disabled>${T('Save')}</button>`
                                                            : `<span class="nat ifmsg"></span><button class="btn ifedit">${T('Edit')}</button>`;
   return `<div class="ifdev${edit ? ' editing' : ''}" data-dev="${esc(x.ip)}"><div class="ifdev-h"><h4 class="mono">${esc(x.name)} <span class="nat">${esc(x.ip)}${x.vendor ? ' · ' + esc(x.vendor) : ''}</span></h4>${btns}</div>${snmpLine}
-    ${x.interfaces.length ? `<div class="tw"><table class="compact"><thead><tr><th class="num">${T('Index')}</th><th>${T('Name')}</th><th>${T('IP addresses')}</th><th>${T('Role')}</th><th title="${T('Mbit/s: the port speed, or your own figures in ↓ / out ↑ (e.g. your ISP contract) — empty keeps the port speed')}">${T('Capacity, Mbit/s')}</th><th class="num">${T('Traffic, 24 h')}</th><th class="num" title="${T('Share of traffic with outside addresses')}">${T('Ext.')}</th>${counted ? (csrc.size === 1 && csrc.has('snmp') ? `<th title="${T('From the interface counters read over SNMP every minute')}">${T('Load (SNMP counters)')}</th>`
+    ${x.interfaces.length ? `<div class="tw"><table class="compact"><thead><tr><th class="num">${T('Index')}</th><th>${T('Name')}</th><th>${T('IP addresses')}</th><th>${T('Role')}</th><th title="${T('The device at the other end: what LLDP shows over SNMP, or set by hand (an unnumbered link has no subnet to find it by)')}">${T('Neighbour')}</th><th title="${T('Mbit/s: the port speed, or your own figures in ↓ / out ↑ (e.g. your ISP contract) — empty keeps the port speed')}">${T('Capacity, Mbit/s')}</th><th class="num">${T('Traffic, 24 h')}</th><th class="num" title="${T('Share of traffic with outside addresses')}">${T('Ext.')}</th>${counted ? (csrc.size === 1 && csrc.has('snmp') ? `<th title="${T('From the interface counters read over SNMP every minute')}">${T('Load (SNMP counters)')}</th>`
       : csrc.size === 1 ? `<th title="${T('From the interface counters the device sends with sFlow')}">${T('Load (sFlow counters)')}</th>` : `<th title="${T('From the interface counters: read over SNMP or sent with sFlow')}">${T('Load (interface counters)')}</th>`) : ''}</tr></thead><tbody>${rows}${edit ? '' : dynRows}</tbody></table></div>
     <p class="note">${T('Bold: addresses entered by hand; plain: read over SNMP; grey (when neither is known): what the flows of the last 24 h show — the NAT address traffic leaves to the internet with (this is how a WAN usually looks) and the networks that send traffic into the interface. Names and addresses entered by hand take priority over SNMP.')}</p>`
       : `<div class="empty">${T('The collector has not seen interfaces of this device yet (24 h)')}</div>`}</div>`;
@@ -4421,12 +4435,15 @@ function wireIfaces(box, x, devices){
   const cancel = card.querySelector('.ifcancel'); if (cancel) cancel.onclick = () => { state.ifEdit = null; showIfaces(devices); };
   const save = card.querySelector('.ifsave'); if (!save) return;
   card.querySelectorAll('input,select').forEach(el => el.addEventListener('input', () => { save.disabled = false; say(T('unsaved changes'), 'var(--warn)'); }));
+  card.querySelectorAll('.ifpeerdev').forEach(sel => sel.addEventListener('change', () => {      // (2.9.0) its interfaces
+    const f = card.querySelector(`.ifpeerif[data-idx="${sel.dataset.idx}"]`); f.innerHTML = sel.value ? peerIfOptions(sel.value, null) : ''; f.hidden = !sel.value; }));
   card.addEventListener('keydown', e => { if (e.key === 'Escape') cancel.click(); else if (e.key === 'Enter' && e.target.matches('input') && !save.disabled) save.click(); });
   save.onclick = async () => {
     const roles = [...card.querySelectorAll('.ifrole')], val = (cls, idx) => card.querySelector(`.${cls}[data-idx="${idx}"]`).value.trim();
     if (roles.filter(r => r.value === 'local').length > 1) { say(T('Only one interface can have the role «The device itself»'), 'var(--crit)'); return; }
     const interfaces = roles.map(r => ({index:+r.dataset.idx, role:r.value, name:val('ifname', r.dataset.idx), addrs:val('ifaddr', r.dataset.idx).split(/[\s,;]+/).filter(Boolean),
-      cap_in:val('ifcapin', r.dataset.idx), cap_out:val('ifcapout', r.dataset.idx)}));
+      cap_in:val('ifcapin', r.dataset.idx), cap_out:val('ifcapout', r.dataset.idx),
+      peer:val('ifpeerdev', r.dataset.idx) ? {device:val('ifpeerdev', r.dataset.idx), index:val('ifpeerif', r.dataset.idx)} : null}));
     save.disabled = true; say(T('Saving…'));
     try {
       await apiPost('devices/interfaces', {ip:x.ip, interfaces});

@@ -72,6 +72,16 @@ Pick the look that suits you — every user keeps their own default view:
 </tr>
 </table>
 
+**Provider and enterprise networks** (2.9.0): links between routers are found even when they have no addresses of their
+own. With SNMP on, FlowSphera reads each device's **LLDP neighbours**, so unnumbered point-to-point links appear
+(the standard LLDP-MIB) with the interface at each end — and the traffic of the LAG or VLAN unit over that port.
+Any link can also be **set by hand**, and a port with the role **Management** never shows up as a path. River then
+draws the real levels: border, core, edge, customer.
+
+<p align="center"><img src="docs/media/en/path-isp-river.webp" alt="River view of a provider network: Internet, two border routers, two core routers, three edge routers and a customer router" width="100%"></p>
+
+<p align="center"><img src="docs/media/en/interface-neighbours.webp" alt="Settings → Devices → Interfaces: the Neighbour column shows the router and port at the other end, found over LLDP" width="100%"></p>
+
 ### Overview — the whole network at a glance
 
 Totals with trends, the live connection map or a 3D globe, top services, hosts and conversations. Every panel opens

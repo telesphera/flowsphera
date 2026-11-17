@@ -79,21 +79,48 @@ class Owners:
         return best
 
 
-def build(cfg, near, ifaces, exporting, pairs=()):
+def _ip(a):
+    return str(a).split('/')[0]
+
+
+def shared_addrs(cfg):
+    """(2.9.0) interface addresses configured on more than one device: no device owns them and no link is made of
+    them. Juniper gives every MX the same internal addresses (jsrv.1 128.0.0.127/2, em2.32768 192.168.1.1/24) — taken
+    for a subnet on both ends they joined every MX to every other (issue #11)."""
+    seen = {}
+    for d, c in cfg.items():
+        for i, addrs in (c.get('if_addrs') or {}).items():
+            for a in addrs:
+                seen.setdefault(_ip(a), set()).add(d)
+    return {a for a, ds in seen.items() if len(ds) > 1}
+
+
+def mgmt(cfg, d):
+    """(2.9.0) the management interfaces of a device (role «Management»: an out-of-band network, never on a path)"""
+    return {int(x) for x in (cfg.get(d, {}).get('mgmt_ifs') or [])}
+
+
+def build(cfg, near, ifaces, exporting, pairs=(), fixed=()):
     """cfg: exporters config {ip: {...}}; near: rows (exporter, iface, addr, records) — addresses at the near end of
     each interface; ifaces: rows (exporter, iface, out_bytes, in_bytes, by direction); exporting: the devices that
     sent records in the period; pairs: rows (a, ai, ao, b, bi, bo, n) — n conversations recorded by both devices a and
-    b, with the interfaces each used (see query()). -> {'nodes': {ip: node}, 'links': [link]}"""
+    b, with the interfaces each used (see query()); fixed: (2.9.0) links known without the records — set by hand or
+    from LLDP (neighbours.fixed()). -> {'nodes': {ip: node}, 'links': [link]}"""
     devs = set(cfg) | set(exporting)
+    shared = shared_addrs(cfg)
     owners = Owners()
     for d in devs:
         c = cfg.get(d, {})
         owners.add(_net(d), d)                                   # the address it exports from
         for a in c.get('public_ips', []):
             owners.add(_net(a), d)
+        skip = mgmt(cfg, d)
         for i, addrs in c.get('if_addrs', {}).items():
+            if int(i) in skip:
+                continue
             for a in addrs:
-                owners.add(_net(a), d, int(i))
+                if _ip(a) not in shared:
+                    owners.add(_net(a), d, int(i))
 
     def behind_map():
         out = {}                 # (device, iface) -> {other device: records}
@@ -103,7 +130,7 @@ def build(cfg, near, ifaces, exporting, pairs=()):
                 k = (r['exporter'], int(r['iface']))
                 out.setdefault(k, {}).setdefault(o[0], 0)
                 out[k][o[0]] += int(r['records'])
-        return {k: {d for d, n in v.items() if n >= MIN_RECORDS} for k, v in out.items()}
+        return {k: {d for d, n in v.items() if n >= MIN_RECORDS} for k, v in out.items() if k[1] not in mgmt(cfg, k[0])}
 
     behind = behind_map()
     # second pass: inside /24 networks entering a device on a LAN interface that leads to no other device
@@ -148,21 +175,45 @@ def build(cfg, near, ifaces, exporting, pairs=()):
 
     # a subnet configured on both ends: neighbours for sure (also when one end exports nothing); side: (a, b) -> a's
     # interface towards b
+    vol = {(r['exporter'], int(r['iface'])): r for r in ifaces}
+    # (2.9.0) links set by hand or read from LLDP come first: each end is the candidate interface carrying the most
+    # traffic (LLDP names the physical port, the records its LAG or VLAN unit), else the first (the port itself)
+    side, subnet, how = {}, {}, {}
+
+    def busiest(d, cands):
+        cands = [int(i) for i in cands]
+        if not cands:
+            return None
+        return max(cands, key=lambda i: (int(vol.get((d, i), {}).get('out_bytes', 0)) + int(vol.get((d, i), {}).get('in_bytes', 0)), -cands.index(i)))
+    for lk in fixed:
+        a, b = lk['a'], lk['b']
+        if a == b or a not in devs or b not in devs or (a, b) in how:
+            continue
+        x, y = busiest(a, lk['a_ifs']), busiest(b, lk['b_ifs'])
+        if x is not None:
+            side[(a, b)] = x
+        if y is not None:
+            side[(b, a)] = y
+        how[(a, b)] = how[(b, a)] = lk['how']
+        if x is None and y is None:
+            side[(a, b)] = None
     conf = {}
     for d in devs:
+        skip = mgmt(cfg, d)
         for i, addrs in cfg.get(d, {}).get('if_addrs', {}).items():
+            if int(i) in skip:
+                continue
             for a in addrs:
                 n = _net(a)
-                if n is not None and '/' in a and n.num_addresses > 1:
+                if n is not None and '/' in a and n.num_addresses > 1 and _ip(a) not in shared:
                     conf.setdefault(n, []).append((d, int(i), a))
-    side, subnet = {}, {}
     for n, ends in conf.items():
         for a, x, aa in ends:
             for b, y, ba in ends:
-                if a != b:
+                if a != b and _ip(aa) != _ip(ba) and (a, b) not in how:
                     side[(a, b)] = x
                     subnet[(a, b)] = (aa, ba, str(n))
-    by_subnet = {(a, x) for (a, _), x in side.items()}     # interfaces whose neighbours the addressing names
+    by_subnet = {(a, x) for (a, _), x in side.items() if x is not None}     # interfaces whose neighbours are known
 
     # the records: devices behind an interface; on an interface with a configured link only that link's other end is
     # a neighbour (whatever is seen behind it is further away)
@@ -177,21 +228,22 @@ def build(cfg, near, ifaces, exporting, pairs=()):
                 if cb and ca and set(cb) != set(ca):
                     between = True
                     break
-            if not between and (a, b) not in side:
+            if not between and side.get((a, b)) is None:     # (2.9.0) also the end LLDP left without an interface
                 side[(a, b)] = x
-    vol = {(r['exporter'], int(r['iface'])): r for r in ifaces}
     links, done = [], set()
-    for (a, b), x in side.items():
+    for (a, b), x in list(side.items()):
         if (b, a) in done:
             continue
         done.add((a, b))
         y = side.get((b, a))
+        if x is None and y is not None:              # (2.9.0) only the far end's interface known: draw it from there
+            a, b, x, y = b, a, y, None
         va, vb = vol.get((a, x), {}), vol.get((b, y), {}) if y is not None else {}
         a_out, a_in = int(va.get('out_bytes', 0)), int(va.get('in_bytes', 0))
         b_out, b_in = int(vb.get('out_bytes', 0)), int(vb.get('in_bytes', 0))
         if b not in exporting or a not in exporting:
             state = 'unobserved' if (a_out + a_in + b_out + b_in) else 'adjacent'
-        elif y is None:                  # both export, but which interface of b faces a is not known
+        elif y is None or x is None:     # both export, but which interface of b faces a is not known
             state = 'one_sided' if a_out + a_in else 'adjacent'
         elif not (a_out + a_in + b_out + b_in):
             state = 'adjacent'
@@ -205,7 +257,7 @@ def build(cfg, near, ifaces, exporting, pairs=()):
             else:
                 state = 'observed'
         s = subnet.get((a, b))
-        links.append({'a': a, 'b': b, 'a_if': x, 'b_if': y, 'state': state, 'evidence': 'subnet' if s else 'flows',
+        links.append({'a': a, 'b': b, 'a_if': x, 'b_if': y, 'state': state, 'evidence': how.get((a, b)) or ('subnet' if s else 'flows'),
                       'a_addr': s[0] if s else '', 'b_addr': s[1] if s else '', 'net': s[2] if s else '',
                       'a_out': a_out, 'a_in': a_in, 'b_out': b_out, 'b_in': b_in,
                       'a_dir': {k: int(va.get(k, 0)) for k in ('up', 'down', 'internal')},

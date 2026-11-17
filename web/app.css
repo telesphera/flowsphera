@@ -902,3 +902,11 @@ table.cvt tr.cvnewrow td{background:rgba(255,195,77,.05)}
 tr.ifdyn td{background:rgba(255,255,255,.025)}
 /* (2.6.0) Settings → General: host names from DNS */
 .dnsrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+
+/* (2.9.0, issue #12) Settings → Devices → Interfaces: the neighbour column (LLDP / set by hand) */
+.ifnb{min-width:170px;font-size:12px;line-height:1.5}
+.ifnb .tag{font-size:10px;padding:0 5px}
+.ifpeer{display:flex;gap:4px;flex-wrap:wrap}
+.ifpeer select{max-width:170px;border:1px solid var(--edge);border-radius:8px;padding:5px 9px;background:rgba(0,0,0,.3);color:var(--ink);font:12.5px var(--f-mono);outline:none}
+.ifpeer select:focus{border-color:var(--blue-hi)}
+.ifpeer option{background:#0c1838}
