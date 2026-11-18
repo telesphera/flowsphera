@@ -4,6 +4,23 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.11.0 — 2026-11-18
+
+### Added
+- **Choose what the Overview shows** (forum request): a click on a panel's title offers Top services, Top hosts,
+  **Countries**, **Autonomous systems**, Top conversations, Recent flows or the Traffic trend for that place; a kind
+  already shown elsewhere changes places with it. The choice is kept with your account and in the page link, so a
+  link for a wall screen (`kiosk=1`) shows the same panels whoever is signed in there; kiosk mode hides the pickers.
+  *The usual panels* brings the original layout back.
+- **New versions in the web interface**: FlowSphera looks at the published version every 12 hours and an administrator
+  sees *2.x.y available* in the top bar and in *Settings → General → Updates*, with a link to what is new. Only the
+  version number is read; nothing about the server is sent. The check can be turned off there (or with
+  `FT_UPDATE_CHECK=0` for an offline server).
+- **Upgrade now**: the same place upgrades FlowSphera without a console, confirmed with your own password. The page
+  shows the installer's log while it runs and follows the web interface through its restart. Settings, data and the
+  license are kept, as with `sudo flowsphera upgrade`. An installation learns this with its upgrade to 2.11.0, so that
+  one upgrade is still `sudo flowsphera upgrade`.
+
 ## 2.10.0 — 2026-11-18
 
 ### Added

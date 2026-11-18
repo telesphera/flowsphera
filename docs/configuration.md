@@ -18,6 +18,7 @@
 | `FT_CH_URL`, `FT_CH_USER`, `FT_CH_PASSWORD`, `FT_CH_DB` | | ClickHouse connection |
 | `FT_CH_FSYNC` | `0` | `1` = the parts of flows, events and the rollups' state are written to the disk before they count (fsync): fewer records lost at a power cut, but inserts about 10× slower (measured 868 vs 79 ms at 5,000 records/s). Without it the database recovers by itself after a power cut too and reports it as an event (2.0.0 build 3); a UPS is the real cure |
 | `FT_DNS_RATE` | *(empty = 20)* | (2.6.0) the default for *Settings → General → Host names from DNS*: `0` or `off` = no reverse DNS, `shown` = only the hosts a page shows, `5` / `20` / `50` = also the inside hosts of the week in the background, at most that many lookups a second; a choice saved in the settings wins |
+| `FT_UPDATE_CHECK` | *(empty = on)* | (2.11.0) `0` / `off` = never look for a new version (a server without the Internet); otherwise the web service reads the published VERSION and BUILD every 12 hours and administrators see *2.x.y available*. The switch in *Settings → General → Updates* does the same per installation |
 | `FT_BACKUP_DIR` | `/var/backups/flowsphera` | where backups are kept on the server; change it with `sudo flowsphera upgrade --force --backup-dir DIR` (ClickHouse sees it as `/backups`) |
 
 Devices are best described from the UI (*Settings → Devices → Connect device*, admins only; the collector picks

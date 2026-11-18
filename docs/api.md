@@ -29,13 +29,14 @@ JSON over HTTP — with the session cookie of the UI, or with an **API token** (
 | `GET /api/top?dim=app`, `dim=user_name`; filters `app`, `user` | (2.2.0) applications / users the exporter named (Palo Alto App-ID / User-ID), each with its inside hosts; unnamed traffic is no row |
 | `GET /api/ingest` | records/s per device over the period (per-minute device statistics): `rows` [t, device, rec/s], `peak` (busiest minute), `drops` (records over the license limit), `limit`; only the `device` filter applies |
 | `GET/POST /api/dns` | (2.6.0) admin: host names from reverse DNS — `mode` `off` / `shown` / `background`, `rate` 5 / 20 / 50 lookups a second; GET also `named`, `asked`, `last_pass`, `last_hosts` |
+| `GET /api/update`, `POST /api/update/config`, `/api/update/check`, `/api/update/run` | (2.11.0) admin: the installed and the published version (`available`, `news`), the 12-hour check on or off `{check}`, check now, and *Upgrade now* `{password}` — handed to the root unit flowsphera-upgrade.path; GET also the upgrade `state` and its `log` |
 | `GET/POST /api/retention` | admin, no API tokens: days kept, the license's most, the choice, sizes; POST `{days, password}` (password when fewer days) |
 | `GET /api/top?dim=net`, `GET /api/series?by=net` | traffic by your named networks |
 | `GET /api/networks`, `GET /api/hosts/names`, `GET /api/ports` | your names of networks, hosts and ports |
 | `GET /api/hosts/find?q=&limit=` | (2.5.0) hosts whose name holds `q` (any case): `hosts` [{ip, name, src = `manual` / `device` / `dns`}], names that begin with it first; `limit` 1–50 (default 10) |
 | `GET /api/users/find?q=&limit=` | (2.7.1) user names the devices sent (User-ID) in the last 30 days whose name holds `q` (any case): `users` [names], names that begin with it first, then the busiest; `limit` 1–50 (default 10) |
 | `GET /api/backups` | backups, their schedule and the last result |
-| `POST /api/login`, `/api/logout`, `/api/me/password`, `/api/me/prefs` | session, own password, own preferences (e.g. the default Path analysis view) |
+| `POST /api/login`, `/api/logout`, `/api/me/password`, `/api/me/prefs` | session, own password, own preferences (e.g. the default Path analysis view; (2.11.0) `overview_panels` = five of services, hosts, countries, asn, conv, recent, trend, comma-separated) |
 | `GET/POST /api/users…`, `POST /api/devices/save`, `/api/devices/delete` | admin only |
 
 ## Names a row at a time
