@@ -2,6 +2,12 @@
 
 [← FlowSphera](../README.md) · [Install](install.md) · [Exporters](exporters.md) · [Features](features.md) · [Editions](editions.md) · [Backups](backups.md) · [Configuration](configuration.md) · [API](api.md) · [Security](security.md) · [Performance](performance.md)
 
+**New in 2.10**
+- **Your own event rules**: filters as in the search box + traffic, flows or outside addresses above a threshold
+  within 10 min – 24 h, together or per inside host, own priority, Check now; notified like the built-in events.
+- **Kiosk link** for wall screens (`kiosk=1&max=<panel>&spin=0`); events open with details and *Show the flows*;
+  the bell clears once the events were seen; multicast and broadcast are not Internet traffic.
+
 **New in 2.9**
 - *Path analysis* finds links over **LLDP** (SNMP), unnumbered ones too, on the LAG or VLAN unit that carries the
   traffic; links can be **set by hand**; an interface can have the role **Management** (never a path). Addresses

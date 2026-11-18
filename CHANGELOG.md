@@ -4,6 +4,33 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.10.0 — 2026-11-18
+
+### Added
+- **Your own event rules** (forum request): *Settings → Events → Detections → Your own rules*. A rule is the search box's
+  filters (host, network, service, port, country, city, device, ASN, application, user …) and a traffic scope, a
+  measure — traffic in MB, flows or distinct outside addresses — above a threshold within the last 10 minutes to 24
+  hours, for everything the filters match together or for each inside host, with its own priority. Rules are checked
+  every 10 minutes in the web service from the same tables the pages read, so a rule counts what the pages show; an
+  event grows while the rule stays above its threshold and is notified like the built-in events, to every channel.
+  **Check now** shows what a rule measures at this moment before it is saved; *+ From the current filters* starts a
+  rule from the filters on screen. Up to 50 rules; the switch *Your own rules* in the detections table turns them all
+  on or off. API: the rules are the `custom` list of `/api/events/config`; `POST /api/events/custom/test {"rule": …}`.
+- **Kiosk link for wall screens** (forum request): a full-screen panel offers **Link for a screen**. The link
+  (`#…&kiosk=1&max=<panel>`) opens that panel over the whole window without the menu, the top bar and the filters, and
+  keeps refreshing; with `&spin=0` the 3D globe stays still. Start the screen's browser with it in kiosk mode and the
+  screen comes back by itself after a reboot.
+- **Events open on a click**: the whole text (the list cuts it at two lines), the device, both ends, the outside end's
+  country and network, when it was seen, the rule of an own-rule event — and **Show the flows**, the Flows page with the
+  event's filter, device and time.
+- *Flows → Exchange between inside and outside addresses* has the full-screen button too.
+
+### Changed
+- **The bell** lights for important events this browser has not shown yet: those since the Events page was last open
+  (within the last 24 hours), and problems going on now. Looking at the events clears it.
+- Records to a multicast group or the broadcast (224.0.0.0/4, ff00::/8, 255.255.255.255) are no longer Internet traffic:
+  from an inside sender (mDNS, SSDP) they count as traffic between inside addresses, from an outside one (an ISP's IPTV)
+  they show only under *All traffic*. Records stored before the upgrade keep their place.
 ## 2.9.0 — 2026-11-17
 
 ### Added
