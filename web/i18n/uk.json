@@ -2223,7 +2223,7 @@
  "all together": "усе разом",
  "an event when what the filters match goes above a threshold · checked every 10 minutes · notified like the others": "подія, коли те, що відповідає фільтрам, перевищує поріг · перевірка щодесять хвилин · сповіщення як для інших подій",
  "at most {n} own rules": "не більше {n} власних правил",
- "for each inside host": "для кожного внутрішнього хоста",
+ "for each inside host": "по кожному хосту",
  "not a filter: {v}": "не фільтр: {v}",
  "nothing matched": "нічого не знайдено",
  "own rules: a list is expected": "власні правила: очікується список",

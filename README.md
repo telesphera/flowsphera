@@ -42,7 +42,7 @@ your own server, installs with one command and is ready in minutes.
 </tr>
 <tr>
 <td valign="top"><b>Security built in</b><br>Port scans, password guessing, floods, contact with known malicious addresses, links running full — with alerts to Telegram, e-mail, webhooks and your SIEM.</td>
-<td valign="top"><b>Made for the wall</b><br>Live maps, a 3D globe and animated traffic views that run full screen on a NOC display — smooth, light on the CPU.</td>
+<td valign="top"><b>Made for the wall</b><br>Live maps, a 3D globe and animated traffic views that run full screen on a NOC display — smooth, light on the CPU. A kiosk link opens any panel on its own after a reboot.</td>
 <td valign="top"><b>Yours</b><br>Self-hosted, no cloud, no telemetry. Every feature is free; a license only raises the limits.</td>
 </tr>
 <tr>
@@ -91,6 +91,13 @@ service asked.
 <p align="center"><img src="docs/media/en/overview.webp" alt="Overview page" width="100%"></p>
 
 <p align="center"><img src="docs/media/en/globe.webp" alt="3D globe with live connections" width="100%"></p>
+
+**On the wall** (2.10.0): open any panel full screen and press **Link for a screen**. The link opens that panel over
+the whole window, without the menu and the filters, and keeps refreshing — start the screen's browser with it in kiosk
+mode (`chromium --kiosk "<link>"`) and the NOC display comes back by itself after a reboot. Add `&spin=0` to keep the
+3D globe still. The sign-in lasts while the screen is on; an account with the role *Viewer* is enough.
+
+<p align="center"><img src="docs/media/en/kiosk-map.webp" alt="Kiosk link on a 1920×1080 wall screen: the live map without the menu or the filters" width="100%"></p>
 
 ### Flows — who exchanges how much with whom
 
@@ -225,6 +232,21 @@ and the share of each kind. Pick a priority or a kind and the chart, the ring an
 with its country — and a bar in the kind's colour for each stretch of time its events ran. Top 10, Top 50 or all of
 them; the chosen priority or kind applies here too, so *Contact with a listed address* shows at once which machines
 and when. Click a host to see only its events.
+
+Click an event and it opens (2.10.0): the whole text, the device, both ends, the outside end's country and network,
+when it was seen — and **Show the flows**, the Flows page with the event's filter and time. The bell clears once you
+have looked at the Events page and lights again only for new important events or a problem going on now.
+
+**Your own rules** (2.10.0): an event when what you filter goes above a threshold — *ip:10.0.0.5 dir:up* sends more
+than 500 MB within an hour, *service:RDP -country:UA* makes more than 20 flows in 30 minutes, any inside host calls more
+than 300 outside addresses in 10 minutes. The filters are the search box's (host, network, service, port, country,
+device, ASN …); the measure is traffic, flows or outside addresses, for everything together or for each inside host;
+each rule has its own priority. **Check now** shows what the rule measures at this moment, before you save it. Rules
+are checked every 10 minutes and notified like the built-in events, to every channel.
+
+<p align="center"><img src="docs/media/en/own-rules.webp" alt="Settings → Events: your own rules — filters, measure, threshold, minutes, per host, priority, and the Check now result" width="100%"></p>
+
+<p align="center"><img src="docs/media/en/event-details.webp" alt="An event of your own rule opened: the rule's filters, the host, when, Show the flows" width="100%"></p>
 
 <p align="center"><img src="docs/media/en/url-lists.webp" alt="IP reputation: lists by URL — name, address, what it holds, how often it is downloaded" width="100%"></p>
 
