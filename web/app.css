@@ -910,3 +910,18 @@ tr.ifdyn td{background:rgba(255,255,255,.025)}
 .ifpeer select{max-width:170px;border:1px solid var(--edge);border-radius:8px;padding:5px 9px;background:rgba(0,0,0,.3);color:var(--ink);font:12.5px var(--f-mono);outline:none}
 .ifpeer select:focus{border-color:var(--blue-hi)}
 .ifpeer option{background:#0c1838}
+/* (2.9.1) an event opens on a click: the whole text, its device, both ends, when, «Show the flows» (forum #54) */
+.alert [data-evopen]{cursor:pointer}
+.alert .evdet{display:none}
+.alert.open .evdet{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 14px;margin-top:8px;padding-top:8px;border-top:1px solid var(--hair);font-size:12.5px;cursor:auto}
+.alert.open .evdet .k{color:var(--ink3)}
+.alert.open .evdet .v{color:var(--ink);overflow-wrap:anywhere}
+.alert.open .evdet .btn{margin-top:4px}
+.alerts.dense .alert.open .body p,.alert.open .body p{display:block;-webkit-line-clamp:unset;overflow:visible;max-width:none}
+.alerts.dense .alert.open{align-items:start}
+/* (2.9.1) kiosk mode (#kiosk=1): a wall screen without the menu, the top bar, the filters and the footer */
+html.kiosk .side,html.kiosk .top,html.kiosk .chips,html.kiosk .foot-note{display:none !important}
+html.kiosk .app{display:block}
+html.kiosk main{padding:14px;max-width:none;margin:0}
+html.kiosk .maxbtn{display:none}
+section.panel.is-max .kiosklink{margin-left:10px;vertical-align:middle}

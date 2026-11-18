@@ -803,6 +803,17 @@ def is_private(ip):
     return a.is_private or a.is_loopback or a.is_link_local or a in ipaddress.ip_network('100.64.0.0/10')
 
 
+@lru_cache(maxsize=65536)
+def is_group(ip):
+    """(2.9.1) a multicast group (224.0.0.0/4, ff00::/8) or the limited broadcast 255.255.255.255: no host on the
+    Internet is at the other end (mDNS, SSDP, IGMP, an ISP's IPTV), so such a record is not Internet traffic (forum #55)"""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return a.is_multicast or str(a) == '255.255.255.255'
+
+
 class Geo:
     """GeoIP + ASN lookups from DB-IP Lite mmdb files (CC BY 4.0, https://db-ip.com)."""
 

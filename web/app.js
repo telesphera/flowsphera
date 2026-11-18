@@ -492,7 +492,7 @@ function globe(el, geo){
     const places = geo => { const m = new Map(); for (const r of geo.rows.slice(0, 10)) m.set(r.city, {name:r.city || ccName(r.country), value:[r.lo, r.la, 0]}); return [...m.values()]; };
     const devs = [...new Map(META.devices.filter(d => d.lat != null).map(d => [d.city || d.name, {name:d.city || d.name, lon:d.lon, lat:d.lat}])).values()];   // one label per site
     c.setOption({globe:{baseTexture:tex, shading:'lambert', environment:'none', globeRadius:100, light:{ambient:{intensity:.55}, main:{intensity:1.1, alpha:30, beta:40}},
-        atmosphere:{show:true, color:'#2F7BFF', glowPower:5, innerGlowPower:2}, viewControl:{autoRotate:!reduceMotion, autoRotateSpeed:4, autoRotateAfterStill:3, animation:false, distance:180, minDistance:60, maxDistance:260, alpha:45, beta:115}},
+        atmosphere:{show:true, color:'#2F7BFF', glowPower:5, innerGlowPower:2}, viewControl:{autoRotate:!reduceMotion && !KIOSK.still, autoRotateSpeed:4, autoRotateAfterStill:3, animation:false, distance:180, minDistance:60, maxDistance:260, alpha:45, beta:115}},
       series:[
         {id:'arcs', type:'lines3D', coordinateSystem:'globe', blendMode:'lighter', effect:{show:!reduceMotion, trailWidth:2.5, trailLength:.22, trailOpacity:1, constantSpeed:28}, lineStyle:{width:1.2, opacity:.35}, data:arcs(geo)},
         {type:'scatter3D', coordinateSystem:'globe', blendMode:'lighter', symbolSize:10, itemStyle:{color:C.int}, label:{show:false}, data:devs.map(d => ({name:d.name, value:[d.lon, d.lat, 0]}))},
@@ -562,6 +562,7 @@ const ph = (ic, title, sub, right = '', big = false, tools = '') => `<div class=
 const MAX_IN = 'M2 6.5V2h4.5M11.5 2H16v4.5M16 11.5V16h-4.5M6.5 16H2v-4.5', MAX_OUT = 'M6.5 2v4.5H2M16 6.5h-4.5V2M11.5 16v-4.5H16M2 11.5h4.5V16';
 const maxBtn = () => `<button type="button" class="maxbtn" data-max title="${T('Full screen')}" aria-label="${T('Full screen')}">${icon(MAX_IN, 14)}</button>`;
 function maxMark(){ document.querySelectorAll('[data-max]').forEach(b => { const on = b.closest('section').classList.contains('is-max');
+  const kl = b.parentNode.querySelector('[data-kiosklink]'); if (on && !kl && !KIOSK.on && kioskLink(b.closest('section'))) b.insertAdjacentHTML('afterend', `<button type="button" class="btn tiny kiosklink" data-kiosklink title="${T('A link that opens this panel full screen without the menu: for a wall screen that starts by itself')}">${T('Link for a screen')}</button>`); else if (!on && kl) kl.remove();
   b.innerHTML = icon(on ? MAX_OUT : MAX_IN, 14); b.title = on ? T('Leave full screen') : T('Full screen'); b.setAttribute('aria-label', b.title); b.setAttribute('aria-pressed', String(on)); }); }
 function maxToggle(sec){
   if (sec.classList.contains('is-max')) { sec.classList.remove('is-max'); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); maxMark(); if (sec._reload) sec._reload(); return; }
@@ -569,7 +570,8 @@ function maxToggle(sec){
   sec.classList.add('is-max'); maxMark(); if (sec._reload) sec._reload();      // (1.8.9) a list: more rows
   if (sec.requestFullscreen) sec.requestFullscreen().catch(() => {});      // refused: it stays over the window
 }
-document.addEventListener('click', e => { const b = e.target.closest('[data-max]'); if (b) maxToggle(b.closest('section')); });
+document.addEventListener('click', e => { const b = e.target.closest('[data-max]'); if (b) maxToggle(b.closest('section'));
+  const k = e.target.closest('[data-kiosklink]'); if (k) copyText(kioskLink(k.closest('section')), k); });
 function maxLeave(){ const x = document.querySelector('section.is-max'); if (x) maxToggle(x); }
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { document.querySelectorAll('section.is-max').forEach(x => { x.classList.remove('is-max'); if (x._reload) x._reload(); }); maxMark(); } });
 document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; const x = document.querySelector('section.is-max'); if (x) maxToggle(x); });
@@ -975,7 +977,7 @@ function vFlows(){
   const v = document.getElementById('view');
   v.innerHTML = `<div class="grid">
     <section class="glass panel s9" id="flowRiverSec">${ph('flow', isInternal() ? T('Exchange between inside addresses') : T('Exchange between inside and outside addresses'), isInternal() ? T('who connects to whom: clients on the left, the servers they connect to on the right · colour = direction · width = volume (the compressed scale shows small flows too) · the biggest on each side, the rest in «Others»') : T('Colour = direction · width = volume (the compressed scale shows small flows too) · the biggest on each side, the rest in «Others»'),
-      seg('metricSeg', [['bytes', T('Bytes')], ['packets', T('Packets')], ['flows', 'Flows']], state.metric) + seg('scaleSeg', [['sqrt', T('Compressed'), T('Width ∝ √volume — small flows stay visible next to big ones')], ['lin', T('Linear'), T('Width proportional to volume')]], state.scale) + seg('liveSeg', [['live', T('Live')], ['period', T('toggle::Period')]], flowLive() ? 'live' : 'period'), true)}
+      seg('metricSeg', [['bytes', T('Bytes')], ['packets', T('Packets')], ['flows', 'Flows']], state.metric) + seg('scaleSeg', [['sqrt', T('Compressed'), T('Width ∝ √volume — small flows stay visible next to big ones')], ['lin', T('Linear'), T('Width proportional to volume')]], state.scale) + seg('liveSeg', [['live', T('Live')], ['period', T('toggle::Period')]], flowLive() ? 'live' : 'period'), true, maxBtn())}
       <div class="legend" style="margin:-6px 0 10px">${isInternal() ? `<span><i class="bar" style="background:${C.up}"></i>${T('client → server (what it sends)')}</span><span><i class="bar" style="background:${C.down}"></i>${T('server → client (the answer)')}</span><span><i style="background:${C.int}"></i>${T('inside address')}</span>` : `<span><i class="bar" style="background:${C.down}"></i>${T('download (outside → inside)')}</span><span><i class="bar" style="background:${C.up}"></i>${T('upload (inside → outside)')}</span><span><i style="background:${C.int}"></i>${T('inside address')}</span><span><i style="background:${C.ext}"></i>${T('outside address')}</span>`}<span id="winLbl" class="mono" style="margin-left:auto"></span></div>
       <div class="river big" id="river"></div></section>
     <div class="col s3" id="flowSide">
@@ -2699,8 +2701,28 @@ const EV_COLOR = {port_scan:'#FF9F43', brute_force:'#FF5C7A', probes:'#6E9BFF', 
 const evColor = k => EV_COLOR[k] || C.other;
 const cap1 = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 // one event as a card: what happened, priority, when, and its buttons (Filter / Exclude / Ignore)
+// (2.9.1) a click on an event opens it: the whole text (the list cuts it at two lines), the device, both ends, where the
+// outside end is, when it was seen, and «Show the flows» = Flows with the event's filter, device and time (forum #54)
+function evMore(x){
+  const row = (k, v) => v ? `<span class="k">${k}</span><span class="v">${v}</span>` : '';
+  const end = (ip, port) => ip ? esc(ip.includes(':') && port ? `[${ip}]:${port}` : port ? `${ip}:${port}` : ip) : '';
+  const t0 = x.stored ? evSec(x.first) : null, t1 = x.stored ? evSec(x.last) : null, f = evFilter(x);
+  const go = t0 && t1 && f ? JSON.stringify({f:[{k:f[0], v:f[1]}, ...(x.exporter ? [{k:'device', v:x.exporter}] : [])], t0:t0 - 300, t1:t1 + 600}) : '';
+  const where = [x.country, x.org, x.asn ? 'AS' + x.asn : ''].filter(Boolean).map(esc).join(' · ');
+  const seen = x.stored ? esc(evRange(x.first, x.last)) + (x.hits > 1 ? ` <span class="nat">${Tn(x.hits, 'in {n} ten-minute window', 'in {n} ten-minute windows')}</span>` : '') : '';
+  return `<div class="evdet">${row(T('Device'), x.exporter ? esc(devName(x.exporter)) + (devName(x.exporter) !== x.exporter ? ` <span class="nat mono">${esc(x.exporter)}</span>` : '') : '')}
+    ${row(T('From'), end(x.src, x.dst ? 0 : x.port))}${row(T('To'), end(x.dst, x.port))}${row(T('Outside end'), where)}${row(T('Seen'), seen)}
+    ${go ? `<span class="k"></span><span class="v"><button class="btn" type="button" data-evflows="${esc(go)}">${T('Show the flows')}</button></span>` : ''}</div>`;
+}
+const evSec = s => /^\d{4}-\d\d-\d\d \d\d:\d\d/.test(String(s)) ? Math.floor(new Date(String(s).replace(' ', 'T') + 'Z') / 1000) : null;
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-evflows]');
+  if (b) { e.stopPropagation(); const g = JSON.parse(b.dataset.evflows); state.filters = []; g.f.forEach(x => putFilter(x)); state.view = 'flows'; setPeriod(g.t0, g.t1); return; }
+  const o = e.target.closest && e.target.closest('[data-evopen]');
+  if (o && !e.target.closest('button, a, input, select') && !String(getSelection())) o.closest('.alert').classList.toggle('open');
+});
 function evRow(x, sevs){
-  return `<div class="alert ${x.sev}"><span class="sev">${x.sev === 'info' ? 'i' : '!'}</span><div class="body"><b>${esc(x.title)}</b> <span class="evkind" style="--c:${evColor(x.kind)}"></span><p>${esc(x.text)}</p></div>
+  return `<div class="alert ${x.sev}"><span class="sev">${x.sev === 'info' ? 'i' : '!'}</span><div class="body" data-evopen title="${T('Details')}"><b>${esc(x.title)}</b> <span class="evkind" style="--c:${evColor(x.kind)}"></span><p>${esc(x.text)}</p>${evMore(x)}</div>
       <div class="meta"><span class="pill ${x.sev}">${sevs[x.sev] || x.sev}</span><span class="mono">${x.stored && x.first !== x.last ? esc(evRange(x.first, x.last)) : esc(evTime(x.when))}</span>
         <span class="acts">${evFilter(x) ? `<button class="btn" data-f="${evFilter(x)[0]}" data-v="${esc(evFilter(x)[1])}" title="${esc(`${FILTER_LABEL[evFilter(x)[0]] || evFilter(x)[0]}: ${evFilter(x)[1]}`)}">${T('Filter')}</button>` : ''}${exOf(x) && isAdmin() ? `<button class="btn" data-exc="${esc(JSON.stringify(exOf(x)))}" title="${esc(T('Do not show events of this connection in this direction') + ': ' + exText(exOf(x)))}">${T('Exclude')}</button>` : ''}${x.stored && x.src && isAdmin() ? `<button class="btn" data-ign="${esc(x.src)}" title="${T('Do not record or show events of this address')}">${T('Ignore')}</button>` : ''}</span></div></div>`;
 }
@@ -5060,7 +5082,7 @@ function renderShell(){
   rs.value = state.range;
   document.getElementById('trafSel').value = state.traffic;
 }
-function saveUrl(){ const p = new URLSearchParams({v:state.view, r:state.range}); if (state.view === 'settings') p.set('tab', state.setTab || 'general'); if (isCustom()) { p.set('from', state.from); p.set('to', state.to); } if (state.traffic !== 'internet') p.set('t', state.traffic); if (state.filters.length) p.set('f', JSON.stringify(state.filters)); if (state.view === 'talkers' && state.talkersBy === 'net') p.set('by', 'net'); history.replaceState(null, '', '#' + p); }
+function saveUrl(){ const p = new URLSearchParams({v:state.view, r:state.range}); if (state.view === 'settings') p.set('tab', state.setTab || 'general'); if (isCustom()) { p.set('from', state.from); p.set('to', state.to); } if (state.traffic !== 'internet') p.set('t', state.traffic); if (state.filters.length) p.set('f', JSON.stringify(state.filters)); if (state.view === 'talkers' && state.talkersBy === 'net') p.set('by', 'net'); kioskParams(p); history.replaceState(null, '', '#' + p); }
 function loadUrl(){ try { const p = new URLSearchParams(location.hash.slice(1)); if (p.get('v') === 'devices' || p.get('v') === 'users') { state.view = 'settings'; state.setTab = p.get('v'); } else if (p.get('v') && VIEWS[p.get('v')]) state.view = p.get('v'); if (p.get('tab')) state.setTab = p.get('tab'); if (p.get('r') === 'custom') { const a = +p.get('from'), b = +p.get('to'); if (a > 0 && b - a >= 60) Object.assign(state, {range:'custom', from:a, to:b}); } else if (p.get('r')) state.range = p.get('r'); if (['internet', 'internal', 'all'].includes(p.get('t'))) state.traffic = p.get('t'); if (p.get('by') === 'net') state.talkersBy = 'net'; if (p.get('f')) { state.filters = []; JSON.parse(p.get('f')).forEach(putFilter); } } catch (e) {} }
 // (1.8.4) unsaved changes: a settings form sets state.dirty; leaving it (another page, tab, filter …) asks first
 const SHOWN_KEYS = ['view', 'setTab', 'filters', 'range', 'from', 'to', 'traffic', 'prevRange'];
@@ -5069,6 +5091,25 @@ function dirtyGuard(collect){ let snap = null; const now = () => { try { return 
   state.dirty = () => snap !== null && now() !== null && now() !== snap;
   return () => { snap = now(); }; }
 window.addEventListener('beforeunload', e => { if (state.dirty && state.dirty()) { e.preventDefault(); e.returnValue = ''; } });
+// (2.9.1) kiosk mode for a wall screen (forum #55, a NOC that starts every screen by itself after a reboot): a link with
+// kiosk=1 hides the menu, the top bar and the filters; max=<panel> opens that panel over the whole window (the browser's
+// own full screen needs a click: start the browser in its kiosk mode, e.g. chromium --kiosk); spin=0 stops the 3D
+// globe turning. The data refreshes as on a normal page; the 7-day session slides while the screen is on.
+const KIOSK = (() => { try { const p = new URLSearchParams(location.hash.slice(1)); return {on:p.get('kiosk') === '1', max:(p.get('max') || '').replace(/[^\w-]/g, ''), still:p.get('spin') === '0'}; } catch (e) { return {}; } })();
+if (KIOSK.on) document.documentElement.classList.add('kiosk');
+function kioskParams(p){ if (KIOSK.on) p.set('kiosk', '1'); if (KIOSK.max) p.set('max', KIOSK.max); if (KIOSK.still) p.set('spin', '0'); }
+function kioskMax(){
+  if (!KIOSK.max) return;
+  const el = document.getElementById(KIOSK.max), sec = el && el.closest('section');
+  if (sec && !sec.classList.contains('is-max')) { sec.classList.add('is-max', 'kiosk-max'); maxMark(); if (sec._reload) sec._reload(); }
+}
+// the link a full-screen panel offers: this page, period, traffic and filters + kiosk=1 + max=<the panel>
+function kioskLink(sec){
+  const id = sec.id || (sec.querySelector('[id]') || {}).id; if (!id) return '';
+  const p = new URLSearchParams(location.hash.slice(1)); ['kiosk', 'max', 'spin'].forEach(k => p.delete(k));
+  p.set('kiosk', '1'); p.set('max', id);
+  return location.origin + location.pathname + '#' + p;
+}
 function render(){ if (state.view === 'devices' || state.view === 'users') { state.setTab = state.view; state.view = 'settings'; }
   if (state.dirty && SHOWN && state.dirty()) {
     if (!confirm(T('Leave without saving? The changes on this page are lost.'))) { SHOWN_KEYS.forEach(k => { state[k] = SHOWN[k]; }); renderShell(); saveUrl(); return; } }
@@ -5078,7 +5119,7 @@ function render(){ if (state.view === 'devices' || state.view === 'users') { sta
   waitReset();
   PAGE_AC.abort(); PAGE_AC = new AbortController();       // and the browser stops waiting for it
   for (const [k, v] of API_SHARED) if (!v.done) API_SHARED.delete(k);     // nor is a cancelled answer shared with it
-  cleanup(); renderShell(); renderUser(); saveUrl(); VIEWS[state.view](); }
+  cleanup(); renderShell(); renderUser(); saveUrl(); VIEWS[state.view](); kioskMax(); }
 
 document.getElementById('devSel').onchange = e => { state.filters = state.filters.filter(f => f.k !== 'device'); if (e.target.value) putFilter({k:'device', v:e.target.value, neg:false}); render(); };
 document.getElementById('rangeSel').onchange = e => { const v = e.target.value; if (v === 'pick') { e.target.value = state.range; openPeriod(); return; } if (v !== 'custom') { state.range = v; render(); } };
@@ -5368,7 +5409,9 @@ q.addEventListener('keydown', e => {
   else if (e.key === 'Backspace' && !q.value && state.filters.length) { state.filters.pop(); render(); }
 });
 document.addEventListener('keydown', e => { if (e.key === '/' && document.activeElement !== q && !/input|textarea|select/i.test(document.activeElement.tagName)) { e.preventDefault(); q.focus(); } });
-document.getElementById('bell').onclick = () => { state.view = 'threats'; render(); };
+// (2.9.1) when this browser last showed the Events page (unix s; per browser: a NOC screen and a desk differ)
+function evSeen(mark){ try { if (mark) localStorage.setItem('ft-ev-seen', String(Math.floor(Date.now() / 1000))); return +localStorage.getItem('ft-ev-seen') || 0; } catch (e) { return 0; } }
+document.getElementById('bell').onclick = () => { state.view = 'threats'; evSeen(true); document.getElementById('bellBadge').hidden = true; render(); };
 document.getElementById('repBtn').onclick = openPeriodReport;      // (1.10.0) a PDF of the period and filters on screen
 
 // sidebar health: real collector ingest rate
@@ -5385,7 +5428,11 @@ async function health(){
     document.getElementById('ingV').innerHTML = T('{rps} <small>rec/s</small>', {rps: rps.toFixed(1)});
     document.getElementById('ingM').style.width = Math.max(2, Math.min(100, 100 * rps / 2000)).toFixed(1) + '%';
     const max = Math.max(...ingHist, 1); document.getElementById('ingS').innerHTML = `<polyline points="${ingHist.map((x, i) => `${(i / 39 * 200).toFixed(1)},${(28 - x / max * 24).toFixed(1)}`).join(' ')}" fill="none" stroke="${C.down}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
-    const sv = ((await fetch('api/alerts?limit=0').then(r => r.json())).stats || {}).sev || {};      // (1.17.0) the counts, not every event
+    // (2.9.1) the bell lights for important events this browser has not shown yet: those since the Events page was
+    // last open (within the last 24 hours), and problems going on now (forum #54: looking at them did not clear it)
+    if (['threats', 'events'].includes(state.view)) evSeen(true);
+    const seen = evSeen(), now = Math.floor(Date.now() / 1000), fresh = seen && now - seen < 86400;
+    const sv = fresh && now - seen < 60 ? {} : ((await fetch('api/alerts?' + new URLSearchParams(fresh ? {limit:0, from:seen, to:now} : {limit:0})).then(r => r.json())).stats || {}).sev || {};      // (1.17.0) the counts, not every event
     document.getElementById('bellBadge').hidden = !(sv.crit || sv.warn);
   } catch (e) { document.getElementById('collState').textContent = T('API unavailable'); document.getElementById('collDot').className = 'dot crit'; }
 }

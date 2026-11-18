@@ -2193,5 +2193,12 @@
  "set by hand": "задано вручну",
  "This device has no neighbours among the devices yet: in Settings → Devices → Interfaces set the interface addresses or the device at the other end, turn SNMP on (LLDP neighbours), or wait for traffic between the devices.": "Цей пристрій поки не має сусідів серед пристроїв: у Налаштування → Пристрої → Інтерфейси вкажіть адреси інтерфейсів або пристрій на іншому кінці, увімкніть SNMP (сусіди LLDP) або дочекайтеся трафіку між пристроями.",
  "Role: lan, wan, mgmt or local": "Роль: lan, wan, mgmt або local",
- "Interface {idx}: the other end must be another configured device and its interface index": "Інтерфейс {idx}: на іншому кінці має бути інший описаний пристрій і номер його інтерфейсу"
+ "Interface {idx}: the other end must be another configured device and its interface index": "Інтерфейс {idx}: на іншому кінці має бути інший описаний пристрій і номер його інтерфейсу",
+ "A link that opens this panel full screen without the menu: for a wall screen that starts by itself": "Посилання, що відкриває цю панель на весь екран без меню: для настінного екрана, який запускається сам",
+ "Details": "Подробиці",
+ "Link for a screen": "Посилання для екрана",
+ "Outside end": "Зовнішній кінець",
+ "Seen": "Помічено",
+ "Show the flows": "Показати потоки",
+ "in {n} ten-minute windows": {"few": "у {n} десятихвилинних вікнах", "many": "у {n} десятихвилинних вікнах", "one": "в {n} десятихвилинному вікні", "other": "у {n} десятихвилинних вікнах"}
 }

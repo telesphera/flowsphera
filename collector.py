@@ -30,7 +30,7 @@ import ifcounters  # noqa: E402
 import recovery  # noqa: E402
 import rollups  # noqa: E402
 from common import (BUILD, STATE_DIR, VERSION, CHError, Geo, apply_schema, ch, classify_l7, describe_listeners, edition,  # noqa: E402
-                    exporters_mtime, flows_keep_days, flows_shorten, is_private, keep_days, load_ignored, retention_choice, license_checkin, listen_label, listen_signature, load_exporters, open_listeners, server_is_src,
+                    exporters_mtime, flows_keep_days, flows_shorten, is_group, is_private, keep_days, load_ignored, retention_choice, license_checkin, listen_label, listen_signature, load_exporters, open_listeners, server_is_src,
                     service_name, PORT_NAMES, default_l7, load_port_names, reload_port_names)
 
 BIND = os.environ.get('FT_BIND', '0.0.0.0')
@@ -400,7 +400,13 @@ class Collector:
             in_if = 0                    # what NetFlow uses for the device itself (RouterOS does for its other own traffic)
 
         # inside / outside endpoint and direction
-        if e.wan and out_if in e.wan and in_if not in e.wan:
+        if is_group(dst):
+            # (2.9.1) to a multicast group / the broadcast: not Internet traffic. From an inside sender (mDNS, SSDP) it
+            # stays in the local network = 'internal' (the sender is the client); from an outside one (an ISP's IPTV)
+            # 'transit', shown only under All traffic
+            local = is_private(src) or src in e.self_ips
+            d, ii, ei = 'internal' if local else 'transit', (src, sport), (dst, dport)
+        elif e.wan and out_if in e.wan and in_if not in e.wan:
             d, ii, ei = 'up', (src, sport), (dst, dport)
         elif e.wan and in_if in e.wan and out_if not in e.wan:
             d, ii, ei = 'down', (dst, dport), (src, sport)
