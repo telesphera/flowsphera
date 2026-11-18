@@ -4,6 +4,31 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.9.0 — 2026-11-17
+
+### Added
+- **Links found over LLDP** (issue #12): with SNMP on, FlowSphera also reads each device's LLDP neighbours (LLDP-MIB)
+  and the interface stack (IF-MIB ifStackTable). A neighbour is matched to one of your devices by its chassis ID, a
+  management address only that device has, or its system name; its port by the port ID, the interface name (short and
+  long Cisco forms), a numeric local port ID or the port description. Unnumbered point-to-point links now appear in
+  *Path analysis*, each end on the interface that carries the traffic (the LAG or VLAN unit over the LLDP port).
+- **Links set by hand**: *Settings → Devices → Interfaces → Edit* has a **Neighbour** column — the device and its
+  interface at the other end. A link is kept once (set from either end) and wins over LLDP for that pair of devices.
+  In view mode the column shows what LLDP found and what was set by hand.
+- **Role «Management (out of band)»** for an interface: its addresses place no device and make no link, so an `fxp0` /
+  `em0` / `mgmt` network no longer joins every router to every other. Interfaces named like management ports get the
+  hint *looks like management*.
+- *Path analysis* links table: *Found by* says **LLDP neighbours** or **set by hand**. Devices export / import carry the
+  management roles and the links set by hand.
+
+### Fixed
+- **False links between Juniper routers** (issue #11): an address configured on more than one device (Juniper's
+  `jsrv.1` 128.0.0.127/2 and `em2.32768` 192.168.1.1/24 on every MX) made every pair of them neighbours, and the first
+  one «owned» the network 128.0.0.0/2 — a quarter of the internet. *River* then put the edge routers one hop from the
+  border, beside the core. Such addresses now place no device and make no link.
+- Saving the device dialog (*Settings → Devices → Edit*) no longer drops the interfaces' own capacities and the
+  device's earlier addresses.
+
 ## 2.8.0 — 2026-11-14
 
 ### Added

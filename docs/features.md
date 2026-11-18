@@ -2,6 +2,11 @@
 
 [← FlowSphera](../README.md) · [Install](install.md) · [Exporters](exporters.md) · [Features](features.md) · [Editions](editions.md) · [Backups](backups.md) · [Configuration](configuration.md) · [API](api.md) · [Security](security.md) · [Performance](performance.md)
 
+**New in 2.9**
+- *Path analysis* finds links over **LLDP** (SNMP), unnumbered ones too, on the LAG or VLAN unit that carries the
+  traffic; links can be **set by hand**; an interface can have the role **Management** (never a path). Addresses
+  that several devices share no longer make false links.
+
 **New in 1.16**
 - **QoS (DSCP)**: the class each record carried on the way in (and on the way out where the device says, e.g.
   FortiGate) — classes over time, their shares, the class mix of each interface, what the devices re-mark, the
