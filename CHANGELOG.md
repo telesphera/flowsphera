@@ -31,6 +31,7 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
 - Records to a multicast group or the broadcast (224.0.0.0/4, ff00::/8, 255.255.255.255) are no longer Internet traffic:
   from an inside sender (mDNS, SSDP) they count as traffic between inside addresses, from an outside one (an ISP's IPTV)
   they show only under *All traffic*. Records stored before the upgrade keep their place.
+
 ## 2.9.0 — 2026-11-17
 
 ### Added
