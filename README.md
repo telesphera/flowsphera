@@ -99,6 +99,18 @@ mode (`chromium --kiosk "<link>"`) and the NOC display comes back by itself afte
 
 <p align="center"><img src="docs/media/en/kiosk-map.webp" alt="Kiosk link on a 1920×1080 wall screen: the live map without the menu or the filters" width="100%"></p>
 
+**Your own Overview** (2.11.0): click a panel's title and choose what it shows — Top services, Top hosts,
+**Countries**, **Autonomous systems**, Top conversations, Recent flows or the Traffic trend. Watching how much goes to
+a country you do not expect is then one glance at the wall. The choice stays with your account and travels in the
+page link, so a kiosk screen shows the same panels whoever is signed in there.
+
+<table>
+<tr>
+<td width="72%"><img src="docs/media/en/overview-panels.webp" alt="Overview with Countries and Autonomous systems in place of Top hosts and Recent flows"></td>
+<td width="28%" valign="top"><img src="docs/media/en/overview-panel-menu.webp" alt="A panel's menu: Top services, Top hosts, Countries, Autonomous systems, Top conversations, Recent flows, Traffic trend"><br>A click on the title: a kind shown elsewhere changes places with it; <i>The usual panels</i> brings the original layout back.</td>
+</tr>
+</table>
+
 ### Flows — who exchanges how much with whom
 
 The busiest inside hosts and outside addresses as a living diagram: width is volume, colour is direction. Click to
@@ -370,6 +382,14 @@ curl -fsSL https://raw.githubusercontent.com/telesphera/flowsphera/main/install.
 The installer (English or Ukrainian) sets up everything, asks a few questions with sensible defaults and finishes with
 the address of your FlowSphera and the configuration for your exporter. Later: `sudo flowsphera upgrade` — settings,
 users and data stay.
+
+**Upgrade from the web interface** (2.11.0): FlowSphera looks at the published version twice a day and tells an
+administrator *2.x.y available* in the top bar, with a link to what is new. *Upgrade now* (Settings → General →
+Updates, confirmed with your password) runs the same upgrade without a console and shows its log while it runs; the
+page follows the web interface through its restart. Only the version number is read — nothing about your server is
+sent — and the check can be turned off for an offline server. An installation learns this with its upgrade to 2.11.0.
+
+<p align="center"><img src="docs/media/en/upgrade.webp" alt="Settings → General: the upgrade window showing the installer's log while FlowSphera upgrades itself" width="100%"></p>
 
 - **Runs on** Debian / Ubuntu and Fedora / RHEL / Rocky / Alma, x86_64 or arm64.
 - **Disk**: about 25 MB per million flow records; a small office needs a few hundred MB for 30 days.
