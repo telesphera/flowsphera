@@ -875,7 +875,7 @@ function mountHero(){
         : `<span class="legend"><span><i class="bar" style="background:${C.down}"></i>download</span><span><i class="bar" style="background:${C.up}"></i>upload</span>${g ? '' : `<span><i style="background:${C.int}"></i>${T('inside')}</span><span><i style="background:${C.ext}"></i>${T('outside')}</span>`}</span>`)
       + (g ? seg('scaleSeg', [['sqrt', T('Compressed'), T('Width ∝ √volume — small flows stand out next to large ones')], ['lin', T('Linear'), T('Width proportional to volume')]], state.scale) : '')
       + seg('heroLiveSeg', [['live', T('Live'), T('The last 2 minutes of data, updated as it arrives')], ['period', T('toggle::Period'), T('The whole selected period')]], live ? 'live' : 'period')
-      + (isInternal() ? '' : seg('heroSeg', [['map', 'Map'], ['graph', 'Graph'], ['3d', '3D']], state.heroMode)), false, maxBtn())}
+      + (isInternal() ? '' : seg('heroSeg', [['map', T('Map')], ['graph', T('Graph')], ['3d', '3D']], state.heroMode)), false, maxBtn())}
     <div id="heroBody" class="${g ? 'river' : 'chart hero-h'}"></div><div id="heroNote" class="heronote" hidden></div><div id="heroOvl"></div>`);
   lockLive('heroLiveSeg'); maxMark();
   wireSeg('heroSeg', m => { if (m === state.heroMode) return; state.heroMode = m; mountHero(); });
@@ -2671,6 +2671,7 @@ const EV_KINDS = () => ({
   sustained_upload:[T('Sustained upload'), T('more than 5 Mbit/s to one address for 45 min out of 3 h'), {}],
   burst:[T('Traffic burst'), T('5 minutes ×8 above the host’s daily median'), {}],
   new_country:[T('New destination'), T('a host contacts a country for the first time this week'), {}],
+  custom:[T('Your own rules'), T('the rules you write below («Your own rules»): this switch turns them all on or off, each has its own priority'), {}],
 });
 const SEV = () => ({crit:T('critical'), warn:T('warning'), info:T('info')});
 // stored times are UTC 'YYYY-MM-DD hh:mm:ss': local time, with the day when not today
@@ -2697,7 +2698,7 @@ const evFilter = x => x.fk && x.fv ? [x.fk, x.fv] : x.ip ? ['ip', x.ip] : x.devi
 // health, the license and the reports share the grey
 const EV_COLOR = {port_scan:'#FF9F43', brute_force:'#FF5C7A', probes:'#6E9BFF', heavy_client:'#FFD166', ddos:'#E8384F', inside_scan:'#C77DFF',
   lateral_scan:'#8B5CFF', link_load:'#27D3F5', malware_contact:'#FF4FA0', listed_contact:'#F7A1C4', listed_inbound:'#2F7BFF',
-  sustained_upload:'#2EE59D', burst:'#3FC8B4', new_country:'#A3E635'};
+  sustained_upload:'#2EE59D', burst:'#3FC8B4', new_country:'#A3E635', custom:'#F5C451'};
 const evColor = k => EV_COLOR[k] || C.other;
 const cap1 = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 // one event as a card: what happened, priority, when, and its buttons (Filter / Exclude / Ignore)
@@ -2711,7 +2712,7 @@ function evMore(x){
   const where = [x.country, x.org, x.asn ? 'AS' + x.asn : ''].filter(Boolean).map(esc).join(' · ');
   const seen = x.stored ? esc(evRange(x.first, x.last)) + (x.hits > 1 ? ` <span class="nat">${Tn(x.hits, 'in {n} ten-minute window', 'in {n} ten-minute windows')}</span>` : '') : '';
   return `<div class="evdet">${row(T('Device'), x.exporter ? esc(devName(x.exporter)) + (devName(x.exporter) !== x.exporter ? ` <span class="nat mono">${esc(x.exporter)}</span>` : '') : '')}
-    ${row(T('From'), end(x.src, x.dst ? 0 : x.port))}${row(T('To'), end(x.dst, x.port))}${row(T('Outside end'), where)}${row(T('Seen'), seen)}
+    ${x.rule ? row(T('Rule'), `<span class="mono">${esc(cuFilterText(x.rule.filters) || T('all traffic'))}</span>`) : ''}${row(T('From'), end(x.src, x.dst ? 0 : x.port))}${row(T('To'), end(x.dst, x.port))}${row(T('Outside end'), where)}${row(T('Seen'), seen)}
     ${go ? `<span class="k"></span><span class="v"><button class="btn" type="button" data-evflows="${esc(go)}">${T('Show the flows')}</button></span>` : ''}</div>`;
 }
 const evSec = s => /^\d{4}-\d\d-\d\d \d\d:\d\d/.test(String(s)) ? Math.floor(new Date(String(s).replace(' ', 'T') + 'Z') / 1000) : null;
@@ -2921,6 +2922,54 @@ function vEvents(){
   load();
   if (!isCustom()) every(60000, () => { if (!(state.evPage || 0)) load(); });      // a later page stays still while read
 }
+// (2.10.0, forum #58) Settings → Events → Detections: the operator's own rules. The filters are typed as in the search
+// box (ip:, net:, service:, port:, country:, device: …, -key: leaves out), with the same guide
+const CU_MEASURE = () => [['bytes', T('Traffic, MB')], ['flows', T('Flows')], ['addresses', T('Outside addresses')]];
+const CU_MINUTES = [10, 20, 30, 60, 120, 180, 360, 720, 1440];
+const cuFilterText = fl => (fl || []).map(f => `${f.neg ? '-' : ''}${f.k}:${f.v}`).join(' ');
+function cuRow(r){
+  const sevs = SEV(), sel = (x, opts, v, lbl) => `<select data-cu="${x}" aria-label="${esc(lbl)}">${opts.map(([o, l]) => `<option value="${o}" ${String(v) === String(o) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const mins = m => m < 60 ? T('{n} min', {n:m}) : m === 1440 ? T('24 hours') : Tn(m / 60, '{n} hour', '{n} hours');
+  return `<div class="curule" data-id="${esc(r.id || '')}">
+    <div class="cuhead"><label class="chk"><input type="checkbox" data-cu="on" ${r.on !== false ? 'checked' : ''} aria-label="${T('On')}"></label>
+      <input data-cu="name" value="${esc(r.name || '')}" placeholder="${T('Name, e.g. Backup server uploads too much')}" aria-label="${T('Name')}" maxlength="80">
+      ${sel('sev', ['info', 'warn', 'crit'].map(x => [x, sevs[x]]), r.sev || 'warn', T('Priority'))}
+      <button class="btn" type="button" data-cutest>${T('Check now')}</button><button class="btn tiny" type="button" data-cudel title="${T('Delete the rule')}" aria-label="${T('Delete the rule')}">×</button></div>
+    <div class="cugrid"><label>${T('What (filters as in the search box)')}<input data-cu="filters" id="cuF${Math.random().toString(36).slice(2, 8)}" value="${esc(cuFilterText(r.filters))}" placeholder="${T('empty = all traffic · e.g. ip:10.0.0.5 service:SSH -country:UA')}" autocomplete="off"></label>
+      <label>${T('Traffic')}${sel('traffic', [['internet', T('Internet')], ['internal', T('Internal')], ['all', T('All traffic')]], r.traffic || 'internet', T('Traffic'))}</label>
+      <label>${T('Measure')}${sel('measure', CU_MEASURE(), r.measure || 'bytes', T('Measure'))}</label>
+      <label>${T('Above')}<input data-cu="threshold" type="number" min="0" step="any" value="${esc(r.threshold ?? '')}" placeholder="500"></label>
+      <label>${T('Within the last')}${sel('minutes', CU_MINUTES.map(m => [m, mins(m)]), r.minutes || 30, T('Within the last'))}</label>
+      <label>${T('Counted')}${sel('per', [['all', T('all together')], ['host', T('for each inside host')]], r.per || 'all', T('Counted'))}</label></div>
+    <p class="note cusay" aria-live="polite"></p></div>`;
+}
+function cuRead(row, strict){
+  const $ = x => row.querySelector(`[data-cu="${x}"]`), filters = [];
+  for (const t of $('filters').value.trim().split(/\s+/).filter(Boolean)) { const r = qParse(t);
+    if (r.err || !r.f) throw new Error(`${$('name').value.trim() || T('A rule')}: ${r.err || T('not a filter: {v}', {v:t})}`); filters.push(r.f); }
+  const r = {id:row.dataset.id || undefined, on:$('on').checked, name:$('name').value.trim(), sev:$('sev').value, filters, traffic:$('traffic').value,
+    measure:$('measure').value, threshold:Number($('threshold').value), minutes:Number($('minutes').value), per:$('per').value};
+  if (strict && !r.name) throw new Error(T('Every own rule needs a name.'));
+  return r;
+}
+const cuCollect = () => [...document.querySelectorAll('#cuBox .curule')].map(r => cuRead(r, true));
+function cuShow(rules){
+  const box = document.getElementById('cuBox'); if (!box) return; box.classList.remove('loading');
+  box.innerHTML = `<div class="curules form">${rules.map(cuRow).join('')}</div><p class="note cuempty" ${rules.length ? 'hidden' : ''}>${T('No own rules yet. Example: an event when ip:10.0.0.5 sends more than 500 MB to the Internet within 30 minutes, or when anyone in country:RU makes more than 1,000 flows.')}</p>`;
+  const wire = row => { filterGuide(row.querySelector('[data-cu="filters"]'));
+    row.querySelector('[data-cudel]').onclick = () => { row.remove(); document.querySelector('#cuBox .cuempty').hidden = !!document.querySelector('#cuBox .curule'); };
+    row.querySelector('[data-cutest]').onclick = async () => { const say = row.querySelector('.cusay'); say.style.color = ''; say.textContent = T('Counting…');
+      try { const r = cuRead(row, false); if (!r.name) r.name = T('A rule');
+        const d = await apiPost('events/custom/test', {rule:r}), over = d.rows.filter(x => x.over);
+        const top = d.rows.length ? d.rows.map(x => `${x.host ? esc(x.name && x.name !== x.host ? `${x.name} (${x.host})` : x.host) + ': ' : ''}<b>${esc(x.text)}</b>`).join(' · ') : T('nothing matched');
+        say.innerHTML = `${T('Within the last {m} min: {top}.', {m:d.minutes, top})} ${over.length ? `<span style="color:var(--warn)">${T('Above the threshold ({t}): this rule would make an event now.', {t:esc(d.threshold_text)})}</span>` : T('Below the threshold ({t}).', {t:esc(d.threshold_text)})}`;
+      } catch (e) { say.style.color = 'var(--crit)'; say.textContent = e.message; } }; };
+  box.querySelectorAll('.curule').forEach(wire);
+  const add = r => { box.querySelector('.curules').insertAdjacentHTML('beforeend', cuRow(r)); const row = box.querySelector('.curules').lastElementChild; wire(row);
+    box.querySelector('.cuempty').hidden = true; row.querySelector('[data-cu="name"]').focus(); };
+  document.getElementById('cuAdd').onclick = () => add({});
+  const from = document.getElementById('cuFrom'); if (from) from.onclick = () => add({filters:state.filters, traffic:state.traffic});
+}
 // Settings → Events (administrators): detections on/off, priority, thresholds; roles of our services; exceptions
 function vEventsCfg(){
   const v = document.getElementById('setBody');
@@ -2930,6 +2979,7 @@ function vEventsCfg(){
   const sub = SUBS.some(x => x[0] === state.evSub) ? state.evSub : 'det';
   v.innerHTML = `<div class="seg evsub" id="evSub" role="tablist" aria-label="${T('Events')}">${SUBS.map(([k, l]) => `<button type="button" role="tab" data-sub="${k}" aria-selected="${k === sub}" aria-pressed="${k === sub}">${l}</button>`).join('')}</div>
     <div class="grid"><section class="glass panel s12" data-part="det">${ph('shield', T('Detections'), T('on or off, the priority each event gets, and when it triggers'))}<div id="evkBox" class="loading"></div></section>
+    <section class="glass panel s12" data-part="det" id="cuSec">${ph('M3 14l4-5 3 3 5-7', T('Your own rules'), T('an event when what the filters match goes above a threshold · checked every 10 minutes · notified like the others'), `<span style="display:flex;gap:8px;flex-wrap:wrap">${state.filters.length ? `<button class="btn" type="button" id="cuFrom">${T('+ From the current filters')}</button>` : ''}<button class="btn primary" type="button" id="cuAdd">${T('+ Add a rule')}</button></span>`)}<div id="cuBox" class="loading"></div></section>
     <section class="glass panel s12" data-part="notify">${ph('M2 9l14-6-5 14-2-6zM9 11l7-8', T('Notifications'), T('a new event goes out once · what continues is not sent again'))}<div id="evtBox" class="loading"></div></section>
     <section class="glass panel s12" data-part="rep">${ph('globe', T('IP reputation'), T('public lists of malicious addresses · downloaded once a day by this server from their publishers · checked every 10 minutes, not per record'))}<div id="evrBox" class="loading"></div></section>
     <section class="glass panel s12" data-part="exc">${ph('M4 9h10M9 4v10', T('Exclude connections'), T('the events of a connection in one direction are neither shown nor notified — e.g. a nightly backup to a server of yours'))}<div id="excBox" class="loading"></div></section>
@@ -2943,12 +2993,13 @@ function vEventsCfg(){
     box('evkBox', `<div class="tw form"><table class="evk"><thead><tr><th>${T('On')}</th><th>${T('Event')}</th><th>${T('Priority')}</th><th title="${T('Send this kind to Telegram')}">Telegram</th><th title="${T('Send this kind by e-mail')}">E-mail</th><th title="${T('Send this kind to the webhook')}">${T('Webhook')}</th><th title="${T('Send this kind to the SIEM')}">SIEM</th><th>${T('Triggers at')}</th></tr></thead><tbody>
       ${Object.entries(kinds).map(([k, [name, desc, thr]]) => { const c = cfg.kinds[k] || {};
         return `<tr data-k="${k}"><td><label class="chk"><input type="checkbox" data-x="on" ${c.on ? 'checked' : ''} aria-label="${esc(name)}"></label></td><td class="wrap"><b>${name}</b><p class="note">${desc}</p></td>
-        <td><select data-x="sev">${['info', 'warn', 'crit'].map(s => `<option value="${s}" ${c.sev === s ? 'selected' : ''}>${sevs[s]}</option>`).join('')}</select></td>
+        <td>${k === 'custom' ? `<span class="note">${T('per rule')}</span>` : `<select data-x="sev">${['info', 'warn', 'crit'].map(s => `<option value="${s}" ${c.sev === s ? 'selected' : ''}>${sevs[s]}</option>`).join('')}</select>`}</td>
         <td><label class="chk"><input type="checkbox" data-n="${k}" ${res.notify.kinds[k] !== false ? 'checked' : ''} aria-label="Telegram: ${esc(name)}"></label></td>
         <td><label class="chk"><input type="checkbox" data-m="${k}" ${res.notify.email_kinds[k] !== false ? 'checked' : ''} aria-label="E-mail: ${esc(name)}"></label></td>
         <td><label class="chk"><input type="checkbox" data-w="${k}" ${(res.notify.webhook_kinds || {})[k] !== false ? 'checked' : ''} aria-label="${T('Webhook')}: ${esc(name)}"></label></td>
         <td><label class="chk"><input type="checkbox" data-s="${k}" ${(res.notify.siem_kinds || {})[k] !== false ? 'checked' : ''} aria-label="SIEM: ${esc(name)}"></label></td>
         <td class="thr"><div>${Object.entries(thr).map(([t, l]) => `<label><input type="number" min="1" data-x="${t}" value="${esc(c[t])}">${l}</label>`).join('') || '<span class="note">—</span>'}</div></td></tr>`; }).join('')}</tbody></table></div>`);
+    cuShow(cfg.custom || []);
     const tg = res.notify.telegram, ml = res.notify.email, wh = res.notify.webhook || {}, sm = res.notify.siem || {}, sevSel = (id, v) => `<select id="${id}">${['info', 'warn', 'crit'].map(s => `<option value="${s}" ${v === s ? 'selected' : ''}>${sevs[s]}</option>`).join('')}</select>`;
     const langSel = (id, v) => `<select id="${id}">${langs().map(([c, l]) => `<option value="${c}" lang="${c}" ${v === c ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     const on = ch => res.notify[ch].on ? ` <span class="pill ok">${T('on')}</span>` : '';
@@ -3082,7 +3133,7 @@ function vEventsCfg(){
     const url_lists = [...document.querySelectorAll('#evuRows tr')].map(tr => { const v = k => tr.querySelector(`[data-uk=${k}]`);     // (2.6.0)
       return {id:tr.dataset.u, on:v('on').checked, name:v('name').value.trim(), url:v('url').value.trim(), category:v('category').value, hours:Number(v('hours').value)}; })
       .filter(x => x.url || x.name);
-    return {kinds, lists, list_keys, clear_keys, url_lists, own_list:document.getElementById('evOwn').value.split('\n').filter(x => x.trim())};
+    return {kinds, lists, list_keys, clear_keys, url_lists, own_list:document.getElementById('evOwn').value.split('\n').filter(x => x.trim()), custom:cuCollect()};
   };
   const collectNotify = () => { const kinds = {}, email_kinds = {}, webhook_kinds = {}, siem_kinds = {}, v = id => document.getElementById(id);
     document.querySelectorAll('table.evk [data-s]').forEach(i => { siem_kinds[i.dataset.s] = i.checked; });

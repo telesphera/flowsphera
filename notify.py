@@ -762,7 +762,7 @@ class Notifier:
         lo = SEVERITIES.index(c['min_sev'])
         pick = []
         for e in events:
-            sev = kinds_cfg.get(e['kind'], {}).get('sev', 'info')
+            sev = e.get('sev') or kinds_cfg.get(e['kind'], {}).get('sev', 'info')      # (2.10.0) an own rule has its own
             if cfg[KINDS[ch]].get(e['kind'], True) and SEVERITIES.index(sev) >= lo:
                 pick.append(dict(e, sev=sev))
         if not pick:

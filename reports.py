@@ -321,7 +321,7 @@ SEV = {'crit': '#E5484D', 'warn': '#F5A524', 'info': '#3E8ED0'}
 EV_COLORS = {'port_scan': '#FF9F43', 'brute_force': '#FF5C7A', 'probes': '#6E9BFF', 'heavy_client': '#E0B03C', 'ddos': '#E8384F',
              'inside_scan': '#C77DFF', 'lateral_scan': '#8B5CFF', 'link_load': '#16B5D8', 'malware_contact': '#FF4FA0',
              'listed_contact': '#E98BB2', 'listed_inbound': '#2F7BFF', 'sustained_upload': '#1FBF83', 'burst': '#2FB3A0',
-             'new_country': '#84C11F'}
+             'new_country': '#84C11F', 'custom': '#D9A520'}
 # (2.4.0) the QoS page's classes (web/app.js DSCP_INFO): what each standard marking means, its colour (deeper for paper)
 DSCP_INFO = {0: N_('Best effort'), 8: N_('Low-priority data'), 10: N_('High-throughput data'), 12: N_('High-throughput data'),
              14: N_('High-throughput data'), 16: N_('Network management'), 18: N_('Low-latency data'), 20: N_('Low-latency data'),

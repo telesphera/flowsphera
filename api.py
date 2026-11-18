@@ -22,6 +22,7 @@ from urllib.parse import parse_qs, urlparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from auth import Auth, AuthError  # noqa: E402
 import detect  # noqa: E402
+import custom_rules  # noqa: E402
 import directory  # noqa: E402
 import reports  # noqa: E402
 import notify  # noqa: E402
@@ -2778,7 +2779,7 @@ EXCEPTION_KEYS = ('ignore', 'exclude')
 def post_events_config(body):
     cur = detect.load_config()
     try:
-        detect.save_config(detect.validate({**{k: cur[k] for k in SERVICE_KEYS + EXCEPTION_KEYS + ('url_lists',)}, **body}))
+        detect.save_config(detect.validate({**{k: cur[k] for k in SERVICE_KEYS + EXCEPTION_KEYS + ('url_lists', 'custom')}, **body}))
         # (1.16.2) list keys: {list: key} sets, clear_keys: [list] removes; an empty field keeps the saved key
         keys = {n: v for n, v in (body.get('list_keys') or {}).items() if isinstance(v, str) and v.strip()}
         keys.update({n: '' for n in body.get('clear_keys') or [] if isinstance(n, str)})
@@ -2787,6 +2788,42 @@ def post_events_config(body):
     except ValueError as e:
         raise BadRequest(str(e)) from None
     return get_events_config()
+
+
+CUSTOM_AGG = {'bytes': 'sum(bytes)', 'flows': 'sum(flows)', 'addresses': 'uniqExact(ext_ip)'}
+
+
+def custom_measure(rule, t0, t1, top=custom_rules.TOP):
+    """(2.10.0) An own rule's measure over [t0, t1) as the pages count it (scope + src: the rollups for long spans):
+    [(inside host, value)] biggest first for a per-host rule, else [('', value)]."""
+    q = {'from': [str(int(t0))], 'to': [str(int(t1))], 't': [rule['traffic']], 'f': [json.dumps(rule['filters'])]}
+    _, p, _, _ = scope(q)
+    host = rule['per'] == 'host'
+    cols = (['int_ip'] if host else []) + (['ext_ip'] if rule['measure'] == 'addresses' else [])
+    agg = CUSTOM_AGG[rule['measure']]
+    sql = (f"SELECT int_ip AS h, {agg} AS v FROM {src(p, cols)} GROUP BY h ORDER BY v DESC LIMIT {int(top)}" if host
+           else f"SELECT '' AS h, {agg} AS v FROM {src(p, cols)}")
+    with web_query(f'ftc-{os.urandom(3).hex()}', {'max_execution_time': 120, 'priority': 8}):
+        rows = ch(sql, p, fmt='JSON', settings={'max_memory_usage': CH_QUERY_MEMORY, 'max_bytes_before_external_group_by': CH_QUERY_MEMORY * 2 // 5})
+    return [(r['h'], float(r['v'])) for r in rows if float(r['v']) > 0 or not host]
+
+
+def post_custom_test(body):
+    """(2.10.0) Settings → Events: what a rule (as typed, not saved) measures over its last minutes now."""
+    try:
+        rule = detect.custom_rules([body.get('rule') or {}])[0]
+    except ValueError as e:
+        raise BadRequest(str(e)) from None
+    now = int(time.time())
+    try:
+        rows = custom_measure(rule, now - rule['minutes'] * 60, now, 5)
+    except BadRequest:
+        raise
+    except CHError as e:
+        raise BadRequest(ch_error_answer(e)[1]) from None
+    thr = custom_rules.threshold(rule)
+    return {'threshold': thr, 'threshold_text': detect.custom_value(rule['measure'], thr), 'minutes': rule['minutes'],
+            'rows': [{'host': h, 'name': NAMES.get(h) if h else '', 'value': v, 'text': detect.custom_value(rule['measure'], v), 'over': v >= thr} for h, v in rows]}
 
 
 def post_events_exceptions(body):
@@ -3764,6 +3801,7 @@ class H(BaseHTTPRequestHandler):
                 '/api/events/exclude': lambda: post_events_exclude(body),
                 '/api/events/services': lambda: post_events_services(body),
                 '/api/events/exceptions': lambda: post_events_exceptions(body),
+                '/api/events/custom/test': lambda: post_custom_test(body),      # (2.10.0)
                 '/api/hosts/names': lambda: post_host_names(body),
                 '/api/networks': lambda: post_networks(body),
                 '/api/ports': lambda: post_ports(body),
@@ -4322,6 +4360,8 @@ if __name__ == '__main__':
     threading.Thread(target=_topo_warm, daemon=True).start()
     threading.Thread(target=reports.scheduler, args=(report_call, VERSION), daemon=True).start()      # (1.10.0)
     threading.Thread(target=dns_indexer, args=(threading.Event(),), daemon=True).start()   # (2.5.0) host names
+    # (2.10.0) the operator's own event rules, every 10 minutes
+    threading.Thread(target=custom_rules.Runner(custom_measure, lambda m: print(f'[flowsphera-api] {m}', flush=True)).run, daemon=True).start()
     for srv in servers[1:]:
         threading.Thread(target=srv.serve_forever, daemon=True).start()
     servers[0].serve_forever()

@@ -78,13 +78,17 @@ KINDS = {
     'sustained_upload': {'on': True, 'sev': 'warn'},
     'burst':        {'on': True, 'sev': 'info'},
     'new_country':  {'on': True, 'sev': 'info'},
+    # (2.10.0) the operator's own rules (custom_rules.py): this switch and priority are the master ones, each rule has
+    # its own priority
+    'custom':       {'on': True, 'sev': 'warn'},
 }
 NAMES = {'port_scan': N_('Port scan'), 'brute_force': N_('Password guessing'), 'probes': N_('Probes of management services'),
          'heavy_client': N_('Aggressive client'), 'ddos': N_('DDoS / flood'), 'inside_scan': N_('Inside host scans the internet'),
          'lateral_scan': N_('Scan inside the network'), 'sustained_upload': N_('Sustained upload'), 'burst': N_('Traffic burst'),
          'new_country': N_('New destination'), 'malware_contact': N_('Contact with malware infrastructure'),
          'listed_contact': N_('Contact with a listed address'), 'listed_inbound': N_('Listed addresses calling us'),
-         'link_load': N_('Link near capacity'), 'db_recovered': N_('Database recovered after an unclean stop')}
+         'link_load': N_('Link near capacity'), 'db_recovered': N_('Database recovered after an unclean stop'),
+         'custom': N_('Your own rules')}
 LIMITS = {'ports': (2, 65535), 'services': (2, 100), 'hosts': (2, 100000), 'sessions': (2, 10 ** 7), 'factor': (2, 1000),
           'min_sessions': (1, 10 ** 8), 'min_mbps': (1, 10 ** 6), 'refl_mbps': (1, 10 ** 6), 'minutes': (1, 10), 'pct': (10, 100), 'span': (5, 60),
           'hosts_busy': (2, 100000)}
@@ -98,7 +102,8 @@ HEAVY = {'max_memory_usage': _MEM, 'max_bytes_before_external_group_by': _MEM * 
 # ---------------------------------------------------------------- settings
 def defaults():
     return {'kinds': {k: dict(v) for k, v in KINDS.items()}, 'ignore': [], 'exclude': [], 'sensitive': list(SENSITIVE),
-            'public': list(PUBLIC), 'roles': {}, 'lists': {n: True for n in reputation.LISTS}, 'own_list': [], 'url_lists': []}
+            'public': list(PUBLIC), 'roles': {}, 'lists': {n: True for n in reputation.LISTS}, 'own_list': [], 'url_lists': [],
+            'custom': []}
 
 
 def load_config():
@@ -111,7 +116,7 @@ def load_config():
     for k, v in (saved.get('kinds') or {}).items():
         if k in cfg['kinds'] and isinstance(v, dict):
             cfg['kinds'][k].update({x: y for x, y in v.items() if x in cfg['kinds'][k]})
-    for k in ('ignore', 'exclude', 'sensitive', 'public', 'roles', 'own_list', 'url_lists'):
+    for k in ('ignore', 'exclude', 'sensitive', 'public', 'roles', 'own_list', 'url_lists', 'custom'):
         if k in saved:
             cfg[k] = saved[k]
     cfg['lists'].update({n: bool(v) for n, v in (saved.get('lists') or {}).items() if n in cfg['lists']})
@@ -232,7 +237,62 @@ def validate(body):
     cfg['own_list'] = sorted(out)
     cfg['url_lists'] = url_lists(body.get('url_lists', []))
     cfg['exclude'] = exclusions(body.get('exclude', []))
+    cfg['custom'] = custom_rules(body.get('custom', []))
     return cfg
+
+
+# (2.10.0, forum #58) The operator's own rules: what the search box filters (a host, a network, a service, a port, a
+# country, a device …) + a measure above a threshold within the last M minutes = an event, checked every 10 minutes by
+# custom_rules.Runner in the web service and notified like the built-in ones. measure: bytes (threshold in MB), flows
+# (records) or addresses (distinct outside addresses); per: one event for everything the filters match, or one per
+# inside host
+CUSTOM_MEASURES = ('bytes', 'flows', 'addresses')
+CUSTOM_PER = ('all', 'host')
+CUSTOM_TRAFFIC = ('internet', 'internal', 'all')
+CUSTOM_KEYS = ('ip', 'net', 'dst', 'host', 'service', 'l7', 'country', 'city', 'port', 'device', 'asn', 'dir', 'proto', 'in_if',
+               'out_if', 'iface', 'dscp', 'app', 'user')       # = the search box's (app.js FILTER_KEYS)
+CUSTOM_MAX = 50
+
+
+def custom_rules(items):
+    """The rules from the UI / API, checked; raises ValueError with a message for people."""
+    if not isinstance(items, list):
+        raise ValueError(tr('own rules: a list is expected'))
+    if len(items) > CUSTOM_MAX:
+        raise ValueError(tr('at most {n} own rules', n=CUSTOM_MAX))
+    out, ids = [], set()
+    for x in items:
+        if not isinstance(x, dict):
+            raise ValueError(tr('own rules: a list is expected'))
+        name = re.sub(r'\s+', ' ', str(x.get('name', ''))).strip()[:80]
+        if not name:
+            raise ValueError(tr('Every own rule needs a name.'))
+        rid = str(x.get('id') or '')
+        if not re.fullmatch(r'[0-9a-f]{8}', rid) or rid in ids:
+            rid = os.urandom(4).hex()
+        ids.add(rid)
+        flt = x.get('filters') or []
+        if not isinstance(flt, list) or len(flt) > 10:
+            raise ValueError(tr('{rule}: at most 10 filters', rule=name))
+        fl = []
+        for f in flt:
+            if not isinstance(f, dict) or f.get('k') not in CUSTOM_KEYS or not str(f.get('v', '')).strip():
+                raise ValueError(tr('{rule}: a filter this rule cannot use: {f}', rule=name, f=str(f)[:60]))
+            fl.append({'k': f['k'], 'v': str(f['v']).strip()[:200], 'neg': bool(f.get('neg'))})
+        measure, per, traffic = x.get('measure', 'bytes'), x.get('per', 'all'), x.get('traffic', 'internet')
+        if measure not in CUSTOM_MEASURES or per not in CUSTOM_PER or traffic not in CUSTOM_TRAFFIC:
+            raise ValueError(tr('{rule}: unknown measure, scope or traffic', rule=name))
+        try:
+            thr, minutes = float(x.get('threshold')), int(x.get('minutes', 10))
+        except (TypeError, ValueError):
+            raise ValueError(tr('{rule}: the threshold and the minutes must be numbers', rule=name)) from None
+        if not 0 < thr <= 10 ** 9:
+            raise ValueError(tr('{rule}: the threshold must be above 0', rule=name))
+        if not 10 <= minutes <= 1440 or minutes % 10:
+            raise ValueError(tr('{rule}: the minutes must be 10–1440, in steps of 10', rule=name))
+        out.append({'id': rid, 'on': bool(x.get('on', True)), 'name': name, 'sev': x.get('sev') if x.get('sev') in SEVERITIES else 'warn',
+                    'filters': fl, 'traffic': traffic, 'measure': measure, 'per': per, 'threshold': thr, 'minutes': minutes})
+    return out
 
 
 # (1.8.3) Exclusions: events of one connection in one direction are not shown nor notified — e.g. a nightly backup
@@ -982,19 +1042,25 @@ def recent(cfg, since, until=None, meta=None):
             continue
         r['info'] = info
         title, text = describe(r)
-        out.append({'sev': k['sev'], 'kind': r['kind'], 'title': title, 'text': text, 'when': r['last_seen'],
+        out.append({'sev': info.get('sev', k['sev']) if r['kind'] == 'custom' else k['sev'], 'kind': r['kind'], 'title': title, 'text': text, 'when': r['last_seen'],
                     'first': r['first_seen'], 'last': r['last_seen'], 'hits': int(r['hits']), 'src': r['src'], 'dst': r['dst'],
                     'ip': r['src'] or r['dst'], 'port': int(r['port']), 'country': info.get('country', ''), 'org': info.get('org', ''),
                     'asn': info.get('asn', 0), 'exporter': r['exporter'], 'stored': True,
                     'addrs': list(info.get('targets', [])) + list(info.get('sources', [])) + list(info.get('hosts', [])) + list(info.get('srcmap', {})),
                     'ports': [int(x) for x in info.get('ports', [])],
-                    'fk': _filter_of(r)[0], 'fv': _filter_of(r)[1]})
+                    'fk': _filter_of(r)[0], 'fv': _filter_of(r)[1],
+                    **({'rule': {k: info.get(k) for k in ('filters', 'traffic', 'per')}} if r['kind'] == 'custom' else {})})
     return out
 
 
 def _filter_of(r):
     """The filter the event's Filter button sets on the other pages: an outside source is an outside address there
     (`dst`), an inside one or our attacked service an inside host (`ip`), a device-wide flood the device."""
+    if r['kind'] == 'custom':          # (2.10.0) a host of a per-host rule, else the rule's first positive filter
+        if r['src']:
+            return 'ip', r['src']
+        f = next((f for f in r['info'].get('filters', []) if not f.get('neg')), None)
+        return (f['k'], f['v']) if f else ('device', r['exporter'])
     if r['kind'] in ('port_scan', 'brute_force', 'heavy_client'):
         return 'dst', r['src']
     if r['kind'] in ('malware_contact', 'listed_contact'):       # the listed address: every host of ours that talked to it
@@ -1078,8 +1144,22 @@ def _recovered(i):
     return text + tr(' A UPS for the server prevents this.')
 
 
+def custom_value(measure, v):
+    """(2.10.0) A rule's measure as people read it."""
+    if measure == 'bytes':
+        return _bytes(v)
+    return tr('{n} flows', n=f'{int(v):,}') if measure == 'flows' else tr('{n} addresses', n=f'{int(v):,}')
+
+
 def _describe(r):
     i, kind, port = r['info'], r['kind'], int(r['port'])
+    if kind == 'custom':
+        m = i.get('measure', 'bytes')
+        thr = custom_value(m, float(i.get('threshold', 0)) * (1e6 if m == 'bytes' else 1))
+        who = tr('{host}: ', host=r['src']) if r['src'] else ''
+        return (i.get('name') or tr('Your own rules'),
+                tr('{who}{value} in {minutes} min (the rule: above {threshold}).', who=who, value=custom_value(m, r['value']),
+                   minutes=i.get('minutes', 10), threshold=thr))
     svc = f"{r['dst']}:{port}" if r['dst'] else str(port)
     if kind == 'port_scan':
         how = i.get('how')
