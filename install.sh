@@ -743,9 +743,11 @@ step "$(t 'Database (ClickHouse in Docker)' 'База даних (ClickHouse у 
 install_units() {
   cp "$PREFIX/app/deploy/flowsphera-collector.service" "$PREFIX/app/deploy/flowsphera-web.service" \
      "$PREFIX/app/deploy/flowsphera-geoip.service" "$PREFIX/app/deploy/flowsphera-geoip.timer" \
-     "$PREFIX/app/deploy/flowsphera-backup.service" "$PREFIX/app/deploy/flowsphera-backup.timer" "$PREFIX/app/deploy/flowsphera-backup.path" /etc/systemd/system/
+     "$PREFIX/app/deploy/flowsphera-backup.service" "$PREFIX/app/deploy/flowsphera-backup.timer" "$PREFIX/app/deploy/flowsphera-backup.path" \
+     "$PREFIX/app/deploy/flowsphera-upgrade.service" "$PREFIX/app/deploy/flowsphera-upgrade.path" /etc/systemd/system/
   systemctl daemon-reload
-  systemctl enable -q flowsphera-geoip.timer flowsphera-backup.timer flowsphera-backup.path $UNITS
+  # (2.11.0) flowsphera-upgrade.path: «Upgrade now» in the web interface (Settings → General)
+  systemctl enable -q flowsphera-geoip.timer flowsphera-backup.timer flowsphera-backup.path flowsphera-upgrade.path $UNITS
   # `flowsphera-license status|request|activate FILE|deactivate` for servers without a browser at hand
   cat > /usr/local/bin/flowsphera-license <<WRAP
 #!/bin/sh
@@ -813,7 +815,7 @@ fi
 
 start_all() {
   systemctl restart $UNITS
-  systemctl start flowsphera-geoip.timer flowsphera-backup.timer flowsphera-backup.path
+  systemctl start flowsphera-geoip.timer flowsphera-backup.timer flowsphera-backup.path flowsphera-upgrade.path
   for _ in $(seq 1 30); do
     # (1.17.2) «running» = the collector holds its UDP port (before that the kernel drops what devices send)
     if systemctl is-active -q flowsphera-collector && udp_busy "$NF_PORT" && curl -fsk -o /dev/null "$PROTO://127.0.0.1:$WEB_PORT/"; then return 0; fi   # localhost is always served; not -S: «not yet» is no error for the log
@@ -963,8 +965,8 @@ uninstall() {
     ask_yn keep "$(t "Keep collected data and settings ($PREFIX, $ETC, $STATE) for a later reinstall?" "Зберегти зібрані дані й налаштування ($PREFIX, $ETC, $STATE) для повторного встановлення?")" y
   fi
   remove_all() {
-    systemctl disable --now flowsphera-geoip.timer flowsphera-backup.timer flowsphera-backup.path $UNITS 2>/dev/null || true
-    rm -f /etc/systemd/system/flowsphera-collector.service /etc/systemd/system/flowsphera-web.service \
+    systemctl disable --now flowsphera-geoip.timer flowsphera-backup.timer flowsphera-backup.path flowsphera-upgrade.path $UNITS 2>/dev/null || true
+    rm -f /etc/systemd/system/flowsphera-upgrade.service /etc/systemd/system/flowsphera-upgrade.path /etc/systemd/system/flowsphera-collector.service /etc/systemd/system/flowsphera-web.service \
           /etc/systemd/system/flowsphera-geoip.service /etc/systemd/system/flowsphera-geoip.timer \
           /etc/systemd/system/flowsphera-backup.service /etc/systemd/system/flowsphera-backup.timer /etc/systemd/system/flowsphera-backup.path /etc/sysctl.d/60-flowsphera.conf \
           /usr/local/bin/flowsphera-license /usr/local/bin/flowsphera "$ETC/install-lang"

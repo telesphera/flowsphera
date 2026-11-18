@@ -82,6 +82,25 @@ case "${1:-}" in
     fi
     [ -n "$new" ] && [ "$new.$nb" != "$cur.$cb" ] && echo "FlowSphera $c → $p"
     installer --upgrade --yes "$@" ;;
+  web-upgrade)
+    # (2.11.0) «Upgrade now» in the web interface: started (as root, without a terminal) by flowsphera-upgrade.path when
+    # the web service wrote STATE/upgrade.request; the output goes to STATE/upgrade.log, the state to
+    # STATE/upgrade_status.json — the page shows both, also while the upgrade restarts the web service
+    root "$@"
+    S=${FT_STATE_DIR:-/var/lib/flowsphera}
+    [ -f "$S/upgrade.request" ] || exit 0
+    rm -f "$S/upgrade.request"
+    from=$(version); fb=$(build); t0=$(date +%s)
+    st() { printf '{"state":"%s","from":"%s","from_build":%s,"to":"%s","to_build":%s,"started":%s,"ended":%s,"rc":%s}\n' \
+             "$1" "$from" "$fb" "$(version)" "$(build)" "$t0" "${2:-null}" "${3:-null}" > "$S/upgrade_status.json.tmp" \
+           && chmod 644 "$S/upgrade_status.json.tmp" && mv -f "$S/upgrade_status.json.tmp" "$S/upgrade_status.json"; }
+    st running
+    : > "$S/upgrade.log"; chmod 644 "$S/upgrade.log"
+    echo "$(date '+%F %T') $(t 'Upgrade asked from the web interface' 'Оновлення запущене з веб-інтерфейсу'): FlowSphera $(shown "$from" "$fb")" >> "$S/upgrade.log"
+    TERM=dumb "$0" upgrade < /dev/null >> "$S/upgrade.log" 2>&1; rc=$?
+    echo "$(date '+%F %T') $(t 'Finished' 'Завершено'): FlowSphera $(shown "$(version)" "$(build)") (rc=$rc)" >> "$S/upgrade.log"
+    if [ "$rc" = 0 ]; then st done "$(date +%s)" 0; else st failed "$(date +%s)" "$rc"; fi
+    exit "$rc" ;;
   reconfigure) root "$@"; installer ;;
   uninstall) root "$@"; installer --uninstall ;;
   license) shift; exec /usr/local/bin/flowsphera-license "$@" ;;

@@ -94,8 +94,10 @@ class OverviewRefresh(unittest.TestCase):
         body = js[js.index('function vOverview(){'):js.index('function selFilters(')]
         m = re.search(r"if \(!isCustom\(\)\) every\(rangeSecs\(\) <= 86400 \? 60000 : 300000, \(\) => \{(.*?)\}\);", body)
         self.assertTrue(m, 'no refresh timer in vOverview')
-        for part in ("section('kpis', kpiCards)", 'Object.values(loaders).forEach(f => f())', 'trend()'):
+        for part in ("section('kpis', kpiCards)", 'Object.values(loaders).forEach(f => f())'):
             self.assertIn(part, m.group(1))
+        # (2.11.0) the trend is one of the chosen panels: a loader like the lists, reloaded with them
+        self.assertRegex(body, r"cTrend:\(\) => api\('series'\)")
 
 
 if __name__ == '__main__':

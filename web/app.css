@@ -941,3 +941,30 @@ section.panel.is-max .kiosklink{margin-left:10px;vertical-align:middle}
 .curule .cuhead input[data-cu="name"]{width:auto}
 .curule .cuhead select,.curule .cuhead .btn{width:auto;flex:0 0 auto}
 .curule .cuhead input[type=checkbox]{width:auto}
+/* (2.11.0, forum #60) the Overview's panels are chosen: the title is a button, the menu floats over the page */
+.ovpick{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:4px;border-radius:6px;font:inherit;color:inherit}
+.ovpick svg{color:var(--ink3);transition:color .15s,transform .15s}
+.ovpick:hover svg,.ovpick:focus-visible svg{color:var(--down)}
+.ovpick:focus-visible{outline:2px solid var(--down);outline-offset:3px}
+.ovmenu{position:fixed;z-index:60;display:grid;min-width:250px;padding:8px;border-radius:14px;background:rgba(10,18,40,.97);box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.ovmenu p{margin:2px 8px 6px;font-size:11.5px}
+.ovmenu button{all:unset;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--ink)}
+.ovmenu button svg{color:var(--ink2)}
+.ovmenu button:hover,.ovmenu button:focus-visible{background:rgba(255,255,255,.07)}
+.ovmenu button[aria-checked="true"]{background:rgba(39,211,245,.12)}
+.ovmenu b{font-size:11px;font-weight:700;color:var(--down)}
+.ovmenu em{font-style:normal;font-size:11px;color:var(--ink3)}
+.ovmenu .ovreset{grid-template-columns:1fr;margin-top:4px;border-top:1px solid var(--hair);border-radius:0 0 9px 9px;color:var(--ink2);font-size:12px}
+/* (2.11.0) a new version: the sign in the top bar, the upgrade window and its log */
+.updpill{all:unset;cursor:pointer;align-self:center;padding:0 12px;height:32px;border-radius:16px;font:700 12.5px Manrope,sans-serif;white-space:nowrap;color:var(--ok);background:rgba(46,229,157,.12);border:1px solid rgba(46,229,157,.4)}
+.updpill[hidden]{display:none}
+.updpill:hover,.updpill:focus-visible{background:rgba(46,229,157,.2)}
+.updpill:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+html.kiosk .updpill{display:none}
+.updform{display:grid;gap:12px}
+.updform .ok{color:var(--ok);font-weight:700}
+.updlog{margin:0;max-height:46vh;overflow:auto;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.4);font:12px/1.5 var(--f-mono);color:var(--ink2);white-space:pre-wrap;word-break:break-word}
+.updstate{display:flex;align-items:center;gap:10px}
+.updstate .spin{width:14px;height:14px;flex:none;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:var(--down);animation:updspin .9s linear infinite}
+@keyframes updspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.updstate .spin{animation:none}}

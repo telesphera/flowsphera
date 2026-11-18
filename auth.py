@@ -45,6 +45,11 @@ MAX_TOKENS = 50
 DEFAULT_USER, DEFAULT_PASSWORD = 'admin', 'flowsphera'
 
 
+# (2.11.0) what a panel of the Overview can show (= OV_KINDS in app.js; a test compares them)
+OV_PANELS = ('services', 'hosts', 'countries', 'asn', 'conv', 'recent', 'trend')
+OV_SLOTS = 5
+
+
 class AuthError(Exception):
     """Message is safe to show to the user; status is the HTTP status for it."""
     def __init__(self, msg, status=400):
@@ -123,7 +128,10 @@ class Auth:
                 'display': name[len(LDAP_PREFIX):] if u.get('source') == 'ldap' else name}
 
     # (1.9.0) what a user chose for themself, kept with the account (any browser): the Path analysis map view
-    PREFS = {'path_view': ('classic', 'lines', 'stars', 'metro', 'river'), 'conv_view': ('flow', 'chord', 'matrix')}
+    PREFS = {'path_view': ('classic', 'lines', 'stars', 'metro', 'river'), 'conv_view': ('flow', 'chord', 'matrix'),
+             # (2.11.0, forum #60) the five panels of the Overview, in order: each a kind of OV_PANELS, none twice
+             'overview_panels': lambda v: isinstance(v, str) and len(v) <= 120 and len(p := v.split(',')) == OV_SLOTS
+             and len(set(p)) == OV_SLOTS and all(x in OV_PANELS for x in p)}
 
     def set_prefs(self, name, prefs):
         if not isinstance(prefs, dict):
@@ -132,7 +140,8 @@ class Auth:
             u = self.users[name]
             cur = dict(u.get('prefs') or {})
             for k, v in prefs.items():
-                if k not in self.PREFS or v not in self.PREFS[k]:
+                ok = k in self.PREFS and (self.PREFS[k](v) if callable(self.PREFS[k]) else v in self.PREFS[k])
+                if not ok:
                     raise AuthError(f'bad value for {k}'[:60])
                 cur[k] = v
             u['prefs'] = cur

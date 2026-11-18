@@ -1,0 +1,9 @@
+[Unit]
+Description=FlowSphera upgrade asked for by the web interface
+
+[Path]
+PathExists=/var/lib/flowsphera/upgrade.request
+Unit=flowsphera-upgrade.service
+
+[Install]
+WantedBy=paths.target

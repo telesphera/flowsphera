@@ -1,0 +1,11 @@
+[Unit]
+Description=FlowSphera upgrade (started by «Upgrade now» in the web interface: Settings → General)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/flowsphera/env
+ExecStart=/usr/local/bin/flowsphera web-upgrade
+# the installer restarts the web and collector services; this unit is not one of them and goes on to the end
+TimeoutStartSec=45min

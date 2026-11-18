@@ -908,18 +908,52 @@ function mountHero(){
     });
   }
 }
+// (2.11.0, forum #60) the Overview's five panels are chosen: a click on a panel's title offers what it can show
+// (a NOC screen wanted Countries instead of Top hosts — traffic to a country it does not expect). The choice is kept
+// with the account (prefs.overview_panels) and in the address (ov=…), so a link for a wall screen carries it whoever
+// signs in there; a kind already shown in another panel changes places with it
+const OV_DEFAULT = ['services', 'hosts', 'trend', 'conv', 'recent'];
+const OV_KINDS = () => ({
+  services:{ic:'pie', t:T('Top services'), sub:T('by traffic volume'), box:'svcBox'},
+  hosts:{ic:'users', t:T('Top hosts'), sub:T('inside addresses'), box:'hostBox'},
+  countries:{ic:'globe', t:T('Countries'), sub:T('by destination address'), box:'ccBox'},
+  asn:{ic:'nodes', t:T('Autonomous systems'), sub:T('who actually serves the traffic'), box:'asBox'},
+  conv:{ic:'conv', t:T('Top conversations'), sub:isInternal() ? T('client → server') : T('inside → outside address'), box:'convBox', right:`<button class="lnk" data-to-conv>${T('All conversations →')}</button>`},
+  recent:{ic:'list', t:T('Recent flows'), sub:T('new network activity'), box:'recentBox', right:`<button class="lnk" id="toFlows">${T('All')}</button>`},
+  trend:{ic:'chart', t:T('Traffic trend'), sub:rangeLabel(), box:'cTrend', chart:true}});
+const ovOk = a => Array.isArray(a) && a.length === OV_DEFAULT.length && new Set(a).size === a.length && a.every(k => k in OV_KINDS());
+function ovSlots(){ if (ovOk(state.ovPanels)) return state.ovPanels.slice();
+  const p = ((ME && ME.prefs) || {}).overview_panels, a = p ? String(p).split(',') : null; return ovOk(a) ? a : OV_DEFAULT.slice(); }
+const CARET = 'M5 7l4 4 4-4';
+function ovMenu(btn){
+  document.querySelectorAll('.ovmenu').forEach(m => m.remove());
+  const i = +btn.dataset.ovslot, sl = ovSlots(), K = OV_KINDS(), r = btn.getBoundingClientRect();
+  const m = document.createElement('div'); m.className = 'ovmenu glass'; m.setAttribute('role', 'menu');
+  m.innerHTML = `<p class="nat">${T('Show in this panel')}</p>` + Object.entries(K).map(([k, d]) => { const at = sl.indexOf(k);
+      return `<button type="button" role="menuitemradio" aria-checked="${at === i}" data-ovk="${k}">${icon(ICO[d.ic] || d.ic, 15)}<span>${esc(d.t)}</span>${at === i ? `<b>${T('shown')}</b>` : at >= 0 ? `<em>${T('swaps places')}</em>` : ''}</button>`; }).join('')
+    + (sl.join() !== OV_DEFAULT.join() ? `<button type="button" class="ovreset" data-ovk="">${T('The usual panels')}</button>` : '');
+  document.body.appendChild(m);
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px'; m.style.top = Math.min(r.bottom + 6, innerHeight - m.offsetHeight - 8) + 'px';
+  const close = () => { m.remove(); document.removeEventListener('pointerdown', out, true); document.removeEventListener('keydown', key); };
+  const out = e => { if (!m.contains(e.target) && e.target !== btn) close(); }, key = e => { if (e.key === 'Escape') { close(); btn.focus(); } };
+  document.addEventListener('pointerdown', out, true); document.addEventListener('keydown', key);
+  (m.querySelector('[aria-checked="true"]') || m.querySelector('button')).focus();
+  m.onclick = async e => { const b = e.target.closest('[data-ovk]'); if (!b) return; close();
+    const k = b.dataset.ovk, next = k ? sl.slice() : OV_DEFAULT.slice();
+    if (k) { const at = next.indexOf(k); if (at === i) return; if (at >= 0) next[at] = next[i]; next[i] = k; }
+    state.ovPanels = next; render();
+    try { ME = await apiPost('me/prefs', {prefs:{overview_panels:next.join(',')}}); } catch (err) {} };     // kept for the next visit; a failure keeps it for this page
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-ovslot]'); if (b) ovMenu(b); });
 function vOverview(){
-  const v = document.getElementById('view');
+  const v = document.getElementById('view'), K = OV_KINDS(), sl = ovSlots();
+  const pan = (k, i, cls = '') => { const d = K[k];
+    const title = KIOSK.on ? d.t : `<button type="button" class="ovpick" data-ovslot="${i}" aria-haspopup="menu" title="${T('Choose what this panel shows')}">${d.t}${icon(CARET, 14)}</button>`;
+    return `<section class="glass panel${cls}">${ph(d.ic, title, d.sub, d.right || '', false, maxBtn())}${d.chart ? `<div class="chart" id="${d.box}"></div>` : `<div id="${d.box}" class="loading"></div>`}</section>`; };
   v.innerHTML = `<div class="grid"><div id="kpis" class="s12 grid" style="grid-column:span 12"><div class="glass kcard s3 loading"></div><div class="glass kcard s3 loading"></div><div class="glass kcard s3 loading"></div><div class="glass kcard s3 loading"></div></div>
     <section class="glass panel s8 hero" id="heroSec"></section>
-    <div class="col s4">
-      <section class="glass panel">${ph('pie', T('Top services'), T('by traffic volume'), '', false, maxBtn())}<div id="svcBox" class="loading"></div></section>
-      <section class="glass panel">${ph('users', T('Top hosts'), T('inside addresses'), '', false, maxBtn())}<div id="hostBox" class="loading"></div></section>
-    </div>
-    <section class="glass panel s4">${ph('chart', T('Traffic trend'), rangeLabel(), '', false, maxBtn())}<div class="chart" id="cTrend"></div></section>
-    <section class="glass panel s4">${ph('conv', T('Top conversations'), (isInternal() ? T('client → server') : T('inside → outside address')), `<button class="lnk" data-to-conv>${T('All conversations →')}</button>`, false, maxBtn())}<div id="convBox" class="loading"></div></section>
-    <section class="glass panel s4">${ph('list', T('Recent flows'), T('new network activity'), `<button class="lnk" id="toFlows">${T('All')}</button>`, false, maxBtn())}<div id="recentBox" class="loading"></div></section></div>`;
-  document.getElementById('toFlows').onclick = () => { state.view = 'flows'; render(); };
+    <div class="col s4">${pan(sl[0], 0)}${pan(sl[1], 1)}</div>${pan(sl[2], 2, ' s4')}${pan(sl[3], 3, ' s4')}${pan(sl[4], 4, ' s4')}</div>`;
+  const tf = document.getElementById('toFlows'); if (tf) tf.onclick = () => { state.view = 'flows'; render(); };
   section('kpis', kpiCards);
   mountHero();
   // (1.8.9) full screen: the lists show more rows (a panel's _reload loads it again when it opens or closes)
@@ -934,17 +968,21 @@ function vOverview(){
   hostBox:() => section('hostBox', async () => { const t = await api('top', {dim:'int_ip', limit:big('hostBox') ? 20 : 5});
     return `<div class="tw"><table class="compact"><thead><tr><th>#</th><th>${T('Host')}</th><th class="num">${T('Traffic')}</th><th class="num">%</th><th></th></tr></thead><tbody>${t.rows.map((r, i) => `<tr class="click" data-host="${esc(r.k)}"><td class="mono">${i + 1}</td><td><div class="two-line"><b class="mono">${esc(r.name || r.k)}</b>${r.name ? `<span class="nat">${esc(r.k)}</span>` : ''}</div></td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), t.total)}</td><td class="chev">›</td></tr>`).join('')}</tbody></table></div>`; }),
   convBox:() => section('convBox', async () => { const t = await api('top', {dim:'conv', limit:big('convBox') ? 20 : 5}); return convRows(t.rows, t.total); }),
+  ccBox:() => section('ccBox', async () => ccList(await api('top', {dim:'country', limit:big('ccBox') ? 20 : 5}))),       // (2.11.0)
+  asBox:() => section('asBox', async () => { const t = await api('top', {dim:'asn', limit:big('asBox') ? 20 : 5});
+    return `<div class="tw"><table class="compact"><thead><tr><th>${T('Autonomous system')}</th><th class="num">${T('Traffic')}</th><th class="num">%</th></tr></thead><tbody>${t.rows.map(r => `<tr><td><div class="two-line">${r.k !== '0' ? `<button class="link ipl" data-f="asn" data-v="${esc(r.k)}">${esc(r.as_org || 'AS' + r.k)}</button><span class="nat">AS${esc(r.k)}${r.country ? ' · ' + esc(ccName(r.country)) : ''}</span>` : `<b>${T('local addresses')}</b>`}</div></td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), t.total)}</td></tr>`).join('')}</tbody></table></div>`; }),
+  cTrend:() => api('series').then(s => { const el = document.getElementById('cTrend'); if (el) trendChart(el, s); }).catch(e => fill('cTrend', errBox(e))),
   recentBox:() => section('recentBox', async () => { const t = await api('flows', {limit:big('recentBox') ? 20 : 7});
     return `<div class="tw"><table class="compact"><thead><tr><th>${T('Time')}</th><th>${isInternal() ? T('Client → server · service') : T('Inside → outside · service')}</th><th class="num">${T('Volume')}</th></tr></thead><tbody>${t.rows.map(f => `<tr><td class="mono">${hms(f.t)}</td><td><div class="two-line"><span class="ipl">${esc(f.name || f.int_ip)} <span class="${isBack(f) ? 'd' : 'u'}">${isBack(f) ? '←' : '→'}</span> ${esc(f.ext_ip)}</span><span class="nat">${esc(dv(f.service))}${f.l7 ? ' · ' + esc(f.l7) : ''}</span></div></td><td class="num mono">${fmtB(f.bytes)}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty">${T('No records')}</div></td></tr>`}</tbody></table></div>`; })
   };
+  // (2.11.0) only the chosen panels are on the page
+  Object.keys(loaders).forEach(id => { if (!document.getElementById(id)) delete loaders[id]; });
   Object.values(loaders).forEach(f => f());
-  Object.entries(loaders).forEach(([id, f]) => { const sec = document.getElementById(id).closest('section'); if (sec) sec._reload = f; });
-  const trend = () => api('series').then(s => { const el = document.getElementById('cTrend'); if (el) trendChart(el, s); }).catch(e => fill('cTrend', errBox(e)));
-  trend();
+  Object.entries(loaders).forEach(([id, f]) => { const sec = document.getElementById(id).closest('section'); if (sec && id !== 'cTrend') sec._reload = f; });
   // (2.7.1, issue #10) the cards, the trend and the lists move on with the time as the map does: quietly (the new answer
   // replaces the old one, no waiting picture) once a minute, every 5 minutes over a 7- or 30-day range; paused while the
   // tab is hidden (every); a custom period is fixed and stays as it is
-  if (!isCustom()) every(rangeSecs() <= 86400 ? 60000 : 300000, () => { section('kpis', kpiCards); Object.values(loaders).forEach(f => f()); trend(); });
+  if (!isCustom()) every(rangeSecs() <= 86400 ? 60000 : 300000, () => { section('kpis', kpiCards); Object.values(loaders).forEach(f => f()); });
 }
 
 // filters that describe a river selection (a host, an outside address, or a conversation band); none for «Others»
@@ -2629,6 +2667,10 @@ function vApps(){
 // devices without a location: the map draws no lines from them — say so and where to set it
 const noSite = () => { const n = META.devices.filter(d => d.lat == null || d.lon == null).map(d => d.name || d.ip);
   return n.length ? `<p class="note warn">${T('No lines from devices without a location — set City and Country (or Latitude and Longitude) in Settings → Devices')}: ${esc(n.join(', '))}</p>` : ''; };
+// the countries as bars (Geolocation, and a panel of the Overview since 2.11.0)
+const ccList = t => { const max = t.rows.length ? tot(t.rows[0]) : 1;
+  return `<div class="blist">${t.rows.map(r => `<button class="brow" data-f="country" data-v="${esc(r.k)}"><span class="n"><span class="tag mono">${esc(r.k || '—')}</span>&nbsp; ${esc(r.k ? ccName(r.k) : T('Local / unknown'))}</span><span class="t">${fmtB(tot(r))}</span><span class="p">${pct(tot(r), t.total)}</span>
+      <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`; };
 function vGeo(){
   const v = document.getElementById('view');
   v.innerHTML = `<div class="grid"><section class="glass panel s8">${ph('globe', T('Connection map'), T('destination GeoIP · a line appears when a new flow arrives · colour = direction'),
@@ -2643,9 +2685,7 @@ function vGeo(){
     const d = document.createElement('div'); d.className = 'tick';
     d.innerHTML = `<span class="mono" style="color:var(--ink3)">${hms(r.t)}</span><span class="mid"><span class="ipl"><b class="${up ? 'u' : 'd'}">${up ? '↑' : '↓'}</b> ${esc(up ? site : place)} → ${esc(up ? place : site)}</span><span class="nat ipl">${esc(r.name || r.int_ip)} ${up ? '→' : '←'} ${esc(r.ext_ip)}:${r.ext_port} · ${esc(r.service)}</span></span><span class="mono">${fmtB(r.bytes)}</span>`;
     tk.prepend(d); while (tk.children.length > 14) tk.lastChild.remove(); }); }).catch(e => fill('cMap', errBox(e)));
-  section('ccBox', async () => { const t = await api('top', {dim:'country', limit:20}); const max = t.rows.length ? tot(t.rows[0]) : 1;
-    return `<div class="blist">${t.rows.map(r => `<button class="brow" data-f="country" data-v="${esc(r.k)}"><span class="n"><span class="tag mono">${esc(r.k || '—')}</span>&nbsp; ${esc(r.k ? ccName(r.k) : T('Local / unknown'))}</span><span class="t">${fmtB(tot(r))}</span><span class="p">${pct(tot(r), t.total)}</span>
-      <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`; });
+  section('ccBox', async () => ccList(await api('top', {dim:'country', limit:20})));
   section('asBox', async () => { const t = await api('top', {dim:'asn', limit:25});
     return `<div class="tw"><table><thead><tr><th>ASN</th><th>${T('Country')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th></tr></thead><tbody>
       ${t.rows.map(r => `<tr><td>${r.k !== '0' ? `<button class="link" data-f="asn" data-v="${esc(r.k)}">AS${esc(r.k)} ${esc(r.as_org)}</button>` : T('local addresses')}</td><td><span class="tag mono">${esc(r.country || '—')}</span></td><td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono"><b>${fmtB(tot(r))}</b></td><td class="num mono">${pct(tot(r), t.total)}</td></tr>`).join('')}</tbody></table></div>`; });
@@ -3727,6 +3767,83 @@ function vReports(){
   (async () => { try { const r = await fetch('api/reports'); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); d = j; draw(); }
     catch (e) { const el = $('repList'); if (el) { el.classList.remove('loading'); el.innerHTML = `<p class="err">${esc(e.message)}</p>`; } } })();
 }
+// (2.11.0) New versions. The web service looks at the published version every 12 hours (updates.py); an administrator
+// sees «2.x.y available» in the top bar and in Settings → General, opens what is new, and upgrades from here: the page
+// hands it to the root unit flowsphera-upgrade.path (confirmed with the own password) and shows the installer's log
+// while it runs — the web service restarts in the middle, the page keeps asking until the new version answers
+let UPD = null;
+const UPD_BUSY = ['asked', 'running'];
+const updWhen = t => new Date(t * 1000).toLocaleString(LOC, {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+async function updFetch(){ if (!isAdmin() || KIOSK.on) return null;
+  try { const r = await fetch('api/update'); UPD = r.ok ? await r.json() : null; } catch (e) { UPD = null; } updPill(); return UPD; }
+function updPill(){ const b = document.getElementById('updBtn'); if (!b) return;
+  const busy = !!(UPD && UPD.upgrade && UPD.upgrade.state === 'running'), on = !!(UPD && (UPD.available || busy));
+  b.hidden = !on; if (!on) return;
+  b.textContent = busy ? T('Upgrading…') : T('{v} available', {v:verText(UPD.latest, UPD.latest_build)});
+  b.title = busy ? T('FlowSphera is being upgraded') : T('A new FlowSphera version is published: what is new and how to upgrade'); }
+function updLine(u){
+  if (u.env_off) return T('Checking for new versions is turned off on this server (FT_UPDATE_CHECK=0).');
+  if (!u.check) return T('Checking for new versions is off.');
+  if (u.error && !u.latest) return T('The last check failed ({when}): {error}', {when:u.checked ? updWhen(u.checked) : '—', error:u.error});
+  if (!u.checked) return T('The first check comes within a few minutes after the start.');
+  return u.available ? T('FlowSphera {v} is published (checked {when}).', {v:verText(u.latest, u.latest_build), when:updWhen(u.checked)})
+    : T('This is the newest version (checked {when}).', {when:updWhen(u.checked)}) + (u.error ? ' ' + T('The last check failed: {error}', {error:u.error}) : ''); }
+function openUpdate(){
+  const u = UPD; if (!u) return;
+  const md = openModal(T('FlowSphera upgrade'), T('Installed: {v}', {v:verText(u.version, u.build)}), `<div class="form updform" id="updBody" style="padding:4px 2px"></div>`, true);
+  const body = document.getElementById('updBody'), was = u.version + '.' + u.build;
+  let timer = null, lost = 0;
+  const stop = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const obs = new MutationObserver(() => { if (!body.isConnected) { stop(); obs.disconnect(); } }); obs.observe(document.getElementById('drawerRoot'), {childList:true});
+  const logBox = t => `<pre class="updlog" id="updLog">${esc(t || T('Waiting for the server to start the upgrade…'))}</pre>`;
+  const draw = () => { const x = UPD || u, st = (x.upgrade || {}).state, now = x.version + '.' + x.build;
+    if (UPD_BUSY.includes(st) || lost) {
+      body.innerHTML = `<p class="note updstate"><span class="spin"></span>${lost ? T('The web interface restarts with the new version — waiting for it…') : st === 'asked' ? T('Asked; the server starts the upgrade within seconds.') : T('Upgrading: download, database, services. Settings and data are kept. This takes a few minutes; this window may stay open or be closed.')}</p>${logBox(x.log)}`;
+    } else if (st === 'done' && now !== was) {
+      const hd = md.root.querySelector('.modal header .nat'); if (hd) hd.textContent = T('Installed: {v}', {v:verText(x.version, x.build)});
+      body.innerHTML = `<p class="note ok">${T('FlowSphera {v} is installed.', {v:verText(x.version, x.build)})}</p>${logBox(x.log)}<div><button class="btn primary" id="updReload">${T('Reload the page')}</button></div>`;
+      document.getElementById('updReload').onclick = () => location.reload();
+    } else {
+      const failed = ['failed', 'interrupted'].includes(st) || (st === 'done' && now === was && x.upgrade.started > (u._asked || Infinity));
+      body.innerHTML = `${failed ? `<p class="err">${st === 'interrupted' ? T('The last upgrade was cut off ({when}). Run it again; the log of that try is below.', {when:updWhen(x.upgrade.started)}) : T('The upgrade did not finish (code {rc}). FlowSphera keeps running the version it had; the log is below.', {rc:x.upgrade.rc ?? '?'})}</p>${logBox(x.log)}` : ''}
+        <p class="note">${updLine(x)}${x.available && x.news ? ` <a href="${esc(x.news)}" target="_blank" rel="noopener">${T('What is new in {v}', {v:x.latest})} ↗</a>` : ''}</p>
+        ${x.available ? (x.can_upgrade ? `<form class="form" id="updForm" novalidate>
+          <p class="note" style="margin:0">${T('Upgrade now downloads the new version, upgrades the database and restarts the services; the settings, the data and the license are kept. Collecting pauses briefly while the services restart.')}</p>
+          <label>${T('Your password ({user}) to confirm', {user:esc(ME.name)})}<input id="updPass" type="password" autocomplete="current-password"></label>
+          <p class="err" id="updErr" hidden></p>
+          <div><button class="btn primary" type="submit" id="updOk" disabled>${T('Upgrade to {v} now', {v:verText(x.latest, x.latest_build)})}</button></div></form>`
+          : `<p class="note" style="margin:0">${T('This installation learns to upgrade itself from here with this upgrade. Run once on the server:')}</p>`) : ''}
+        ${x.available ? `<p class="note" style="margin:0">${x.can_upgrade ? T('Or on the server:') : ''}</p>${codeBox('sudo flowsphera upgrade', '', 'mono', 'margin:0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.35)')}` : ''}`;
+      const f = document.getElementById('updForm');
+      if (f) { const pw = document.getElementById('updPass'), ok = document.getElementById('updOk');
+        pw.addEventListener('input', () => { ok.disabled = !pw.value; }); pw.focus();
+        f.onsubmit = async e => { e.preventDefault(); if (ok.disabled) return; ok.disabled = true; formErr('updErr', '');
+          try { u._asked = Math.floor(Date.now() / 1000) - 5; UPD = await apiPost('update/run', {password:pw.value}); updPill(); draw(); poll(); }
+          catch (err) { formErr('updErr', err.message); pw.select(); ok.disabled = false; } }; }
+    }
+    const lg = document.getElementById('updLog'); if (lg) lg.scrollTop = lg.scrollHeight; };
+  // while it runs: every 2 s; the web service is away while it restarts (an error or a 502 from a proxy) — keep asking
+  const poll = () => { stop(); timer = setTimeout(async () => { if (!body.isConnected) return;
+    try { const r = await fetch('api/update'); if (r.status === 401) { location.reload(); return; } if (!r.ok) throw new Error(r.status); UPD = await r.json(); lost = 0; } catch (e) { lost++; }
+    updPill(); draw(); const st = ((UPD || {}).upgrade || {}).state; if (lost || UPD_BUSY.includes(st)) poll(); }, 2000); };
+  draw(); if (UPD_BUSY.includes((u.upgrade || {}).state)) poll();
+}
+async function updPanel(){
+  const el = document.getElementById('updBody2'); if (!el) return;
+  const u = await updFetch(); el.classList.remove('loading');
+  if (!u) { el.innerHTML = `<p class="err">${T('API unavailable')}</p>`; return; }
+  const last = u.upgrade || {};
+  el.innerHTML = `<div class="dnsrow">${u.env_off ? '' : seg('updChk', [['on', T('Every {n} hours', {n:u.every_h})], ['off', T('Off')]], u.check ? 'on' : 'off')}
+      ${u.check && !u.env_off ? `<button class="btn" id="updNow">${T('Check now')}</button>` : ''}
+      ${u.available || UPD_BUSY.includes(last.state) ? `<button class="btn primary" id="updOpen">${UPD_BUSY.includes(last.state) ? T('Upgrading…') : T('Upgrade to {v}…', {v:verText(u.latest, u.latest_build)})}</button>` : ''}
+      <span class="nat" id="updMsg" role="status"></span></div>
+    <p class="note">${updLine(u)}${u.available && u.news ? ` <a href="${esc(u.news)}" target="_blank" rel="noopener">${T('What is new in {v}', {v:u.latest})} ↗</a>` : ''}</p>
+    <p class="nat">${T('Only the published version number is read (from GitHub, where the installer comes from); nothing about this server is sent.')}${last.state === 'done' && last.ended ? ' ' + T('Last upgrade from this page: {from} → {to}, {when}.', {from:verText(last.from, last.from_build), to:verText(last.to, last.to_build), when:updWhen(last.ended)}) : ''}</p>`;
+  if (!u.env_off) wireSeg('updChk', async v => { try { await apiPost('update/config', {check:v === 'on'}); } catch (e) { document.getElementById('updMsg').textContent = e.message; return; } updPanel(); });
+  const n = document.getElementById('updNow'); if (n) n.onclick = async () => { n.disabled = true; document.getElementById('updMsg').textContent = T('Checking…');
+    try { UPD = await apiPost('update/check', {}); } catch (e) { document.getElementById('updMsg').textContent = e.message; n.disabled = false; return; } updPanel(); };
+  const o = document.getElementById('updOpen'); if (o) o.onclick = openUpdate;
+}
 function vGeneral(){
   const ed = META.edition || {};
   // (1.10.0) one even row of four cards (as on Backups), the mail server under it: no panel shorter than its neighbour
@@ -3738,13 +3855,14 @@ function vGeneral(){
       T('only in this browser'))}
     ${card(USER_ICON, T('Account'), esc(ME.display || ME.name), `${ME.role === 'admin' ? T('Administrator') : T('Viewer')}${ME.source === 'ldap' ? ` · ${T('directory account')}` : ` · <button class="lnk" id="myPass">${T('Change my password')}</button>`}`)}
     ${isAdmin() ? `<section class="glass panel s12" id="keepBox">${ph(DISK_ICON, T('Data retention'), T('how many days flow details are kept · at most what your license allows'))}<div id="keepBody" class="loading"></div></section>` : ''}
+    ${isAdmin() ? `<section class="glass panel s12" id="updBox">${ph('pulse', T('Updates'), T('new FlowSphera versions · the upgrade from here'))}<div id="updBody2" class="loading"></div></section>` : ''}
     ${isAdmin() ? `<section class="glass panel s12" id="dnsBox">${ph('search', T('Host names from DNS'), T('reverse DNS (PTR) names of your inside hosts · what FlowSphera asks your DNS server'))}<div id="dnsBody" class="loading"></div></section>` : ''}
     ${isAdmin() ? `<section class="glass panel s12" id="mailBox">${ph(MAIL_ICON, T('Mail server'), T('e-mail (SMTP) for the reports and the e-mail notifications'))}<div id="mailBody" class="loading"></div></section>` : ''}</div>`;
   if (isAdmin()) (async () => { const el = document.getElementById('mailBody');
     try { const r = await fetch('api/mail'); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); mailPanel(el, j);
       if (state.goMail) { state.goMail = false; document.getElementById('mailBox').scrollIntoView({block:'start', behavior:'smooth'}); const h = document.getElementById('rmHost'); if (h) h.focus({preventScroll:true}); } }
     catch (e) { el.classList.remove('loading'); el.innerHTML = `<p class="err">${esc(e.message)}</p>`; } })();
-  if (isAdmin()) { keepPanel(); dnsPanel(); }
+  if (isAdmin()) { keepPanel(); dnsPanel(); updPanel(); }
   document.getElementById('langSel').onchange = e => { if (e.target.value !== LANG) setLang(e.target.value); };
   document.getElementById('toLic').onclick = () => { state.setTab = 'license'; render(); };
   const mp = document.getElementById('myPass'); if (mp) mp.onclick = openPassword;
@@ -5133,8 +5251,8 @@ function renderShell(){
   rs.value = state.range;
   document.getElementById('trafSel').value = state.traffic;
 }
-function saveUrl(){ const p = new URLSearchParams({v:state.view, r:state.range}); if (state.view === 'settings') p.set('tab', state.setTab || 'general'); if (isCustom()) { p.set('from', state.from); p.set('to', state.to); } if (state.traffic !== 'internet') p.set('t', state.traffic); if (state.filters.length) p.set('f', JSON.stringify(state.filters)); if (state.view === 'talkers' && state.talkersBy === 'net') p.set('by', 'net'); kioskParams(p); history.replaceState(null, '', '#' + p); }
-function loadUrl(){ try { const p = new URLSearchParams(location.hash.slice(1)); if (p.get('v') === 'devices' || p.get('v') === 'users') { state.view = 'settings'; state.setTab = p.get('v'); } else if (p.get('v') && VIEWS[p.get('v')]) state.view = p.get('v'); if (p.get('tab')) state.setTab = p.get('tab'); if (p.get('r') === 'custom') { const a = +p.get('from'), b = +p.get('to'); if (a > 0 && b - a >= 60) Object.assign(state, {range:'custom', from:a, to:b}); } else if (p.get('r')) state.range = p.get('r'); if (['internet', 'internal', 'all'].includes(p.get('t'))) state.traffic = p.get('t'); if (p.get('by') === 'net') state.talkersBy = 'net'; if (p.get('f')) { state.filters = []; JSON.parse(p.get('f')).forEach(putFilter); } } catch (e) {} }
+function saveUrl(){ const p = new URLSearchParams({v:state.view, r:state.range}); if (state.view === 'settings') p.set('tab', state.setTab || 'general'); if (isCustom()) { p.set('from', state.from); p.set('to', state.to); } if (state.traffic !== 'internet') p.set('t', state.traffic); if (state.filters.length) p.set('f', JSON.stringify(state.filters)); if (state.view === 'talkers' && state.talkersBy === 'net') p.set('by', 'net'); if (state.view === 'overview' && ovSlots().join() !== OV_DEFAULT.join()) p.set('ov', ovSlots().join()); kioskParams(p); history.replaceState(null, '', '#' + p); }
+function loadUrl(){ try { const p = new URLSearchParams(location.hash.slice(1)); if (p.get('v') === 'devices' || p.get('v') === 'users') { state.view = 'settings'; state.setTab = p.get('v'); } else if (p.get('v') && VIEWS[p.get('v')]) state.view = p.get('v'); if (p.get('tab')) state.setTab = p.get('tab'); if (p.get('r') === 'custom') { const a = +p.get('from'), b = +p.get('to'); if (a > 0 && b - a >= 60) Object.assign(state, {range:'custom', from:a, to:b}); } else if (p.get('r')) state.range = p.get('r'); if (['internet', 'internal', 'all'].includes(p.get('t'))) state.traffic = p.get('t'); if (p.get('by') === 'net') state.talkersBy = 'net'; if (p.get('ov')) state.ovPanels = p.get('ov').split(','); if (p.get('f')) { state.filters = []; JSON.parse(p.get('f')).forEach(putFilter); } } catch (e) {} }
 // (1.8.4) unsaved changes: a settings form sets state.dirty; leaving it (another page, tab, filter …) asks first
 const SHOWN_KEYS = ['view', 'setTab', 'filters', 'range', 'from', 'to', 'traffic', 'prevRange'];
 let SHOWN = null;
@@ -5463,6 +5581,7 @@ document.addEventListener('keydown', e => { if (e.key === '/' && document.active
 // (2.9.1) when this browser last showed the Events page (unix s; per browser: a NOC screen and a desk differ)
 function evSeen(mark){ try { if (mark) localStorage.setItem('ft-ev-seen', String(Math.floor(Date.now() / 1000))); return +localStorage.getItem('ft-ev-seen') || 0; } catch (e) { return 0; } }
 document.getElementById('bell').onclick = () => { state.view = 'threats'; evSeen(true); document.getElementById('bellBadge').hidden = true; render(); };
+document.getElementById('updBtn').onclick = () => { if (UPD) openUpdate(); };      // (2.11.0)
 document.getElementById('repBtn').onclick = openPeriodReport;      // (1.10.0) a PDF of the period and filters on screen
 
 // sidebar health: real collector ingest rate
@@ -5495,4 +5614,5 @@ async function health(){
   ME = await r.json();
   try { META = await fetch('api/meta').then(x => x.json()); } catch (e) {}
   render(); health(); setInterval(() => ME && health(), 60000);
+  updFetch(); setInterval(() => ME && updFetch(), 30 * 60000);      // (2.11.0) a new version: the sign in the top bar
 })();

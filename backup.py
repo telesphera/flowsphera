@@ -70,7 +70,9 @@ DESTS = ('s3', 'sftp', 'ftp')
 _C, _S = CONFIG_DIR.strip('/'), STATE_DIR.strip('/')
 OLD_DIRS = (('etc/flowtrack', _C), ('var/lib/flowtrack', _S))      # (2.0) the folders' names before 2.0
 SKIP_RESTORE = (f'{_C}/env', f'{_C}/clickhouse', f'{_C}/install-lang', f'{_S}/hw.board', f'{_S}/sessions.json',
-                f'{_S}/backup_status.json', f'{_S}/backup_index.json', f'{_S}/backup.request', f'{_S}/backup.lock', f'{_S}/reputation')
+                f'{_S}/backup_status.json', f'{_S}/backup_index.json', f'{_S}/backup.request', f'{_S}/backup.lock', f'{_S}/reputation',
+                # (2.11.0) the upgrade from the web interface: a restored request would upgrade by itself
+                f'{_S}/upgrade.request', f'{_S}/upgrade_status.json', f'{_S}/upgrade.log', f'{_S}/update_check.json')
 LICENSE_FILES = (f'{_S}/license.',)
 
 
@@ -650,7 +652,8 @@ def _tables():
 
 def _settings_tar(path):
     """/etc/flowsphera and /var/lib/flowsphera as they are now (the backups' own state left out)."""
-    skip = {STATUS, INDEX, REQUEST, CONFIG + '.tmp', STATUS + '.tmp', INDEX + '.tmp'}
+    skip = {STATUS, INDEX, REQUEST, CONFIG + '.tmp', STATUS + '.tmp', INDEX + '.tmp',
+            *(os.path.join(STATE_DIR, n) for n in ('upgrade.request', 'upgrade_status.json', 'upgrade.log', 'update_check.json'))}   # (2.11.0)
     with tarfile.open(path, 'w:gz') as t:
         for root in (CONFIG_DIR, STATE_DIR):
             if os.path.isdir(root):

@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from auth import Auth, AuthError  # noqa: E402
 import detect  # noqa: E402
 import custom_rules  # noqa: E402
+import updates  # noqa: E402
 import directory  # noqa: E402
 import reports  # noqa: E402
 import notify  # noqa: E402
@@ -3539,7 +3540,7 @@ STATIC = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', 
 
 AUTH = None
 POLLER = snmp.Poller()
-ADMIN_GET = {'/api/devices/export', '/api/retention', '/api/dns', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
+ADMIN_GET = {'/api/devices/export', '/api/retention', '/api/dns', '/api/update', '/api/users', '/api/events/config', '/api/notify', '/api/backups', '/api/reports', '/api/reports/pdf', '/api/mail', '/api/tokens', '/api/ldap'}
 # (1.11.0) what an API token can never do, whatever its scope: people's accounts, the tokens themselves, the license,
 # deleting backups, and what only a browser session has
 TOKEN_DENY = {'/api/devices/import', '/api/retention', '/api/users', '/api/users/update', '/api/users/delete', '/api/tokens', '/api/tokens/delete', '/api/ldap', '/api/ldap/test', '/api/mail/delete', '/api/license',
@@ -3673,6 +3674,8 @@ class H(BaseHTTPRequestHandler):
                     return self.json(200, get_retention())
                 if u.path == '/api/dns':
                     return self.json(200, get_dns())
+                if u.path == '/api/update':            # (2.11.0) new versions + the upgrade from here
+                    return self.json(200, updates.status(with_log=True))
                 if u.path == '/api/devices/export':
                     return self.json(200, get_devices_export())
                 if u.path == '/api/tokens':
@@ -3820,6 +3823,9 @@ class H(BaseHTTPRequestHandler):
                 '/api/backups/delete': lambda: post_backups_delete(body, user, self.client_ip()),
                 '/api/retention': lambda: post_retention(body, user, self.client_ip()),
                 '/api/dns': lambda: post_dns(body),            # (2.6.0)
+                '/api/update/config': lambda: post_update_config(body),       # (2.11.0)
+                '/api/update/check': lambda: post_update_check(),
+                '/api/update/run': lambda: post_update_run(body, user, self.client_ip()),
                 '/api/backups/test': lambda: post_backups_test(body),
                 '/api/reports/save': lambda: post_report_save(body),
                 '/api/reports/delete': lambda: post_report_delete(body),
@@ -4192,6 +4198,31 @@ def post_retention(body, user, ip):
     return get_retention()
 
 
+def post_update_config(body):
+    """(2.11.0) Look for new versions every 12 hours (on) or never (an offline server)."""
+    if not isinstance(body.get('check'), bool):
+        raise BadRequest('check: true or false')
+    updates.set_enabled(body['check'])
+    return updates.status()
+
+
+def post_update_check():
+    updates.check()
+    return updates.status()
+
+
+def post_update_run(body, user, ip):
+    """(2.11.0) «Upgrade now»: confirmed with the admin's own password, then handed to the root unit
+    flowsphera-upgrade.path (the web service itself can change nothing outside its data)."""
+    AUTH.check_password(user, str(body.get('password') or ''), ip)
+    try:
+        updates.ask_upgrade(user)
+    except RuntimeError:
+        raise BadRequest(tr('This installation cannot upgrade itself from the web interface yet: run sudo flowsphera upgrade once on the server.'))
+    print(f'[flowsphera-api] upgrade asked from the web interface by {user}', flush=True)
+    return updates.status(with_log=True)
+
+
 def post_backups_delete(body, user, ip):
     """(1.8.8) Delete backups by hand; confirmed with the signed-in admin's own password (no slip of the mouse deletes
     one). A full backup takes its changes with it; copies on the places only when asked."""
@@ -4361,6 +4392,7 @@ if __name__ == '__main__':
     threading.Thread(target=reports.scheduler, args=(report_call, VERSION), daemon=True).start()      # (1.10.0)
     threading.Thread(target=dns_indexer, args=(threading.Event(),), daemon=True).start()   # (2.5.0) host names
     # (2.10.0) the operator's own event rules, every 10 minutes
+    threading.Thread(target=updates.checker, kwargs={'log': lambda m: print(f'[flowsphera-api] {m}', flush=True)}, daemon=True).start()   # (2.11.0)
     threading.Thread(target=custom_rules.Runner(custom_measure, lambda m: print(f'[flowsphera-api] {m}', flush=True)).run, daemon=True).start()
     for srv in servers[1:]:
         threading.Thread(target=srv.serve_forever, daemon=True).start()
