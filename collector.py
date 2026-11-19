@@ -956,7 +956,10 @@ class Receiver:
         ifcounters.start(log)          # (1.14.0) interface counters over SNMP every minute (ifcounters.py)
         ifcounters.start_rates(log)    # (1.16.2) their rates in 5-minute buckets for Capacity
         try:
-            self.listeners = open_listeners(BIND, PORT, socket.SOCK_DGRAM, set_rcvbuf, log)
+            # (2.11.1) an interface without its address yet is waited for (common.BIND_WAIT); systemd's start timeout
+            # (TimeoutStartSec=300, partly spent waiting for ClickHouse) is extended meanwhile
+            self.listeners = open_listeners(BIND, PORT, socket.SOCK_DGRAM, set_rcvbuf, log,
+                                            tick=lambda: sd_notify('EXTEND_TIMEOUT_USEC=30000000'))
         except (OSError, ValueError) as ex:
             low = ' — a port below 1024 needs CAP_NET_BIND_SERVICE in flowsphera-collector.service (sudo flowsphera upgrade puts it there) or a port from 1024' \
                 if getattr(ex, 'errno', None) == 13 and int(PORT) < 1024 else ''     # (1.18.0)

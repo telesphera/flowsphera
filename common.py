@@ -319,6 +319,17 @@ def iface_addrs(dev):
     return [ip for fam, ip in sorted(addrs, key=lambda x: x[0] != 'inet')]
 
 
+class NoAddress(OSError):
+    """an interface named in FT_BIND / FT_WEB_BIND has no address (yet)"""
+
+
+# (2.11.1) at a start the interface may have no address yet: after a power cut the router (DHCP) comes up after the
+# server, and network-online.target does not wait for it. Both services exited and systemd started them again every
+# 3 s — on the Optiplex 19.11.2026 29 times in 2 minutes, a journal full of failures (and one short of systemd's own
+# start limit giving up). Now they wait for the address up to BIND_WAIT seconds, saying so once
+BIND_WAIT = 300
+
+
 def bind_plan(spec):
     """[(address, interface or None)] to bind right now; [('::', None)] = all interfaces (dual-stack)."""
     plan = []
@@ -328,7 +339,7 @@ def bind_plan(spec):
         if dev:
             addrs = iface_addrs(dev)
             if not addrs:
-                raise OSError(f'interface {dev} has no IP address yet')
+                raise NoAddress(f'interface {dev} has no IP address yet')
             plan += [(a, dev) for a in addrs]
         else:
             plan.append((host, None))
@@ -356,11 +367,29 @@ def _bound(host, port, socktype, configure):
         return _bound('0.0.0.0', port, socktype, configure)
 
 
-def open_listeners(spec, port, socktype, configure=lambda s: None, log=print):
+def open_listeners(spec, port, socktype, configure=lambda s: None, log=print, wait=None, tick=None):
     """Bound (not yet listening) sockets for FT_BIND / FT_WEB_BIND, as [(socket, interface or None)].
-    ::1 is skipped quietly when IPv6 is disabled."""
+    ::1 is skipped quietly when IPv6 is disabled. An interface without an address yet is waited for up to `wait` seconds
+    (BIND_WAIT); `tick()` is called meanwhile (the collector tells systemd to extend its start timeout)."""
+    wait = BIND_WAIT if wait is None else wait
+    deadline, said = time.monotonic() + wait, False
+    while True:
+        try:
+            plan = bind_plan(spec)
+            break
+        except NoAddress as ex:
+            if time.monotonic() >= deadline:
+                raise
+            if not said:
+                log(f'{ex}: waiting up to {wait} s for it (after a power cut the router may come up later)')
+                said = True
+            if tick:
+                tick()
+            time.sleep(2)
+    if said:
+        log(f'{", ".join(sorted({d for _, d in plan if d}))}: address there, listening')
     out = []
-    for host, dev in bind_plan(spec):
+    for host, dev in plan:
         try:
             out.append((_bound(host, port, socktype, configure), dev))
         except OSError:
