@@ -4,6 +4,7 @@ parts of flows kept the table offline for 18 hours)."""
 import os
 import sys
 import tempfile
+import threading
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -145,19 +146,90 @@ class Text(unittest.TestCase):
 
 
 class Cleanup(unittest.TestCase):
-    def test_old_broken_parts_removed_quoted(self):
-        calls, old = [], recovery.ch
+    """(2.11.1) every old broken part goes, also those ClickHouse cannot read the name of (reason NULL), a run stops
+    after its time budget and the next look goes on; a part that cannot be removed does not stop the rest"""
+
+    def fake(self, parts, fail=()):
+        """ch() over a list of detached parts {table, name}: the SELECT answers what is left (minus the excluded), each
+        DROP removes one"""
+        self.calls, self.left, old = [], list(parts), recovery.ch
 
         def ch(q, params=None, fmt=None, settings=None, **kw):
-            calls.append((q, settings))
-            return [{'table': 'flows', 'name': "20261001_1_1_0"}] if q.startswith('SELECT') else []
+            self.calls.append((q, params, settings))
+            if q.lstrip().startswith('SELECT'):
+                skip = set(params['f'])
+                return [p for p in self.left if f"{p['table']}/{p['name']}" not in skip][:params['n']]
+            name = q.split("DROP DETACHED PART '")[1][:-1].replace("\\'", "'")
+            if name in fail:
+                raise recovery.CHError('Code: 36. bad part')
+            self.left = [p for p in self.left if p['name'] != name]
+            return []
         recovery.ch = ch
-        try:
-            self.assertEqual(recovery.Recovery().cleanup(), 1)
-        finally:
-            recovery.ch = old
-        self.assertIn("reason IN {r:Array(String)}", calls[0][0])
-        self.assertEqual(calls[1], ("ALTER TABLE `flows` DROP DETACHED PART '20261001_1_1_0'", {'allow_drop_detached': 1}))
+        self.addCleanup(setattr, recovery, 'ch', old)
+
+    def test_old_broken_parts_removed_quoted(self):
+        self.fake([{'table': 'flows', 'name': "broken-on-start_20261001_1_1_0"},
+                   {'table': 'agg_conv', 'name': "broken-on-start_all_7_7_0_try1"}])
+        self.assertEqual(recovery.Recovery(log=lambda m: None).cleanup(), (2, False))
+        q, params, _ = self.calls[0]
+        # chosen by the name's prefix: a `_try1` name has reason NULL (the Optiplex, 18.11.2026)
+        self.assertNotIn('reason', q)
+        self.assertIn("startsWith(name, concat(r, '_'))", q)
+        self.assertEqual((params['r'], params['d']), (['broken-on-start'], 7))
+        self.assertEqual(self.calls[1][0], "ALTER TABLE `flows` DROP DETACHED PART 'broken-on-start_20261001_1_1_0'")
+        self.assertEqual(self.calls[1][2], {'allow_drop_detached': 1})
+        self.assertEqual(self.calls[2][0], "ALTER TABLE `agg_conv` DROP DETACHED PART 'broken-on-start_all_7_7_0_try1'")
+        self.assertEqual(self.left, [])
+
+    def test_no_cap_of_500(self):
+        parts = [{'table': 'flows', 'name': f'broken-on-start_20261001_{i}_{i}_0'} for i in range(2500)]
+        self.fake(parts)
+        old = recovery.CLEAN_BATCH
+        recovery.CLEAN_BATCH = 1000
+        self.addCleanup(setattr, recovery, 'CLEAN_BATCH', old)
+        self.assertEqual(recovery.Recovery(log=lambda m: None).cleanup(budget=60), (2500, False))
+        self.assertEqual(self.left, [])
+
+    def test_budget_stops_and_says_more_left(self):
+        self.fake([{'table': 'flows', 'name': f'broken-on-start_20261001_{i}_{i}_0'} for i in range(5)])
+        self.assertEqual(recovery.Recovery(log=lambda m: None).cleanup(budget=0), (0, True))
+        self.assertEqual(len(self.left), 5)
+
+    def test_part_that_fails_is_passed_over(self):
+        logs = []
+        self.fake([{'table': 'flows', 'name': 'broken-on-start_bad'}, {'table': 'flows', 'name': 'broken-on-start_ok'}],
+                  fail={'broken-on-start_bad'})
+        old = recovery.CLEAN_BATCH
+        recovery.CLEAN_BATCH = 2     # a full batch -> one more SELECT, which must leave the failed part out
+        self.addCleanup(setattr, recovery, 'CLEAN_BATCH', old)
+        self.assertEqual(recovery.Recovery(log=logs.append).cleanup(), (1, False))
+        self.assertEqual([p['name'] for p in self.left], ['broken-on-start_bad'])
+        self.assertTrue(any('broken-on-start_bad not removed' in m for m in logs))
+        self.assertEqual(self.calls[-1][1]['f'], ['flows/broken-on-start_bad'])
+
+    def test_watch_goes_on_while_more_left(self):
+        r, runs, looks, stop = recovery.Recovery(log=lambda m: None), [], [], threading.Event()
+        answers = [(10, True), (3, False)]
+
+        def check():
+            looks.append(1)
+            if len(looks) == 4:
+                stop.set()
+            return False
+
+        def cleanup():
+            runs.append(len(looks))
+            return answers.pop(0) if answers else (0, False)
+        r.cleanup, r.check = cleanup, check
+        old = recovery.time.sleep
+        recovery.time.sleep = lambda s: None
+        self.addCleanup(setattr, recovery.time, 'sleep', old)
+        t = threading.Thread(target=r.watch, args=(threading.Lock(), stop), daemon=True)
+        t.start()
+        t.join(5)
+        self.assertFalse(t.is_alive())
+        # look 1: the daily run; look 2: more were left; looks 3 and 4: none left, next run in a day
+        self.assertEqual(runs, [1, 2])
 
 
 class Remake(unittest.TestCase):

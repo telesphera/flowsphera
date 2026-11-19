@@ -14,7 +14,8 @@ and this module tells the people what happened:
 - an event «Database recovered after an unclean stop» (detect kind db_recovered) says when the server stopped, what
   was set aside, which records are missing and what was summed again, on the Events page and on every notification
   channel;
-- broken parts set aside more than KEEP_DAYS ago are removed (they are kept that long for a look by hand).
+- broken parts set aside more than KEEP_DAYS ago are removed (they are kept that long for a look by hand) — every one
+  of them, also those ClickHouse cannot read the name of (2.11.1).
 State: STATE_DIR/recovery.json (the ClickHouse start already looked at)."""
 import datetime
 import json
@@ -34,8 +35,12 @@ STATE = os.path.join(STATE_DIR, 'recovery.json')
 FSYNC_ON = os.environ.get('FT_CH_FSYNC', '0') == '1'
 DURABLE = ('flows', 'agg_state', 'events')
 FSYNC = {'fsync_after_insert': 1, 'fsync_part_directory': 1, 'min_rows_to_fsync_after_merge': 1}
-KEEP_DAYS = 30
-DROP_PER_RUN = 500       # removing a detached part is one query each: thousands after many power cuts, a few at a time
+# (2.11.1) 7 days, not 30, and no cap of 500 a day: after three weeks of power cuts the Optiplex held 74,141 of them
+# (~1 M files, 23 % of the root file system's inodes) — they came faster than 500 a day went. Removing one is a query
+# each, so a run stops after CLEAN_BUDGET seconds and the next look (5 min later) goes on until none is left
+KEEP_DAYS = 7
+CLEAN_BATCH = 1000
+CLEAN_BUDGET = 120
 BROKEN = ('broken-on-start',)
 
 
@@ -161,29 +166,47 @@ class Recovery:
             self.notifier = notify.Notifier(self.log)
         self.notifier.push([{'kind': r['kind'], 'row': r} for r in new], cfg['kinds'], now)
 
-    def cleanup(self):
-        """remove broken parts set aside more than KEEP_DAYS ago, DROP_PER_RUN at a time -> how many"""
-        old = ch("""SELECT table, name FROM system.detached_parts WHERE database = currentDatabase() AND reason IN {r:Array(String)}
-                AND modification_time < now() - INTERVAL {d:UInt16} DAY LIMIT {n:UInt32}""",
-                 {'r': list(BROKEN), 'd': KEEP_DAYS, 'n': DROP_PER_RUN}, fmt='JSON')
-        for p in old:
-            ch(f"ALTER TABLE `{p['table']}` DROP DETACHED PART '{sql_str(p['name'])}'", settings={'allow_drop_detached': 1})
-        return len(old)
+    def cleanup(self, budget=None):
+        """remove broken parts set aside more than KEEP_DAYS ago (modification_time = when ClickHouse set the part aside:
+        it touches the folder as it moves it) for up to `budget` seconds -> (how many, whether some are left).
+        (2.11.1) Chosen by the name's prefix, not `reason`: a second broken part of the same name gets `_try1` added,
+        ClickHouse cannot read such a name and shows reason, partition and level as NULL — on the Optiplex those were
+        never removed"""
+        budget = CLEAN_BUDGET if budget is None else budget
+        start, n, failed = time.monotonic(), 0, []
+        while True:
+            # a part that cannot be removed is passed over (and named once in the log), never tried again in this run
+            old = ch("""SELECT table, name FROM system.detached_parts WHERE database = currentDatabase()
+                    AND arrayExists(r -> startsWith(name, concat(r, '_')), {r:Array(String)})
+                    AND modification_time < now() - INTERVAL {d:UInt16} DAY AND concat(table, '/', name) NOT IN {f:Array(String)}
+                    LIMIT {n:UInt32}""",
+                     {'r': list(BROKEN), 'd': KEEP_DAYS, 'f': failed, 'n': CLEAN_BATCH}, fmt='JSON')
+            for p in old:
+                if time.monotonic() - start >= budget:
+                    return n, True
+                try:
+                    ch(f"ALTER TABLE `{p['table']}` DROP DETACHED PART '{sql_str(p['name'])}'", settings={'allow_drop_detached': 1})
+                    n += 1
+                except CHError as ex:
+                    failed.append(f"{p['table']}/{p['name']}")
+                    self.log(f"WARN broken part {p['table']}/{p['name']} not removed: {str(ex)[:200]}")
+            if len(old) < CLEAN_BATCH:
+                return n, False
 
     def watch(self, lock, stop=None, every=300):
         """the collector's thread: ClickHouse may start again on its own (a restart of its container, a crash), then
         its new broken parts are looked at here; once a day the old ones are removed"""
-        cleaned = 0
+        cleaned, more = 0, False
         while not (stop and stop.is_set()):
             time.sleep(every)
             try:
                 with lock:
                     if self.check():
                         rollups.backfill(self.log)
-                if time.time() - cleaned >= 86400:
-                    n = self.cleanup()
+                if more or time.time() - cleaned >= 86400:
+                    n, more = self.cleanup()
                     if n:
-                        self.log(f'removed {n} broken parts set aside more than {KEEP_DAYS} days ago')
+                        self.log(f'removed {n} broken parts set aside more than {KEEP_DAYS} days ago' + (', more left' if more else ''))
                     cleaned = time.time()
             except (CHError, OSError) as ex:
                 self.log(f'WARN recovery check: {str(ex)[:200]}')
