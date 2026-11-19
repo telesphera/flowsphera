@@ -199,14 +199,20 @@ class Recovery:
         cleaned, more = 0, False
         while not (stop and stop.is_set()):
             time.sleep(every)
+            # (2.11.1) the cleanup first and NOT under the lock: it touches only parts set aside, nothing the rollups
+            # read, and the rollups thread holds the lock for its whole backfill — after a power cut the 10-minute
+            # settle and the summing again — so behind the lock it waited (Lab powercut #141: nothing removed in 7 min)
             try:
-                with lock:
-                    if self.check():
-                        rollups.backfill(self.log)
                 if more or time.time() - cleaned >= 86400:
                     n, more = self.cleanup()
                     if n:
                         self.log(f'removed {n} broken parts set aside more than {KEEP_DAYS} days ago' + (', more left' if more else ''))
                     cleaned = time.time()
+            except (CHError, OSError) as ex:
+                self.log(f'WARN broken parts cleanup: {str(ex)[:200]}')
+            try:
+                with lock:
+                    if self.check():
+                        rollups.backfill(self.log)
             except (CHError, OSError) as ex:
                 self.log(f'WARN recovery check: {str(ex)[:200]}')

@@ -228,8 +228,29 @@ class Cleanup(unittest.TestCase):
         t.start()
         t.join(5)
         self.assertFalse(t.is_alive())
-        # look 1: the daily run; look 2: more were left; looks 3 and 4: none left, next run in a day
-        self.assertEqual(runs, [1, 2])
+        # (looks counted when the cleanup runs: it goes before each look) round 1: the daily run; round 2: more were
+        # left; rounds 3 and 4: none left, next run in a day
+        self.assertEqual(runs, [0, 1])
+
+
+    def test_cleanup_not_behind_the_rollups_lock(self):
+        """the rollups thread holds the lock for its whole backfill (10-min settle after a power cut): the cleanup must
+        not wait for it (Lab powercut #141)"""
+        r, stop, done = recovery.Recovery(log=lambda m: None), threading.Event(), threading.Event()
+
+        def cleanup():
+            done.set()
+            stop.set()
+            return 0, False
+        r.cleanup, r.check = cleanup, lambda: False
+        old = recovery.time.sleep
+        recovery.time.sleep = lambda s: None
+        self.addCleanup(setattr, recovery.time, 'sleep', old)
+        lock = threading.Lock()
+        lock.acquire()                       # the rollups thread, busy
+        self.addCleanup(lambda: lock.locked() and lock.release())
+        threading.Thread(target=r.watch, args=(lock, stop), daemon=True).start()
+        self.assertTrue(done.wait(5), 'the cleanup waited for the rollups lock')
 
 
 class Remake(unittest.TestCase):
