@@ -82,6 +82,12 @@ class WebParts(unittest.TestCase):
         body = re.search(r"function placeFilter\(city, cc\)\{(.*)\}", self.js).group(1)
         self.assertIn("putFilter({k:'country', v:cc})", body)
 
+    def test_version_card_tells_the_update_state(self):
+        self.assertIn('<span id="verState">', self.js)
+        body = self.js[self.js.index("const vs = document.getElementById('verState')"):][:900]
+        self.assertIn('u.available', body)
+        self.assertIn("scrollIntoView", body)
+
     def test_dns_panel(self):
         self.assertIn("api('hosts/dns'", self.js)
         self.assertIn("apiPost('hosts/names/add'", self.js)

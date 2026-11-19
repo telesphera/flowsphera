@@ -3855,6 +3855,12 @@ async function updPanel(){
   const u = await updFetch(); el.classList.remove('loading');
   if (!u) { el.innerHTML = `<p class="err">${T('API unavailable')}</p>`; return; }
   const last = u.upgrade || {};
+  // (2.12.0) the Version card at the top says what this panel knows: the newest version, or a newer one with a way here
+  const vs = document.getElementById('verState');
+  if (vs) { const b = META.build > 1 ? esc(T('build {n}', {n: META.build})) + ' · ' : '';
+    vs.innerHTML = u.available ? `<button class="lnk" id="toUpd">${T('{v} available', {v:esc(verText(u.latest, u.latest_build))})} →</button> · `
+      : u.latest && !u.env_off && u.check ? `${b}<span class="ok">✓ ${T('the newest')}</span> · ` : b;
+    const t = document.getElementById('toUpd'); if (t) t.onclick = () => document.getElementById('updBox').scrollIntoView({behavior:'smooth', block:'start'}); }
   el.innerHTML = `<div class="dnsrow">${u.env_off ? '' : seg('updChk', [['on', T('Every {n} hours', {n:u.every_h})], ['off', T('Off')]], u.check ? 'on' : 'off')}
       ${u.check && !u.env_off ? `<button class="btn" id="updNow">${T('Check now')}</button>` : ''}
       ${u.available || UPD_BUSY.includes(last.state) ? `<button class="btn primary" id="updOpen">${UPD_BUSY.includes(last.state) ? T('Upgrading…') : T('Upgrade to {v}…', {v:verText(u.latest, u.latest_build)})}</button>` : ''}
@@ -3871,7 +3877,7 @@ function vGeneral(){
   // (1.10.0) one even row of four cards (as on Backups), the mail server under it: no panel shorter than its neighbour
   const card = (ic, k, v, sub) => `<section class="glass panel kcard gcard s3"><span class="ico">${icon(ICO[ic] || ic, 22)}</span><span class="k">${k}</span><span class="v">${v}</span><span class="nat">${sub}</span></section>`;
   document.getElementById('setBody').innerHTML = `<div class="grid">
-    ${card('list', T('Version'), `FlowSphera ${esc(META.version || '—')}`, `${META.build > 1 ? esc(T('build {n}', {n: META.build})) + ' · ' : ''}<a href="https://github.com/telesphera/flowsphera" target="_blank" rel="noopener">${T('Source code')} ↗</a>`)}
+    ${card('list', T('Version'), `FlowSphera ${esc(META.version || '—')}`, `<span id="verState">${META.build > 1 ? esc(T('build {n}', {n: META.build})) + ' · ' : ''}</span><a href="https://github.com/telesphera/flowsphera" target="_blank" rel="noopener">${T('Source code')} ↗</a>`)}
     ${card('shield', T('Edition'), ed.status === 'active' ? 'Pro' : 'Community', `<button class="lnk" id="toLic">${T('License')} →</button>`)}
     ${card('globe', T('Language'), `<select id="langSel" aria-label="${T('Language')}">${langs().map(([v, l]) => `<option value="${v}" lang="${v}" ${LANG === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`,
       T('only in this browser'))}
