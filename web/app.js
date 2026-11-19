@@ -1866,9 +1866,14 @@ function createTopoMap(host, opts){
   const cloudPath = ({x, y, w, h}) => rr(x - w / 2, y - h / 2, w, h, h / 2);
   // (1.9.0) shared by every view: names, tooltips
   const nmOf = d => esc(d === 'internet' ? T('Internet') : ((data && data.nodes.find(n => n.ip === d)) || {}).name || d);
+  // (2.12.0) a link with none of the selected traffic (e.g. Internet over a link between two firewalls) still carries
+  // other traffic: the tooltip says how much, so an empty-looking link is not taken for a broken one
+  const linkVol = x => Math.max(x.a_out || 0, x.b_in || 0) + Math.max(x.b_out || 0, x.a_in || 0);
+  const linkIdle = l => !linkVol(l) && l.all && linkVol(l.all) > 0 ? `<div class="nat">${T('None of the selected traffic over this link in the period; all its traffic: {v}', {v:fmtB(linkVol(l.all))})}</div>` : '';
   const linkTip = l => `<b>${nmOf(l.a)} ${esc(l.a_name)} ↔ ${nmOf(l.b)} ${esc(l.b_name)}</b>${l.net ? ` <span class="nat">${esc(l.net)}</span>` : ''}<div style="color:${l.state === 'observed' ? C.ext : l.state === 'adjacent' || l.state === 'one_sided' ? C.ink2 : RED}">${LINK_STATE[l.state][0]} — ${LINK_STATE[l.state][1]}</div>`
       + (l.b === 'internet' ? `<div>${T('to the internet')}: <b class="mono">${fmtB(l.a_out)}</b> · ${T('from it')}: <b class="mono">${fmtB(l.a_in)}</b></div>`
-        : [[l.a, l.b, l.a_out, l.b_in], [l.b, l.a, l.b_out, l.a_in]].map(([f, t, s, g]) => `<div>${nmOf(f)} → ${nmOf(t)}: <b class="mono">${fmtB(s)}</b> ${T('sent')} · <b class="mono">${fmtB(g)}</b> ${T('received')}</div>`).join('')) + linkHints(l, nmOf, !!(data && data.live)).map(x => `<div class="lhint">${x}</div>`).join('');
+        : [[l.a, l.b, l.a_out, l.b_in], [l.b, l.a, l.b_out, l.a_in]].map(([f, t, s, g]) => `<div>${nmOf(f)} → ${nmOf(t)}: <b class="mono">${fmtB(s)}</b> ${T('sent')} · <b class="mono">${fmtB(g)}</b> ${T('received')}</div>`).join(''))
+      + linkIdle(l) + linkHints(l, nmOf, !!(data && data.live)).map(x => `<div class="lhint">${x}</div>`).join('');
   const nodeTip = n => `<b>${nmOf(n.ip)}</b>${n.ip !== 'internet' ? ` <span class="nat">${esc(n.ip)}</span><div>${n.exporting ? T('sends NetFlow') : T('sent no NetFlow in this period')}</div>` : ''}${n.more ? `<div>${Tn(n.more, '{n} more neighbour beyond', '{n} more neighbours beyond')}</div>` : ''}${n.ip !== data.pov && n.ip !== 'internet' ? `<div class="nat">${T('Click: look from this device')}</div>` : ''}`;
   const inetTip = () => `<b>${T('Internet')}</b>` + data.links.filter(l => l.b === 'internet').map(l => `<div>${nmOf(l.a)} <span class="mono">${esc(l.a_name)}</span>: ↗ <b class="mono">${fmtB(l.a_out)}</b> · ↘ <b class="mono">${fmtB(l.a_in)}</b></div>`).join('');
   function drawClassic(){
@@ -1900,6 +1905,9 @@ function createTopoMap(host, opts){
       ctx.fillStyle = colr; ctx.textAlign = 'center'; ctx.fillText(text, x, y + .5); };
     const stateLook = l => l.state === 'adjacent' ? ['rgba(170,190,230,.55)', T('no traffic')] : l.state === 'silent' ? [AMBER, '◌ ' + LINK_STATE.silent[0]] : l.state === 'gap' || l.state === 'unobserved' ? [RED, '⨯ ' + LINK_STATE[l.state][0]] : null;
     const tipOf = linkTip;
+    // (2.12.0) a link with none of the selected traffic: a thin quiet line, so the structure stays (the other views keep
+    // it too); before, only its interface labels were left and the path looked broken
+    const quiet = path => { ctx.strokeStyle = 'rgba(150,175,225,.5)'; ctx.lineWidth = 1.4; ctx.stroke(path); };
     // where each link meets a card: the links on one side of a card get a slot each down its height, ordered by the
     // far end; the ribbon leaves at the bottom of its slot, its label sits above it
     const ends = new Map(), anchor = new Map();
@@ -1933,6 +1941,7 @@ function createTopoMap(host, opts){
         if (thin()) { thinLine(curve(0), l); geoms.set(l, mkGeo(cubicPts([xd, yd], [xd, ym], [xc, ym], [xc, yc]), false)); }
         if (w && l.state !== 'adjacent') ribbon(curve, l, rw, false);
         if (look) { ctx.setLineDash([5, 5]); ctx.strokeStyle = look[0]; ctx.lineWidth = 1.6; ctx.stroke(curve(w ? rw / 2 + 4 : 0)); ctx.setLineDash([]); }
+        else if (!w && !thin()) quiet(curve(0));
         const inward = xc >= xd;                  // the label on the cloud's side of the ribbon: it stays inside the map
         labels.push({parts:[l.a_name, l.a_addr], x:inward ? xd + rw / 2 + 8 : xd - rw / 2 - 8, top:yd - 36, align:inward ? 'left' : 'right', room:GAP / 2 + CW / 2 - 12, dim});
         ctx.globalAlpha = 1;
@@ -1950,6 +1959,7 @@ function createTopoMap(host, opts){
         if (thin()) { thinLine(curve(0), l); geoms.set(l, mkGeo(cubicPts([xu, yu], [xu + out, yu + 30], [xu + out, yd2 - 30], [xu, yd2]), U !== A)); }
         if (w && l.state !== 'adjacent') ribbon(curve, l, rw, false);
         if (look) { ctx.setLineDash([5, 5]); ctx.strokeStyle = look[0]; ctx.lineWidth = 1.6; ctx.stroke(curve(w ? rw / 2 + 4 : 0)); ctx.setLineDash([]); }
+        else if (!w && !thin()) quiet(curve(0));
         if (look) pills.push([look[1], xu + out * .75, (yu + yd2) / 2, look[0], dim]);
         ctx.globalAlpha = 1;
         shapes.push({stroke:curve(0), sw:Math.max(12, rw + 6), l, tip:tipOf(l)});
@@ -1961,6 +1971,7 @@ function createTopoMap(host, opts){
       if (thin()) { thinLine(curve(0), l); geoms.set(l, mkGeo(cubicPts([xa, ya], [xm, ya], [xm, yb], [xb, yb]), flip)); }
       if (w && l.state !== 'adjacent') ribbon(curve, l, w, true);
       if (look) { ctx.setLineDash([5, 5]); ctx.strokeStyle = look[0]; ctx.lineWidth = 1.6; ctx.stroke(curve(w ? w / 2 + 4 : 0)); ctx.setLineDash([]); }
+      else if (!w && !thin()) quiet(curve(0));
       // interface · address at each end, on the side the ribbon bends away from (two lines when one does not fit)
       const la = flip ? [l.b_name, l.b_addr] : [l.a_name, l.a_addr], lb = flip ? [l.a_name, l.a_addr] : [l.b_name, l.b_addr], room = (xb - xa) / 2 - (look ? 44 : 12);     // half the gap each: the state sits in the middle
       // several links on a card side: each label in its slot above its ribbon; a lone link: the side its ribbon bends away from

@@ -2294,5 +2294,6 @@
  "No names from DNS yet: they come as your hosts show up on the pages (or in the background, Settings → General).": "Назв з DNS ще немає: вони з'являються, коли ваші хости показуються на сторінках (або у фоні, Налаштування → Загальні).",
  "download": "завантаження",
  "upload": "вивантаження",
- "the newest": "найновіша"
+ "the newest": "найновіша",
+ "None of the selected traffic over this link in the period; all its traffic: {v}": "Вибраного трафіку цим зв'язком за період не було; усього трафіку: {v}"
 }

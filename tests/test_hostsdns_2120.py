@@ -88,6 +88,12 @@ class WebParts(unittest.TestCase):
         self.assertIn('u.available', body)
         self.assertIn("scrollIntoView", body)
 
+    def test_classic_keeps_a_link_without_the_selected_traffic(self):
+        # (2.12.0) Path analysis → Classic drew nothing for a link with 0 of the selected traffic (Internet over the
+        # GRE link between two firewalls): every branch now draws a quiet line, and the tooltip says what else it carries
+        self.assertEqual(self.js.count("else if (!w && !thin()) quiet(curve(0));"), 3)
+        self.assertIn("+ linkIdle(l) + linkHints(", self.js)
+
     def test_dns_panel(self):
         self.assertIn("api('hosts/dns'", self.js)
         self.assertIn("apiPost('hosts/names/add'", self.js)
