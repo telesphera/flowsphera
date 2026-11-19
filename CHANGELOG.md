@@ -4,6 +4,20 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.11.1 — 2026-11-19
+
+### Fixed
+- **Database parts broken by power cuts are cleaned up in full.** After an unclean stop ClickHouse sets aside the parts
+  it cannot read and FlowSphera removed them later, but only 500 a day, only after 30 days, and never those whose name
+  ClickHouse cannot read (a second broken part of the same name). On a server that often loses power they piled up:
+  tens of thousands of small folders, a noticeable share of the file system's inodes. Now every broken part set aside
+  more than 7 days ago is removed, thousands a second; one that cannot be removed is named in the collector's log and
+  does not hold up the rest. Nothing to do: after the upgrade the old ones are gone within minutes.
+- **Starting before the network is ready.** With an interface named in `FT_BIND` or `FT_WEB_BIND`, a server that came
+  up before its router (after a power cut the router is often the slower one) found the interface without an address:
+  the collector and the web service stopped and were started again every few seconds until the address came. Now
+  they wait for it up to 5 minutes, say so once in their logs and start listening the moment it is there.
+
 ## 2.11.0 — 2026-11-18
 
 ### Added
