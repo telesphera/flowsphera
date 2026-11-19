@@ -394,6 +394,23 @@ def api_hosts_find(q):
     return {'hosts': NAMES.find(q.get('q', [''])[0][:100], limit)}
 
 
+def api_hosts_dns(q):
+    """(2.12.0, forum #54) GET /api/hosts/dns?q=&offset=&limit=: the names reverse DNS gave your hosts (Settings → Host
+    names shows them, an administrator makes one his own there). {items: [{ip, name, at, own}], total, mode} — sorted by
+    address, `q` = part of the address or the name, `own` = the name set by hand that wins over it."""
+    text = ' '.join(q1(q, 'q', '').split()).lower()[:100]
+    off = max(0, q1(q, 'offset', '0', int))
+    lim = max(1, min(q1(q, 'limit', '100', int), 1000))
+    with NAMES.lock:
+        rows = [(ip, n, t) for ip, (n, t) in NAMES.cache.items() if n]
+    if text:
+        rows = [r for r in rows if text in r[0] or text in r[1].lower()]
+    rows.sort(key=lambda r: _ip_key(r[0]))
+    own = NAMES.manual
+    return {'items': [{'ip': ip, 'name': n, 'at': int(t), 'own': own.get(ip, '')} for ip, n, t in rows[off:off + lim]],
+            'total': len(rows), 'mode': dns_settings()['mode']}
+
+
 # (2.7.1, issue #14) user names the devices sent (Palo Alto User-ID, FortiGate) for the search box: typing a part of
 # «anna@corp.example» or «corp\anna» offers the whole name, as host names are offered; the names of the last
 # USER_DAYS from the rollups, the busiest first, kept USER_TTL seconds
@@ -3531,7 +3548,7 @@ class Cache:
 
 
 CACHE = Cache()
-ROUTES = {'/api/hosts/find': api_hosts_find, '/api/users/find': api_users_find, '/api/geo/places': api_geo_places, '/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
+ROUTES = {'/api/hosts/find': api_hosts_find, '/api/hosts/dns': api_hosts_dns, '/api/users/find': api_users_find, '/api/geo/places': api_geo_places, '/api/meta': api_meta, '/api/summary': api_summary, '/api/series': api_series, '/api/top': api_top, '/api/river': api_river,
           '/api/flows': api_flows, '/api/paths': api_paths, '/api/devmap': api_devmap, '/api/topology': api_topology, '/api/path': api_path, '/api/live': api_live, '/api/ports': api_ports, '/api/hosts/names': api_host_names, '/api/networks': api_networks, '/api/geo': api_geo, '/api/devices': api_devices, '/api/host': api_host,
           '/api/alerts': api_alerts, '/api/ifload': api_ifload, '/api/ingest': api_ingest, '/api/apps': api_apps,
           '/api/capacity': api_capacity, '/api/capacity/iface': api_capacity_iface, '/api/usage': api_usage, '/api/qos': api_qos, '/api/conversations': api_conversations}

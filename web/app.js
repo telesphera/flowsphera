@@ -96,6 +96,9 @@ function putFilter(f, add){
   state.filters.push({k, v, neg});
 }
 function addFilter(k, v, neg){ putFilter({k, v, neg}); state.sel = null; render(); }
+// (2.12.0, forum #54) a click on a city on the map filters by it — with its country, so Paris, France is not Paris, Texas;
+// a place without a city name (only the country is known) filters by the country
+function placeFilter(city, cc){ if (!city && !cc) return; if (city && cc) putFilter({k:'country', v:cc}); addFilter(city ? 'city' : 'country', city || cc); }
 
 // ===================== formatting =====================
 const fmtB = b => { b = +b || 0; const u = ['B','KB','MB','GB','TB']; let i = 0; while (b >= 1000 && i < 4) { b /= 1000; i++; } return (i >= 2 ? b.toFixed(b < 10 ? 2 : 1) : Math.round(b)) + ' ' + u[i]; };
@@ -437,15 +440,15 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
     const byCountry = new Map(); for (const r of rows) byCountry.set(r.country, (byCountry.get(r.country) || 0) + tot(r));
     const cmax = Math.max(1, ...byCountry.values());
     const regions = [...byCountry].map(([cc, v]) => { let n = nameEn ? nameEn.of(cc) : cc; n = EN_FIX[n] || n; return {name:n, itemStyle:{areaColor:`rgba(47,123,255,${(0.18 + 0.42 * v / cmax).toFixed(2)})`}}; });
-    const cities = new Map(); for (const r of rows) { const k = r.city + '|' + r.country; const g = cities.get(k) || {name:r.city || ccName(r.country), cc:r.country, lon:r.lo, lat:r.la, v:0}; g.v += tot(r); cities.set(k, g); }
+    const cities = new Map(); for (const r of rows) { const k = r.city + '|' + r.country; const g = cities.get(k) || {name:r.city || ccName(r.country), city:r.city, cc:r.country, lon:r.lo, lat:r.la, v:0}; g.v += tot(r); cities.set(k, g); }
     return {geo:{regions}, series:[
       {id:'agg', data:rows.slice(0, MAP_LINES).map(r => { const s = siteGeo(r.exporter); return s && {coords:[s, [r.lo, r.la]], lineStyle:{width:.6 + 3.4 * tot(r) / rmax, opacity:.22, color:r.up > r.dn ? C.up : C.down}}; }).filter(Boolean)},
       {id:'remotes', data:[...cities.values()].map(g => { const onSite = META.devices.some(d => d.lat != null && Math.abs(d.lat - g.lat) < 0.6 && Math.abs(d.lon - g.lon) < 0.9);
-        return {name:g.name, full:`${g.name}, ${ccName(g.cc)}`, value:[g.lon, g.lat, g.v], v:g.v, label:onSite ? {show:false} : undefined}; })}]};
+        return {name:g.name, full:`${g.name}, ${ccName(g.cc)}`, city:g.city, cc:g.cc, value:[g.lon, g.lat, g.v], v:g.v, label:onSite ? {show:false} : undefined}; })}]};
   };
   const sites = META.devices.filter(d => d.lat != null).map(d => ({name:d.city || d.name, full:`${d.city || ''}${d.country ? ', ' + ccName(d.country) : ''} · ${d.name}`, value:[d.lon, d.lat, 1]}));
   const lbl = (pos, size) => ({show:true, position:pos, distance:7, color:'#F2F6FF', fontFamily:'Manrope', fontWeight:700, fontSize:size, textBorderColor:'rgba(4,10,28,.95)', textBorderWidth:3.5, formatter:'{b}'});
-  c.setOption({animation:false, tooltip:{...tipBase(), trigger:'item', formatter:p => p.seriesType === 'lines' ? '' : p.componentType === 'geo' ? esc(p.name) : `${esc(p.data && p.data.full || p.name)}${p.data && p.data.v ? '<br><b>' + fmtB(p.data.v) + '</b>' : ''}`},
+  c.setOption({animation:false, tooltip:{...tipBase(), trigger:'item', formatter:p => p.seriesType === 'lines' ? '' : p.componentType === 'geo' ? esc(p.name) : `${esc(p.data && p.data.full || p.name)}${p.data && p.data.v ? '<br><b>' + fmtB(p.data.v) + '</b>' : ''}${p.seriesId === 'remotes' ? '<br><span style="opacity:.7">' + T('Click: show only this place') + '</span>' : ''}`},
     geo:{map:'world', roam:true, zoom:1.25, center:[15, 35], scaleLimit:{min:1, max:10}, label:{show:false},
       itemStyle:{areaColor:'rgba(30,56,120,.38)', borderColor:'rgba(110,160,255,.38)', borderWidth:.5}, emphasis:{label:{show:false}, itemStyle:{areaColor:'rgba(47,123,255,.55)'}}},
     series:[
@@ -456,6 +459,8 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
       {id:'sites', type:'scatter', coordinateSystem:'geo', zlevel:4, symbolSize:12, itemStyle:{color:C.int, borderColor:'rgba(255,255,255,.85)', borderWidth:2, shadowBlur:10, shadowColor:C.int}, label:lbl('left', 13), data:sites},
     ]});
   c.setOption(dataOpt(geo));
+  // (2.12.0) a city mark is a filter (its tooltip says so); the pointer shows it can be clicked
+  c.on('click', e => { if (e.seriesId === 'remotes' && e.data) placeFilter(e.data.city, e.data.cc); });
   // pin the top of the map (Greenland) to the top edge of the panel; the default layout centres it vertically
   let roamed = false; c.on('georoam', () => { roamed = true; });
   const pinTop = () => { if (roamed || c.isDisposed() || !el.clientHeight) return;
@@ -489,7 +494,7 @@ function globe(el, geo){
     tex.setOption({backgroundColor:'#071431', animation:false, geo:{map:'world', silent:true, left:0, top:0, right:0, bottom:0, boundingCoords:[[-180, 90], [180, -90]], itemStyle:{areaColor:'#123072', borderColor:'#4C93FF', borderWidth:1.2}}});
     const c = mkChart(el); onCleanup(() => tex.dispose());
     const arcs = geo => geo.rows.slice(0, MAP_LINES).map(r => { const s = siteGeo(r.exporter); if (!s) return null; const up = r.up > r.dn; return {coords:up ? [s, [r.lo, r.la]] : [[r.lo, r.la], s], lineStyle:{color:up ? C.up : C.down}}; }).filter(Boolean);
-    const places = geo => { const m = new Map(); for (const r of geo.rows.slice(0, 10)) m.set(r.city, {name:r.city || ccName(r.country), value:[r.lo, r.la, 0]}); return [...m.values()]; };
+    const places = geo => { const m = new Map(); for (const r of geo.rows.slice(0, 10)) m.set(r.city, {name:r.city || ccName(r.country), city:r.city, cc:r.country, value:[r.lo, r.la, 0]}); return [...m.values()]; };
     const devs = [...new Map(META.devices.filter(d => d.lat != null).map(d => [d.city || d.name, {name:d.city || d.name, lon:d.lon, lat:d.lat}])).values()];   // one label per site
     c.setOption({globe:{baseTexture:tex, shading:'lambert', environment:'none', globeRadius:100, light:{ambient:{intensity:.55}, main:{intensity:1.1, alpha:30, beta:40}},
         atmosphere:{show:true, color:'#2F7BFF', glowPower:5, innerGlowPower:2}, viewControl:{autoRotate:!reduceMotion && !KIOSK.still, autoRotateSpeed:4, autoRotateAfterStill:3, animation:false, distance:180, minDistance:60, maxDistance:260, alpha:45, beta:115}},
@@ -505,10 +510,12 @@ function globe(el, geo){
     if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
     const lay = el.appendChild(Object.assign(document.createElement('div'), {className:'globe-labels'}));
     let marks = [];
-    const setMarks = list => { lay.innerHTML = list.map(m => `<span class="gl-lbl${m.dev ? ' dev' : ''}">${esc(m.name)}</span>`).join('');
+    const setMarks = list => { lay.innerHTML = list.map(m => m.dev ? `<span class="gl-lbl dev">${esc(m.name)}</span>`
+        : `<button type="button" class="gl-lbl place" data-city="${esc(m.city || '')}" data-cc="${esc(m.cc || '')}" title="${T('Click: show only this place')}">${esc(m.name)}</button>`).join('');
       marks = list.map((m, k) => ({...m, el:lay.children[k], w:lay.children[k].offsetWidth, h:lay.children[k].offsetHeight})); };
-    const markList = geo => [...devs.map(d => ({...d, dev:true})), ...places(geo).filter(p => !devs.some(d => d.name === p.name)).map(p => ({name:p.name, lon:p.value[0], lat:p.value[1]}))];
+    const markList = geo => [...devs.map(d => ({...d, dev:true})), ...places(geo).filter(p => !devs.some(d => d.name === p.name)).map(p => ({name:p.name, city:p.city, cc:p.cc, lon:p.value[0], lat:p.value[1]}))];
     setMarks(markList(geo));
+    lay.addEventListener('click', e => { const b = e.target.closest('.gl-lbl.place'); if (b) placeFilter(b.dataset.city, b.dataset.cc); });     // (2.12.0)
     let raf = 0;
     const frame = () => {
       raf = requestAnimationFrame(frame);
@@ -520,14 +527,14 @@ function globe(el, geo){
       for (const m of marks) {
         const q = cs.dataToPoint([m.lon, m.lat, 0]);
         const face = (q[0] * w[12] + q[1] * w[13] + q[2] * w[14]) / (R * cd) - R / cd;     // > 0: in front of the horizon
-        if (face <= 0) { m.el.style.opacity = '0'; continue; }
+        if (face <= 0) { m.el.style.opacity = '0'; m.el.style.pointerEvents = 'none'; continue; }
         const v = k => V[k] * q[0] + V[k + 4] * q[1] + V[k + 8] * q[2] + V[k + 12], vx = v(0), vy = v(1), vz = v(2), vw = v(3);
         const p = k => P[k] * vx + P[k + 4] * vy + P[k + 8] * vz + P[k + 12] * vw, cw = p(3);
         const sx = vp.x + (p(0) / cw * .5 + .5) * vp.width, sy = vp.y + (.5 - p(1) / cw * .5) * vp.height;
         const x0 = sx - m.w / 2, y0 = sy - 7 - m.h;
-        if (taken.some(t => x0 < t[2] && x0 + m.w > t[0] && y0 < t[3] && y0 + m.h > t[1])) { m.el.style.opacity = '0'; continue; }
+        if (taken.some(t => x0 < t[2] && x0 + m.w > t[0] && y0 < t[3] && y0 + m.h > t[1])) { m.el.style.opacity = '0'; m.el.style.pointerEvents = 'none'; continue; }
         taken.push([x0 - 2, y0 - 2, x0 + m.w + 2, y0 + m.h + 2]);
-        m.el.style.opacity = String(Math.min(1, face / .15));
+        m.el.style.opacity = String(Math.min(1, face / .15)); m.el.style.pointerEvents = '';
         m.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, calc(-100% - 7px))`;
       }
     };
@@ -572,6 +579,17 @@ function maxToggle(sec){
 }
 document.addEventListener('click', e => { const b = e.target.closest('[data-max]'); if (b) maxToggle(b.closest('section'));
   const k = e.target.closest('[data-kiosklink]'); if (k) copyText(kioskLink(k.closest('section')), k); });
+// (2.12.0) full screen lists: how many rows to ask for (0 = not full screen) and dropping the rows below the box's bottom
+function fitLimit(id){ const el = document.getElementById(id); if (!el || !el.closest('section.is-max')) return 0;
+  return Math.min(200, Math.max(20, Math.ceil(el.clientHeight / 26) + 2)); }
+function fitRows(el){ if (!el || !el.closest('section.is-max')) return;
+  const items = el.querySelectorAll('tbody tr, .blist > .brow'); if (!items.length) return;
+  const bottom = el.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(el).paddingBottom) || 0);
+  items.forEach(r => { if (r.getBoundingClientRect().bottom > bottom + 0.5) r.remove(); }); }
+// the window or the screen changes size while a panel is full screen (entering the browser's full screen, a rotated
+// screen): the panel is loaded again for the new height
+let fitTimer = 0;
+window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => { const x = document.querySelector('section.is-max'); if (x && x._reload) x._reload(); }, 250); });
 function maxLeave(){ const x = document.querySelector('section.is-max'); if (x) maxToggle(x); }
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { document.querySelectorAll('section.is-max').forEach(x => { x.classList.remove('is-max'); if (x._reload) x._reload(); }); maxMark(); } });
 document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; const x = document.querySelector('section.is-max'); if (x) maxToggle(x); });
@@ -872,7 +890,7 @@ function mountHero(){
     : (g ? rangeLabel() : T('the selected period'));
   fill('heroSec', `${ph('flow', T('Network traffic'), `<span id="heroLbl" class="tnum">${sub}</span>`,
       (isInternal() ? `<span class="legend"><span><i class="bar" style="background:${C.up}"></i>${T('client → server (what it sends)')}</span><span><i class="bar" style="background:${C.down}"></i>${T('server → client (the answer)')}</span></span>`
-        : `<span class="legend"><span><i class="bar" style="background:${C.down}"></i>download</span><span><i class="bar" style="background:${C.up}"></i>upload</span>${g ? '' : `<span><i style="background:${C.int}"></i>${T('inside')}</span><span><i style="background:${C.ext}"></i>${T('outside')}</span>`}</span>`)
+        : `<span class="legend"><span><i class="bar" style="background:${C.down}"></i>${T('download')}</span><span><i class="bar" style="background:${C.up}"></i>${T('upload')}</span>${g ? '' : `<span><i style="background:${C.int}"></i>${T('inside')}</span><span><i style="background:${C.ext}"></i>${T('outside')}</span>`}</span>`)
       + (g ? seg('scaleSeg', [['sqrt', T('Compressed'), T('Width ∝ √volume — small flows stand out next to large ones')], ['lin', T('Linear'), T('Width proportional to volume')]], state.scale) : '')
       + seg('heroLiveSeg', [['live', T('Live'), T('The last 2 minutes of data, updated as it arrives')], ['period', T('toggle::Period'), T('The whole selected period')]], live ? 'live' : 'period')
       + (isInternal() ? '' : seg('heroSeg', [['map', T('Map')], ['graph', T('Graph')], ['3d', '3D']], state.heroMode)), false, maxBtn())}
@@ -958,6 +976,9 @@ function vOverview(){
   mountHero();
   // (1.8.9) full screen: the lists show more rows (a panel's _reload loads it again when it opens or closes)
   const big = id => { const el = document.getElementById(id); return !!(el && el.closest('section.is-max')); };
+  // (2.12.0, forum #63 #64) a list opened full screen fills the screen's height: enough rows are asked for (fitLimit,
+  // from the box's height) and the ones that do not fit are dropped after drawing (fitRows) — no scroll bar, no empty half
+  const lim = (id, n) => fitLimit(id) || n;
   const loaders = {
   svcBox:() => section('svcBox', async () => {
     const t = await api('top', {dim:'service', limit:big('svcBox') ? 12 : 5}); const rest = t.total - t.rows.reduce((s, r) => s + tot(r), 0);
@@ -965,18 +986,19 @@ function vOverview(){
     setTimeout(() => { const el = document.getElementById('cDonut'); if (el) donut(el, rows, k => k === T('Others') ? C.other : keyColor(k), [fmtB(t.total), T('total traffic')]); });
     return `<div class="donut-wrap"><div class="chart donut" id="cDonut"></div><div class="dl">${rows.map(r => `<i class="idot" style="background:${r.k === T('Others') ? C.other : keyColor(r.k)}"></i>${r.k === T('Others') ? `<span>${T('Others')}</span>` : `<button class="link" data-f="service" data-v="${esc(r.k)}">${esc(r.k)}</button>`}<span class="p">${pct(tot(r), t.total)}</span><span class="t">${fmtB(tot(r))}</span>`).join('')}</div></div>`;
   }),
-  hostBox:() => section('hostBox', async () => { const t = await api('top', {dim:'int_ip', limit:big('hostBox') ? 20 : 5});
+  hostBox:() => section('hostBox', async () => { const t = await api('top', {dim:'int_ip', limit:lim('hostBox', 5)});
     return `<div class="tw"><table class="compact"><thead><tr><th>#</th><th>${T('Host')}</th><th class="num">${T('Traffic')}</th><th class="num">%</th><th></th></tr></thead><tbody>${t.rows.map((r, i) => `<tr class="click" data-host="${esc(r.k)}"><td class="mono">${i + 1}</td><td><div class="two-line"><b class="mono">${esc(r.name || r.k)}</b>${r.name ? `<span class="nat">${esc(r.k)}</span>` : ''}</div></td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), t.total)}</td><td class="chev">›</td></tr>`).join('')}</tbody></table></div>`; }),
-  convBox:() => section('convBox', async () => { const t = await api('top', {dim:'conv', limit:big('convBox') ? 20 : 5}); return convRows(t.rows, t.total); }),
-  ccBox:() => section('ccBox', async () => ccList(await api('top', {dim:'country', limit:big('ccBox') ? 20 : 5}))),       // (2.11.0)
-  asBox:() => section('asBox', async () => { const t = await api('top', {dim:'asn', limit:big('asBox') ? 20 : 5});
+  convBox:() => section('convBox', async () => { const t = await api('top', {dim:'conv', limit:lim('convBox', 5)}); return convRows(t.rows, t.total); }),
+  ccBox:() => section('ccBox', async () => ccList(await api('top', {dim:'country', limit:lim('ccBox', 5)}))),       // (2.11.0)
+  asBox:() => section('asBox', async () => { const t = await api('top', {dim:'asn', limit:lim('asBox', 5)});
     return `<div class="tw"><table class="compact"><thead><tr><th>${T('Autonomous system')}</th><th class="num">${T('Traffic')}</th><th class="num">%</th></tr></thead><tbody>${t.rows.map(r => `<tr><td><div class="two-line">${r.k !== '0' ? `<button class="link ipl" data-f="asn" data-v="${esc(r.k)}">${esc(r.as_org || 'AS' + r.k)}</button><span class="nat">AS${esc(r.k)}${r.country ? ' · ' + esc(ccName(r.country)) : ''}</span>` : `<b>${T('local addresses')}</b>`}</div></td><td class="num mono">${fmtB(tot(r))}</td><td class="num mono">${pct(tot(r), t.total)}</td></tr>`).join('')}</tbody></table></div>`; }),
   cTrend:() => api('series').then(s => { const el = document.getElementById('cTrend'); if (el) trendChart(el, s); }).catch(e => fill('cTrend', errBox(e))),
-  recentBox:() => section('recentBox', async () => { const t = await api('flows', {limit:big('recentBox') ? 20 : 7});
+  recentBox:() => section('recentBox', async () => { const t = await api('flows', {limit:lim('recentBox', 7)});
     return `<div class="tw"><table class="compact"><thead><tr><th>${T('Time')}</th><th>${isInternal() ? T('Client → server · service') : T('Inside → outside · service')}</th><th class="num">${T('Volume')}</th></tr></thead><tbody>${t.rows.map(f => `<tr><td class="mono">${hms(f.t)}</td><td><div class="two-line"><span class="ipl">${esc(f.name || f.int_ip)} <span class="${isBack(f) ? 'd' : 'u'}">${isBack(f) ? '←' : '→'}</span> ${esc(f.ext_ip)}</span><span class="nat">${esc(dv(f.service))}${f.l7 ? ' · ' + esc(f.l7) : ''}</span></div></td><td class="num mono">${fmtB(f.bytes)}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty">${T('No records')}</div></td></tr>`}</tbody></table></div>`; })
   };
   // (2.11.0) only the chosen panels are on the page
   Object.keys(loaders).forEach(id => { if (!document.getElementById(id)) delete loaders[id]; });
+  Object.keys(loaders).forEach(id => { const f = loaders[id]; if (id !== 'cTrend') loaders[id] = () => Promise.resolve(f()).then(() => fitRows(document.getElementById(id))); });
   Object.values(loaders).forEach(f => f());
   Object.entries(loaders).forEach(([id, f]) => { const sec = document.getElementById(id).closest('section'); if (sec && id !== 'cTrend') sec._reload = f; });
   // (2.7.1, issue #10) the cards, the trend and the lists move on with the time as the map does: quietly (the new answer
@@ -2674,7 +2696,7 @@ const ccList = t => { const max = t.rows.length ? tot(t.rows[0]) : 1;
 function vGeo(){
   const v = document.getElementById('view');
   v.innerHTML = `<div class="grid"><section class="glass panel s8">${ph('globe', T('Connection map'), T('destination GeoIP · a line appears when a new flow arrives · colour = direction'),
-      `<span class="legend"><span><i class="bar" style="background:${C.down}"></i>download</span><span><i class="bar" style="background:${C.up}"></i>upload</span><span><i style="background:${C.int}"></i>${T('sites')}</span><span><i style="background:${C.ext}"></i>${T('destinations')}</span></span>`)}<div class="chart map" id="cMap"></div>${noSite()}</section>
+      `<span class="legend"><span><i class="bar" style="background:${C.down}"></i>${T('download')}</span><span><i class="bar" style="background:${C.up}"></i>${T('upload')}</span><span><i style="background:${C.int}"></i>${T('sites')}</span><span><i style="background:${C.ext}"></i>${T('destinations')}</span></span>`)}<div class="chart map" id="cMap"></div>${noSite()}</section>
     <section class="glass panel s4">${ph('pulse', T('Live connections'), T('new flows with geolocation'))}<div class="ticker" id="ticker"><div class="empty">${T('Waiting for new records (exporters send about once a minute)…')}</div></div></section>
     <section class="glass panel s4">${ph('globe', T('Countries'), T('by destination address'))}<div id="ccBox" class="loading"></div></section>
     <section class="glass panel s8">${ph('nodes', T('Autonomous systems'), T('who actually serves the traffic'))}<div id="asBox" class="loading"></div></section></div>`;
@@ -4000,7 +4022,8 @@ function rowTable(el, o){
     } };
   draw();
   // something typed in the add form or a row being changed counts as unsaved
-  return {dirty:() => edit !== null || (o.admin && F.some((f, i) => { const x = document.getElementById(ID + 'A' + i); return x && !f.opts && x.value.trim() !== ''; }))};
+  return {set:list => { items = list.slice(); edit = null; draw(); },      // (2.12.0) the table changed elsewhere (Names from DNS)
+    dirty:() => edit !== null || (o.admin && F.some((f, i) => { const x = document.getElementById(ID + 'A' + i); return x && !f.opts && x.value.trim() !== ''; }))};
 }
 // addresses as people type them: an IPv4 / IPv6 address, a network with net=true, AS<number> with asn=true
 function addrOk(v, net, asn){
@@ -4094,6 +4117,7 @@ function vFlowCfg(){
   document.getElementById('setBody').innerHTML = `<div class="grid top">
     <section class="glass panel s12">${ph('list', T('Port names'), T('your own names of ports: they replace the protocol FlowSphera names (e.g. TCP other) in every report'), admin ? csvBtns('pn') : '')}<div id="pnBox" class="loading"></div></section>
     <section class="glass panel s12">${ph('dev', T('Host names'), T('your own names of the hosts in your network: shown next to their addresses everywhere, over the names from DNS'), admin ? csvBtns('hn') : '')}<div id="hnBox" class="loading"></div></section>
+    <section class="glass panel s12" id="hdSec">${ph('search', T('Names from DNS'), T('the names your DNS server gave your hosts (reverse DNS) · a name of your own above wins over them'))}<div id="hdBox" class="loading"></div></section>
     <section class="glass panel s12">${ph('nodes', T('Network names'), T('your own names of networks: filter by them (net:Office) and see the traffic of each on Top hosts → Networks'), admin ? csvBtns('nn') : '')}<div id="nnBox" class="loading"></div></section>
     ${admin ? `<section class="glass panel s7">${ph('dev', T('Services on our side'), T('learned from the last day: what outside addresses call · the role decides which events they get'))}<div id="evsBox" class="loading"></div></section>
     <section class="glass panel s5">${ph('shield', T('Port roles'), T('for services not listed on the left'))}<div id="prBox" class="loading"></div></section>
@@ -4176,13 +4200,46 @@ function vFlowCfg(){
         if (at >= 0 && dup >= 0) return {bad:['ip'], err:T('This address already has a name — change that row')};
         return {bad, replace:dup >= 0 ? dup : null, warn:dup >= 0, hint:dup >= 0 ? T('{ip} is already named «{name}» — adding replaces it.', {ip:esc(r.ip), name:esc(hnItems()[dup].name)}) : ''}; },
       show:(it, k) => k === 'ip' ? `<span class="mono">${esc(it.ip)}</span>` : `<b>${esc(it.name)}</b>`,
-      save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; return r.items; },
+      save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; hdDraw(); return r.items; },
       delAsk:it => T('Delete the name «{name}» of {ip}?', {name:it.name, ip:it.ip}),
       empty:T('No own host names yet.') + (admin ? ' ' + T('Example: 10.0.0.15 → NAS in the office.') : '')});
     csvTools({id:'hn', file:'host-names', header:['ip', 'name'], items:() => cur, key:x => x.ip, toRow:x => [x.ip, x.name], del:'hosts/names/delete',
-      save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; },
+      save:async list => { const r = await apiPost('hosts/names', {items:list}); cur = r.items; hdDraw(); },
       fromRow:([ip = '', ...rest]) => { const name = rest.join(' ').trim(), c = addrCheck(ip);
         return !c.ok || c.net ? {err:T('Not an IP address: {v}', {v:ip})} : name ? {ip:c.v, name} : {err:T('no name')}; }});
+    // (2.12.0, forum #54) Names from DNS: what reverse DNS answered for the hosts, searchable, a page of 50 at a time;
+    // an administrator makes one his own (it lands in the table above and wins over DNS from then on)
+    let hq = '', hoff = 0, hedit = null, hseq = 0, hwait = 0; const HPAGE = 50;
+    async function hdDraw(){ const box = document.getElementById('hdBox'); if (!box) return;
+      let d; try { d = await api('hosts/dns', {q:hq, offset:hoff, limit:HPAGE, n:++hseq}); } catch (e) { fill('hdBox', errBox(e)); return; }
+      if (!document.getElementById('hdBox')) return;
+      const typed = document.getElementById('hdQ'), keep = typed && document.activeElement === typed;
+      box.classList.remove('loading');
+      const off = d.mode === 'off' ? `<p class="note warn">${T('Names from DNS are switched off (Settings → General → Host names from DNS): these are the ones learnt before, they are not shown elsewhere.')}</p>` : '';
+      const row = it => it.ip === hedit
+        ? `<tr class="pnedit"><td class="mono">${esc(it.ip)}</td><td><b>${esc(it.name)}</b></td><td><input id="hdName" maxlength="64" value="${esc(it.own || it.name)}" aria-label="${T('Own name')}"></td>
+           <td class="acts"><button class="btn primary" id="hdOk">${T('Save')}</button> <button class="btn" id="hdNo">${T('Cancel')}</button></td></tr>`
+        : `<tr><td class="mono">${esc(it.ip)}</td><td><b>${esc(it.name)}</b></td><td>${it.own ? `<span class="tag">${T('own name')}</span> ${esc(it.own)}` : '<span class="note">—</span>'}</td>
+           ${admin ? `<td class="acts"><button class="btn" data-hdedit="${esc(it.ip)}" ${hedit ? 'disabled' : ''}>${it.own ? T('Edit') : T('Make it my name')}</button></td>` : ''}</tr>`;
+      const pages = Math.max(1, Math.ceil(d.total / HPAGE)), page = Math.floor(hoff / HPAGE) + 1;
+      box.innerHTML = `${off}<div class="form hdtools"><input id="hdQ" type="search" placeholder="${T('Search by address or name')}" value="${esc(hq)}" aria-label="${T('Search by address or name')}" autocomplete="off">
+          <span class="note">${Tn(d.total, '{n} name', '{n} names')}${pages > 1 ? ' · ' + T('page {p} of {n}', {p:page, n:pages}) : ''}</span>
+          ${pages > 1 ? `<button class="btn" id="hdPrev" ${page <= 1 ? 'disabled' : ''}>‹</button><button class="btn" id="hdNext" ${page >= pages ? 'disabled' : ''}>›</button>` : ''}</div>
+        ${d.items.length ? `<div class="tw"><table class="pntbl"><thead><tr><th>${T('IP address')}</th><th>${T('Name from DNS')}</th><th>${T('Own name')}</th>${admin ? '<th></th>' : ''}</tr></thead><tbody>${d.items.map(row).join('')}</tbody></table></div>`
+          : `<div class="empty">${hq ? T('No DNS name matches this search.') : T('No names from DNS yet: they come as your hosts show up on the pages (or in the background, Settings → General).')}</div>`}
+        <p class="err" id="hdErr" hidden></p>`;
+      const q = document.getElementById('hdQ'); q.oninput = () => { clearTimeout(hwait); hwait = setTimeout(() => { hq = q.value.trim(); hoff = 0; hdDraw(); }, 300); };
+      if (keep) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+      const pv = document.getElementById('hdPrev'), nx = document.getElementById('hdNext');
+      if (pv) pv.onclick = () => { hoff = Math.max(0, hoff - HPAGE); hdDraw(); }; if (nx) nx.onclick = () => { hoff += HPAGE; hdDraw(); };
+      box.querySelectorAll('[data-hdedit]').forEach(b => b.onclick = () => { hedit = b.dataset.hdedit; hdDraw().then(() => { const x = document.getElementById('hdName'); if (x) { x.focus(); x.select(); } }); });
+      if (hedit) { const inp = document.getElementById('hdName'), err = document.getElementById('hdErr');
+        const commit = async () => { const name = inp.value.trim().replace(/\s+/g, ' '); if (!name) { inp.classList.add('bad'); return; }
+          try { const r = await apiPost('hosts/names/add', {items:[{ip:hedit, name}]}); cur = r.items; if (hn) hn.set(r.items); hedit = null; hdDraw(); }
+          catch (e) { err.textContent = e.message || e; err.hidden = false; } };
+        document.getElementById('hdOk').onclick = commit; document.getElementById('hdNo').onclick = () => { hedit = null; hdDraw(); };
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') { hedit = null; hdDraw(); } }); } }
+    hdDraw();
   }).catch(e => fill('hnBox', errBox(e)));
   // (1.8.7) network names: a network (CIDR) and its name; several networks may share one name
   let nn = null;

@@ -2280,5 +2280,18 @@
  "new FlowSphera versions · the upgrade from here": "нові версії FlowSphera · оновлення звідси",
  "shown": "показано",
  "swaps places": "поміняється місцями",
- "{v} available": "Доступна {v}"
+ "{v} available": "Доступна {v}",
+ "Click: show only this place": "Клік: показати лише це місце",
+ "Names from DNS": "Назви з DNS",
+ "the names your DNS server gave your hosts (reverse DNS) · a name of your own above wins over them": "імена, які ваш DNS-сервер дав вашим хостам (зворотний DNS) · власна назва вище має перевагу над ними",
+ "Names from DNS are switched off (Settings → General → Host names from DNS): these are the ones learnt before, they are not shown elsewhere.": "Назви з DNS вимкнено (Налаштування → Загальні → Назви хостів з DNS): тут ті, що були отримані раніше, деінде вони не показуються.",
+ "own name": "власна назва",
+ "Make it my name": "Зробити своєю назвою",
+ "Search by address or name": "Пошук за адресою або назвою",
+ "Name from DNS": "Назва з DNS",
+ "Own name": "Власна назва",
+ "No DNS name matches this search.": "Жодна назва з DNS не відповідає пошуку.",
+ "No names from DNS yet: they come as your hosts show up on the pages (or in the background, Settings → General).": "Назв з DNS ще немає: вони з'являються, коли ваші хости показуються на сторінках (або у фоні, Налаштування → Загальні).",
+ "download": "завантаження",
+ "upload": "вивантаження"
 }

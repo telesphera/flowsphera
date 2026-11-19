@@ -968,3 +968,11 @@ html.kiosk .updpill{display:none}
 .updstate .spin{width:14px;height:14px;flex:none;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:var(--down);animation:updspin .9s linear infinite}
 @keyframes updspin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.updstate .spin{animation:none}}
+/* (2.12.0, forum #54) a city on the globe is a filter: its name takes the click (the layer itself lets the globe turn) */
+.gl-lbl.place{pointer-events:auto;cursor:pointer;border:0;line-height:inherit}
+.gl-lbl.place:hover{background:rgba(47,123,255,.55);color:#fff}
+/* (2.12.0, forum #54) Settings → Host names → Names from DNS */
+.form.hdtools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.form.hdtools input[type=search]{flex:0 1 320px;width:auto;min-width:180px}
+.hdtools .note{margin:0}
+#hdBox .pnedit input{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:10px;padding:8px 12px;background:rgba(0,0,0,.3);font-size:13px;color:var(--ink);outline:none}
