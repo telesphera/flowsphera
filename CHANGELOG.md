@@ -4,6 +4,31 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.12.0 — 2026-11-19
+
+### Added
+- **Lists fill a wall screen** (forum request): a list opened full screen — Countries, Top hosts, Top conversations,
+  Autonomous systems, Recent flows — shows as many rows as the screen's height holds instead of 20, with no scroll bar;
+  a window or screen of another size gets its own number of rows. The kiosk link (`kiosk=1&max=…`) does the same.
+- **A city on the map is a filter** (forum request): a click on a city on the connection map or the 3D globe filters
+  every page by that city together with its country (Paris, France is not Paris, Texas); a place known only by its
+  country filters by the country. The tooltip says so.
+- **Names from DNS** (forum request) in *Settings → Flow configuration*: every name reverse DNS gave your inside hosts,
+  with search and pages of 50, beside the own name that wins over it. *Make it my name* turns a DNS name into your own
+  name in one step (an administrator); it then shows on every page, in the reports and the notifications. The same list
+  for scripts: `GET /api/hosts/dns?q=&offset=&limit=`.
+
+### Fixed
+- *Path analysis*, view **Classic**: a link that carried none of the traffic chosen at the top (e.g. *Internet* over a
+  link between two firewalls, whose internet traffic leaves through their own WANs) was not drawn at all — only its
+  interface labels were left, and the path looked broken while the other views showed it. It is now a thin line, and
+  the tooltip of any link without the chosen traffic says how much other traffic it carried in the period.
+
+### Changed
+- *Settings → General*: the **Version** card says whether this is the newest version or which newer one is out;
+  a click on *x.y.z available* goes to *Updates* (administrators).
+- The live map's legend says *download* and *upload* in the interface's language.
+
 ## 2.11.1 — 2026-11-19
 
 ### Fixed

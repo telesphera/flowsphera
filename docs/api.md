@@ -34,6 +34,7 @@ JSON over HTTP — with the session cookie of the UI, or with an **API token** (
 | `GET /api/top?dim=net`, `GET /api/series?by=net` | traffic by your named networks |
 | `GET /api/networks`, `GET /api/hosts/names`, `GET /api/ports` | your names of networks, hosts and ports |
 | `GET /api/hosts/find?q=&limit=` | (2.5.0) hosts whose name holds `q` (any case): `hosts` [{ip, name, src = `manual` / `device` / `dns`}], names that begin with it first; `limit` 1–50 (default 10) |
+| `GET /api/hosts/dns?q=&offset=&limit=` | (2.12.0) the names reverse DNS gave: `items` [{ip, name, at (unix time of the answer), own (the name set by hand that wins, or empty)}] by address, `total`, `mode` (`off` / `shown` / `background`); `q` = part of the address or the name; `limit` 1–1000 (default 100) |
 | `GET /api/users/find?q=&limit=` | (2.7.1) user names the devices sent (User-ID) in the last 30 days whose name holds `q` (any case): `users` [names], names that begin with it first, then the busiest; `limit` 1–50 (default 10) |
 | `GET /api/backups` | backups, their schedule and the last result |
 | `POST /api/login`, `/api/logout`, `/api/me/password`, `/api/me/prefs` | session, own password, own preferences (e.g. the default Path analysis view; (2.11.0) `overview_panels` = five of services, hosts, countries, asn, conv, recent, trend, comma-separated) |

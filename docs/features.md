@@ -2,6 +2,9 @@
 
 [← FlowSphera](../README.md) · [Install](install.md) · [Exporters](exporters.md) · [Features](features.md) · [Editions](editions.md) · [Backups](backups.md) · [Configuration](configuration.md) · [API](api.md) · [Security](security.md) · [Performance](performance.md)
 
+**New in 2.12**
+- Lists opened full screen **fill the screen's height** (wall screens); a **click on a city** on the map or the globe filters by it; **Names from DNS** in Settings → Flow configuration, each one *Make it my name*.
+
 **New in 2.11**
 - **Your own Overview**: each panel shows what you choose — Countries, Autonomous systems, the trend, conversations, recent flows, services or hosts; kept per user and in kiosk links.
 - **New versions in the web interface** and **Upgrade now** (Settings → General → Updates), confirmed with the password.
