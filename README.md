@@ -111,6 +111,17 @@ page link, so a kiosk screen shows the same panels whoever is signed in there.
 </tr>
 </table>
 
+**Big lists for big screens** (2.12.0, forum request): a list opened full screen — Countries, Top hosts, Top
+conversations, Autonomous systems, Recent flows — fills the screen's height with as many rows as fit, on a 1080p wall
+or a laptop alike, with no scroll bar and no empty half.
+
+<p align="center"><img src="docs/media/en/wall-list.webp" alt="Recent flows opened full screen on a 1920×1080 wall: twenty rows down to the bottom of the screen" width="100%"></p>
+
+**Click a city on the map** (2.12.0): every page then shows only the traffic of that place — the city together with its
+country, so Paris, France is never mixed with Paris, Texas. It works on the flat map and on the 3D globe.
+
+<p align="center"><img src="docs/media/en/map-city.webp" alt="The live map with a city's tooltip: «San Francisco, United States · Click: show only this place»" width="80%"></p>
+
 ### Flows — who exchanges how much with whom
 
 The busiest inside hosts and outside addresses as a living diagram: width is volume, colour is direction. Click to
@@ -226,6 +237,12 @@ and names from reverse DNS. FlowSphera looks up the reverse DNS names of the wee
 keeps them across restarts, so a host is found even if no page has shown it yet.
 
 <p align="center"><img src="docs/media/en/search-names.webp" alt="Typing «laptop» offers four hosts: laptop-guest.office.lan from reverse DNS and three names set by hand, each with its address" width="80%"></p>
+
+Every name reverse DNS gave is listed in **Settings → Flow configuration → Names from DNS** (2.12.0), searchable, next
+to the name you set yourself. **Make it my name** turns one into your own name in a click — handy when DNS calls a laptop
+`win-7f3k2q9`: your name then wins on every page, in the reports and in the notifications.
+
+<p align="center"><img src="docs/media/en/dns-names.webp" alt="Names from DNS: addresses, the names reverse DNS gave them, own names next to them and «Make it my name»" width="80%"></p>
 
 ### Security events
 
