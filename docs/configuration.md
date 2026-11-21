@@ -12,6 +12,7 @@
 | `FT_MAX_NEW_EXPORTERS` | `16` | with `FT_EXPORTERS` empty: how many sources not yet configured are tracked at once (they show in Settings → Devices to be set up; one idle for 15 min makes room) — a bound against packets with forged sender addresses |
 | `FT_FORWARD` | *(empty)* | `host:port,…` — copy every datagram unchanged to other collectors |
 | `FT_WORKERS` | `auto` | decoding processes; `auto` = half the CPU threads, at most 4 |
+| `FT_BATCH_SECONDS` | `10` | (2.12.1) how often each decoding process writes its records to the database, in seconds (1–60): fewer, bigger writes = less merging work for ClickHouse; live views see a record up to this much later |
 | `FT_RCVBUF` | `33554432` | UDP receive buffer in bytes (capped by `net.core.rmem_max`, which the installer raises to 32 MB) |
 | `FT_WEB_BIND`, `FT_WEB_PORT` | interface of the default route, `3030` | web UI and API, same syntax — e.g. NetFlow on the external interface, the web UI only on the internal one. With specific interfaces in `FT_BIND` or `FT_WEB_BIND`, both services also answer on localhost (health checks, `ssh -L`, a local reverse proxy), wait at a start up to 5 minutes for an interface that has no address yet (2.11.1: after a power cut the router may come up later) and restart themselves when an interface's address changes (DHCP) |
 | `FT_TLS_CERT`, `FT_TLS_KEY` | `/etc/flowsphera/tls/*.pem` | HTTPS certificate and key; empty = plain HTTP |

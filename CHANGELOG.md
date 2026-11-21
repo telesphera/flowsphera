@@ -4,6 +4,36 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.12.1 — 2026-11-22
+
+### New
+- **Every page keeps itself up to date** (GitHub #16). Flows, Conversations, Through device, Path analysis, Top hosts,
+  Services, Applications, Ports, Geolocation and QoS now reload by themselves, as the Overview does: each minute for
+  periods up to 24 hours, every 5 minutes for 7 and 30 days; a custom period stays as it is. Quietly: the numbers
+  change in place, live maps and the Live connections list run on, nothing blinks or grows again. A page waits while
+  you type, read a host card or have a panel full screen, and nothing is asked while the browser tab is in the
+  background.
+
+### Fixed
+- **A WAN behind the provider's NAT** (forum). When the router's WAN address is itself private (a provider's NAT or
+  CGNAT in front of it), the download of the inside hosts through that WAN was put on the router — it showed as
+  «router (self)» with the whole download of the network. MikroTik names the inside host only in the translated field
+  of such replies; FlowSphera now reads it there, as it already did for a public WAN address. The router's address is
+  learned from its own records — nothing to set. Checked on RouterOS 7.17 behind a provider NAT. Records stored before
+  the upgrade stay as they were.
+- **Path analysis: links that are not there** (GitHub #17). The records no longer make an interface with the role
+  *WAN* a link to another of your devices (an exchange point, another site reached over the internet), and an interface
+  whose neighbour is already known — a shared subnet, LLDP or a link set by hand — gets no other neighbour from the
+  records. A WAN interface that does face one of your devices keeps its link from a shared subnet, LLDP or by hand.
+- **Less background work for the database** (forum). The collector now writes the records to the database every 10
+  seconds instead of every 2. Each write makes new parts in the records table and in every summary table, and ClickHouse
+  merges them in the background; with fewer, bigger writes our test server spent about half the database CPU on the
+  same traffic. Live maps and the Live connections list keep their steady pace. `FT_BATCH_SECONDS` sets another
+  interval (1–60).
+- **Overview, «Network traffic»** (forum). The legend stays on the panel title's line when the controls move to the next
+  one, and a very long name of the top service, source or destination in the map's box ends with «…» (the full name
+  on hover) instead of widening the box over the map.
+
 ## 2.12.0 — 2026-11-19
 
 ### Added

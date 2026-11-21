@@ -78,6 +78,9 @@
   networks in `ip:` / `dst:`; several values of one key.
 - (2.5.0) **Hosts by name** in the search box: part of a name offers every host whose name holds it — names you set,
   device addresses and reverse DNS; the reverse DNS names of the week's inside hosts are looked up in the background.
+- (2.12.1) **Every page keeps itself up to date**: each minute for periods up to 24 hours, every 5 minutes for 7 and
+  30 days (not a custom period), quietly — numbers change in place, live maps and lists run on; it waits while you type,
+  read a host card or have a panel full screen.
 - **Full screen** for every Overview panel (lists show more rows, the Graph shows as many pairs as the screen holds),
   a **Copy** button on every ready-made configuration and command.
 - Waiting that shows the work: sketches of the map assemble while the database reads, tables decode and then settle
