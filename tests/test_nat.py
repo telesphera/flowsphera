@@ -47,6 +47,45 @@ class DestinationNat(unittest.TestCase):
         self.assertEqual(self.row(rec(PEER, PUB, 2, 0, nat_dst=PUB, nat_dport=50000)), ('down', PUB, 50000, PEER, PUB, 50000))
 
 
+class NatBehindProvider(unittest.TestCase):
+    """(2.12.1, forum #71) a WAN behind the provider's NAT: the router's WAN address is private (192.168.4.2). MikroTik's
+    reply to a masqueraded host arrives to that address with the inside host in the NAT field: the inside host gets the
+    download, not the router. FortiGate's reply already names the inside host: unchanged."""
+    WAN_ADDR, ISP_NAT = '192.168.4.2', '100.64.7.9'
+
+    def row(self, e, f):
+        c = C.Collector(accounting=False, rate_limit=False)
+        c.buf = []
+        c.store(e, f)
+        r = c.buf[0]
+        return r['dir'], r['int_ip'], r['int_port'], r['ext_ip'], r['nat_ip'], r['nat_port']
+
+    def test_reply_to_masqueraded_host_through_a_private_wan(self):
+        for cfg in ({'wan_ifs': [2], 'public_ips': [self.WAN_ADDR]},             # named as its own address
+                    {'wan_ifs': [2], 'if_addrs': {'2': [self.WAN_ADDR + '/24']}},  # typed for the WAN interface
+                    {'wan_ifs': [2]}):                                             # the address it exports from
+            e = C.Exporter(self.WAN_ADDR if cfg == {'wan_ifs': [2]} else '192.0.2.1', cfg)
+            self.assertEqual(self.row(e, rec(PEER, self.WAN_ADDR, 2, 7, nat_dst=HOST, nat_dport=50001)),
+                             ('down', HOST, 50001, PEER, self.WAN_ADDR, 50000), cfg)
+
+    def test_cgnat_wan_address(self):
+        e = C.Exporter('192.0.2.1', {'wan_ifs': [2], 'public_ips': [self.ISP_NAT]})
+        self.assertEqual(self.row(e, rec(PEER, self.ISP_NAT, 2, 7, nat_dst=HOST, nat_dport=50001)), ('down', HOST, 50001, PEER, self.ISP_NAT, 50000))
+
+    def test_fortigate_reply_naming_the_inside_host_unchanged(self):
+        e = C.Exporter('192.0.2.1', {'wan_ifs': [2], 'public_ips': [self.WAN_ADDR]})
+        self.assertEqual(self.row(e, rec(PEER, HOST, 2, 7, nat_dst=self.WAN_ADDR, nat_dport=50000)), ('down', HOST, 50000, PEER, self.WAN_ADDR, 50000))
+
+    def test_router_own_traffic_stays_the_router(self):
+        e = C.Exporter('192.0.2.1', {'wan_ifs': [2], 'public_ips': [self.WAN_ADDR]})
+        self.assertEqual(self.row(e, rec(PEER, self.WAN_ADDR, 2, 0)), ('down', self.WAN_ADDR, 50000, PEER, '', 0))
+
+    def test_private_destination_not_the_router_unchanged(self):
+        # an inside host as the destination and another inside address in the NAT field: not ours to swap
+        e = C.Exporter('192.0.2.1', {'wan_ifs': [2], 'public_ips': [self.WAN_ADDR]})
+        self.assertEqual(self.row(e, rec(PEER, '10.20.0.9', 2, 7, nat_dst=HOST, nat_dport=50001)), ('down', '10.20.0.9', 50000, PEER, HOST, 50001))
+
+
 if __name__ == '__main__':
     unittest.main()
 

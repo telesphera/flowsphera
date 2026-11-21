@@ -137,6 +137,10 @@ class Exporter:
         self.wan = set(cfg.get('wan_ifs', []))
         self.local_if = cfg.get('local_if')          # FortiOS: 0 = the firewall itself
         self.self_ips = {norm_addr(str(x)) for x in cfg.get('public_ips', [])}   # the device's own public addresses
+        # (2.12.1, forum #71) every address of the device itself: the one it exports from, its own addresses and those
+        # typed for its WAN interfaces — also a private one when the provider's NAT / CGNAT is in front of it
+        self.own = {norm_addr(self.ip)} | self.self_ips | {norm_addr(str(a).split('/')[0]) for i in self.wan
+                                                             for a in (cfg.get('if_addrs') or {}).get(str(i), [])}
         self.cfg_sampling = parse_ratio(cfg.get('sampling', '1:1'))
 
 
@@ -441,8 +445,11 @@ class Collector:
             nat_ip, nat_port = '', 0
         # arriving through destination NAT (MikroTik's replies to masqueraded hosts, a FortiGate VIP): the record's
         # destination is the public address, the translated one is the inside host — keep the inside host as int_ip and
-        # the public address as nat_ip, as for outgoing records
-        if d == 'down' and nat_ip and nat_ip != ii[0] and is_private(nat_ip) and not is_private(ii[0]):
+        # the public address as nat_ip, as for outgoing records. (2.12.1, forum #71) Also when the destination is the
+        # device's own PRIVATE address (a WAN behind the provider's NAT or CGNAT): before, the download of every inside
+        # host through that WAN was put on the router («RTR1 (self)»). A private destination that is not the device's
+        # own stays (FortiGate: the reply's destination is the inside host already, its NAT field the router's address).
+        if d == 'down' and nat_ip and nat_ip != ii[0] and is_private(nat_ip) and (not is_private(ii[0]) or ii[0] in e.own):
             ii, (nat_ip, nat_port) = (nat_ip, nat_port), ii
 
         country, city, lat, lon, asn, as_org = self.geo.lookup(ei[0])
