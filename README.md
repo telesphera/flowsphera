@@ -42,7 +42,7 @@ your own server, installs with one command and is ready in minutes.
 </tr>
 <tr>
 <td valign="top"><b>Security built in</b><br>Port scans, password guessing, floods, contact with known malicious addresses, links running full — with alerts to Telegram, e-mail, webhooks and your SIEM.</td>
-<td valign="top"><b>Made for the wall</b><br>Live maps, a 3D globe and animated traffic views that run full screen on a NOC display — smooth, light on the CPU. A kiosk link opens any panel on its own after a reboot.</td>
+<td valign="top"><b>Made for the wall</b><br>Live maps, a 3D globe and animated traffic views that run full screen on a NOC display — smooth, light on the CPU. A kiosk link opens any panel on its own after a reboot, and every page keeps itself up to date — quietly, without a blink.</td>
 <td valign="top"><b>Yours</b><br>Self-hosted, no cloud, no telemetry. Every feature is free; a license only raises the limits.</td>
 </tr>
 <tr>
