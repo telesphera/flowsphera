@@ -70,7 +70,11 @@ def save_running(running):
         json.dump(running, f)
     os.replace(tmp, RUNNING_FILE)
 RCVBUF = int(os.environ.get('FT_RCVBUF', str(32 * 1024 * 1024)))   # capped by net.core.rmem_max (install.sh raises it)
-BATCH_SECONDS = 2.0
+# (2.12.1, forum #72) records go to ClickHouse every 10 s (was 2 s): every insert makes a new part in flows and in each
+# rollup table, and ClickHouse 24.8 merges a partition's small parts (< ~5 MB, its fixed cost per part) again with every
+# ~5 new ones — on the Optiplex 2,000 rows were rewritten per row received. 10 s = 5x fewer parts and merges; live views
+# see records up to 10 s later. FT_BATCH_SECONDS overrides (1..60).
+BATCH_SECONDS = min(60.0, max(1.0, float(os.environ.get('FT_BATCH_SECONDS', '10'))))
 BATCH_MAX = 20000
 BUFFER_MAX = 500000        # rows kept in memory while ClickHouse is down
 SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
