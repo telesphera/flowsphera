@@ -978,3 +978,10 @@ html.kiosk .updpill{display:none}
 #hdBox .pnedit input{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:10px;padding:8px 12px;background:rgba(0,0,0,.3);font-size:13px;color:var(--ink);outline:none}
 /* (2.12.0) the Version card: the update state */
 #verState .ok{color:var(--ok);font-weight:700}
+
+/* (2.12.1, forum #68) the legend after a panel title stays on its line; a long top service / source / destination name
+   in the map overlay ends with … (full name on hover) instead of widening the box over the map */
+.ph > .legend.mid{margin-left:6px;flex:0 1 auto;min-width:0}
+.ovl{flex-wrap:nowrap}
+.ovl div{max-width:min(300px,100%);flex:1 1 0}
+.ovl span:not(.ico){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -579,7 +579,9 @@ const icon = (d, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 18 18"
 const ICO = {pulse:'M2 9h3l2-5 3 10 2-5h4', nodes:'M6.9 4a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0 -4.2 0M1.9 14a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0 -4.2 0M11.9 14a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0 -4.2 0M7.57 6.86L5.43 11.14M10.43 6.86L12.57 11.14', ip:'M3 5h12v6H3zM6 14h6M7 8h.01M10 8h.01', grid:navIcon('apps'), flow:navIcon('flows'),
   globe:'M9 2a7 7 0 1 0 0 14A7 7 0 0 0 9 2zM2 9h14M9 2c2.5 2.5 2.5 11.5 0 14M9 2c-2.5 2.5-2.5 11.5 0 14', chart:'M2 15l4-6 3 3 5-8 2 2', conv:'M3 5h8l-2-2M15 13H7l2 2', list:'M3 5h12M3 9h12M3 13h8',
   users:navIcon('talkers'), key:'M12 3a3 3 0 1 0 .01 0M9.9 8.1L3 15M5 13l2 2M7 11l2 2', shield:navIcon('threats'), dev:DEV_ICON, pie:'M9 2v7h7A7 7 0 1 1 9 2z', search:'M8 8m-5 0a5 5 0 1 0 10 0a5 5 0 1 0-10 0M12 12l4 4'};
-const ph = (ic, title, sub, right = '', big = false, tools = '') => `<div class="ph"><div class="ttl"><span class="ico">${icon(ICO[ic] || ic)}</span><div><h2${big ? ' class="big"' : ''}>${title}${tools}</h2>${sub ? `<span class="sub">${sub}</span>` : ''}</div></div>${right ? `<div class="right">${right}</div>` : ''}</div>`;
+// (2.12.1, forum #68) `mid` stands right after the title (a legend): when the controls on the right do not fit, they
+// alone move to the next line and the legend stays on the title's line
+const ph = (ic, title, sub, right = '', big = false, tools = '', mid = '') => `<div class="ph"><div class="ttl"><span class="ico">${icon(ICO[ic] || ic)}</span><div><h2${big ? ' class="big"' : ''}>${title}${tools}</h2>${sub ? `<span class="sub">${sub}</span>` : ''}</div></div>${mid}${right ? `<div class="right">${right}</div>` : ''}</div>`;
 // (1.8.8) a panel of the Overview opens full screen: the browser's own (Esc leaves it), or, where a page cannot have
 // it (iPhone), over the whole window; the charts and the map follow the size by themselves (ResizeObserver)
 const MAX_IN = 'M2 6.5V2h4.5M11.5 2H16v4.5M16 11.5V16h-4.5M6.5 16H2v-4.5', MAX_OUT = 'M6.5 2v4.5H2M16 6.5h-4.5V2M11.5 16v-4.5H16M2 11.5h4.5V16';
@@ -904,12 +906,12 @@ function mountHero(){
   // one Live / Period switch for Map, Graph and 3D: live = the last 2 minutes of data, period = the whole range
   const sub = live ? (g ? T('live · 2 min · updating…') : T('live · the last 2 min'))
     : (g ? rangeLabel() : T('the selected period'));
+  const heroLegend = (isInternal() ? `<span class="legend mid"><span><i class="bar" style="background:${C.up}"></i>${T('client → server (what it sends)')}</span><span><i class="bar" style="background:${C.down}"></i>${T('server → client (the answer)')}</span></span>`
+        : `<span class="legend mid"><span><i class="bar" style="background:${C.down}"></i>${T('download')}</span><span><i class="bar" style="background:${C.up}"></i>${T('upload')}</span>${g ? '' : `<span><i style="background:${C.int}"></i>${T('inside')}</span><span><i style="background:${C.ext}"></i>${T('outside')}</span>`}</span>`);
   fill('heroSec', `${ph('flow', T('Network traffic'), `<span id="heroLbl" class="tnum">${sub}</span>`,
-      (isInternal() ? `<span class="legend"><span><i class="bar" style="background:${C.up}"></i>${T('client → server (what it sends)')}</span><span><i class="bar" style="background:${C.down}"></i>${T('server → client (the answer)')}</span></span>`
-        : `<span class="legend"><span><i class="bar" style="background:${C.down}"></i>${T('download')}</span><span><i class="bar" style="background:${C.up}"></i>${T('upload')}</span>${g ? '' : `<span><i style="background:${C.int}"></i>${T('inside')}</span><span><i style="background:${C.ext}"></i>${T('outside')}</span>`}</span>`)
-      + (g ? seg('scaleSeg', [['sqrt', T('Compressed'), T('Width ∝ √volume — small flows stand out next to large ones')], ['lin', T('Linear'), T('Width proportional to volume')]], state.scale) : '')
+      (g ? seg('scaleSeg', [['sqrt', T('Compressed'), T('Width ∝ √volume — small flows stand out next to large ones')], ['lin', T('Linear'), T('Width proportional to volume')]], state.scale) : '')
       + seg('heroLiveSeg', [['live', T('Live'), T('The last 2 minutes of data, updated as it arrives')], ['period', T('toggle::Period'), T('The whole selected period')]], live ? 'live' : 'period')
-      + (isInternal() ? '' : seg('heroSeg', [['map', T('Map')], ['graph', T('Graph')], ['3d', '3D']], state.heroMode)), false, maxBtn())}
+      + (isInternal() ? '' : seg('heroSeg', [['map', T('Map')], ['graph', T('Graph')], ['3d', '3D']], state.heroMode)), false, maxBtn(), heroLegend)}
     <div id="heroBody" class="${g ? 'river' : 'chart hero-h'}"></div><div id="heroNote" class="heronote" hidden></div><div id="heroOvl"></div>`);
   lockLive('heroLiveSeg'); maxMark();
   wireSeg('heroSeg', m => { if (m === state.heroMode) return; state.heroMode = m; mountHero(); });
@@ -935,9 +937,9 @@ function mountHero(){
       if (heroScope !== myScope) return null;
       const a = h.rows[0], b = d.rows[0], c = s.rows[0];
       return `<div class="overlay"><div class="ovl">
-        <div><span class="ico">${icon(ICO.users, 15)}</span><span>${T('Top source')}</span><b>${esc(a ? a.name || a.k : '—')}</b><small>${a ? fmtB(tot(a)) : ''}</small></div>
-        <div><span class="ico">${icon(ICO.globe, 15)}</span><span>${T('Top destination')}</span><b>${esc(b ? b.k : '—')}</b><small>${b ? [b.city, fmtB(tot(b))].filter(Boolean).join(' · ') : ''}</small></div>
-        <div><span class="ico">${icon(ICO.grid, 15)}</span><span>${T('Top service')}</span><b>${esc(c ? c.k : '—')}</b><small>${c ? pct(tot(c), s.total) : ''}</small></div></div>
+        <div><span class="ico">${icon(ICO.users, 15)}</span><span>${T('Top source')}</span><b title="${esc(a ? a.name || a.k : '—')}">${esc(a ? a.name || a.k : '—')}</b><small>${a ? fmtB(tot(a)) : ''}</small></div>
+        <div><span class="ico">${icon(ICO.globe, 15)}</span><span>${T('Top destination')}</span><b title="${esc(b ? b.k : '—')}">${esc(b ? b.k : '—')}</b><small>${b ? [b.city, fmtB(tot(b))].filter(Boolean).join(' · ') : ''}</small></div>
+        <div><span class="ico">${icon(ICO.grid, 15)}</span><span>${T('Top service')}</span><b title="${esc(c ? c.k : '—')}">${esc(c ? c.k : '—')}</b><small>${c ? pct(tot(c), s.total) : ''}</small></div></div>
         ${!live ? '' : `<div class="livebadge"><b>${T('Live')}</b>${T('new connections')}</div>`}</div>`;
     });
   }
