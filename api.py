@@ -1535,7 +1535,7 @@ def api_flows(q):
     return {'rows': rows}
 
 
-LIVE_TOP, LIVE_BACK = 20, 20
+LIVE_TOP, LIVE_BACK, LIVE_MAX = 20, 20, 60
 
 
 def api_live(q):
@@ -1549,7 +1549,10 @@ def api_live(q):
     upto = int(last[0]['t']) if last and int(last[0]['t'] or 0) else 0
     if not upto:
         return {'rows': [], 'now': int(time.time()), 'upto': p['since']}
-    p['lo'], p['upto'], p['n'] = max(p['since'], upto - LIVE_BACK), upto, LIVE_TOP
+    # (2.12.1) LIVE_TOP per 4 s of new data: the collector writes every 10 s, so one answer covers a longer stretch —
+    # as many arcs a second as when it wrote every 2 s (at most LIVE_MAX)
+    span = upto - p['since']
+    p['lo'], p['upto'], p['n'] = max(p['since'], upto - max(LIVE_BACK, min(span, 60))), upto, max(LIVE_TOP, min(LIVE_MAX, -(-LIVE_TOP * span // 4)))
     rows = ch(f"""SELECT toUnixTimestamp(max(ts)) AS t, exporter, toString(dir) AS dir, argMax(int_ip, bytes) AS int_ip, argMax(ext_ip, bytes) AS ext_ip,
             argMax(ext_port, bytes) AS ext_port, argMax(service, bytes) AS service, country, city, lat, lon, sum(bytes) AS b, count() AS n
         FROM flows WHERE {where} AND ts > toDateTime({{lo:UInt32}}) AND ts <= toDateTime({{upto:UInt32}}) AND lat != 0

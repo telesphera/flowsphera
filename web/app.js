@@ -151,13 +151,23 @@ function childScope(){ const list = []; rootScope.push(() => runScope(list));
 const setPressed = (id, val) => document.querySelectorAll(`#${id} button`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === val)));
 const scaleNote = () => '';   // the pressed toggle shows the scale; labels keep a constant length
 const charts = [];
-function mkChart(el){ const c = echarts.init(el, null, {renderer:'canvas'}); charts.push(c);
+// (2.12.1) a page that reloads by itself (#view.quiet, see softRender) draws its charts without the entry animation:
+// numbers change in place, nothing grows again each minute
+const quietPage = () => document.getElementById('view').classList.contains('quiet');
+function mkChart(el){ const was = echarts.getInstanceByDom(el); if (was) { was.dispose(); const i = charts.indexOf(was); if (i >= 0) charts.splice(i, 1); }
+  const c = echarts.init(el, null, {renderer:'canvas'}); charts.push(c);
+  if (quietPage()) { const so = c.setOption.bind(c); c.setOption = (o, ...r) => so(o && typeof o === 'object' ? {...o, animation:false} : o, ...r); }
   if (window.ResizeObserver) { const ro = new ResizeObserver(() => { if (!c.isDisposed()) c.resize(); }); ro.observe(el); onCleanup(() => ro.disconnect()); }
   // axis labels are measured with the web font; re-layout once it has loaded so nothing gets clipped
   if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (!c.isDisposed()) c.resize(); }); onCleanup(() => { c.dispose(); const i = charts.indexOf(c); if (i >= 0) charts.splice(i, 1); }); return c; }
 window.addEventListener('resize', () => charts.forEach(c => c.resize()));
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function every(ms, fn){ const t = setInterval(() => { if (!document.hidden) fn(); }, ms); onCleanup(() => clearInterval(t)); }   // paused while the tab is hidden
+// (2.12.1, #16) how often a page reloads by itself: each minute up to 24 hours, every 5 minutes for 7 and 30 days
+const periodMs = () => rangeSecs() <= 86400 ? 60000 : 300000;
+// a page part that reloads in place (pages with a live map): never a custom period, never while someone is busy on it;
+// the page turns quiet (no entry animations) for the rest of its life
+function pageEvery(fn){ if (!isCustom()) every(periodMs(), () => { if (softBusy()) return; document.getElementById('view').classList.add('quiet'); fn(); }); }
 
 // ===================== chart helpers =====================
 // the axis spans the whole period even without data, so an empty chart still maps a drag to real times
@@ -469,11 +479,17 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
   pinTop();
   if (window.ResizeObserver) { const ro = new ResizeObserver(() => requestAnimationFrame(pinTop)); ro.observe(el); onCleanup(() => ro.disconnect()); }
   // live arcs: poll new flows, then release them gradually so bursts from the exporter become a steady stream
-  let since = Math.floor(Date.now() / 1000) - 120, queue = [], live = [];
-  const poll = async () => { try { const r = await api('live', {since}); since = r.upto || since; queue.push(...r.rows); if (queue.length > 120) queue = queue.slice(-120); } catch (e) {} };
+  // (2.12.1) released at the pace they come in (records per second, smoothed), not a quarter of the queue a tick: the
+  // collector writes every 10 s, and a queue emptied in ~4 s left the map still for the next 6 s. A backlog beyond
+  // ~12 s of arcs goes out faster; fractions carry over between ticks.
+  let since = Math.floor(Date.now() / 1000) - 120, queue = [], live = [], rate = 0, lastIn = 0, carry = 0;
+  const poll = async () => { try { const r = await api('live', {since}); since = r.upto || since; queue.push(...r.rows); if (queue.length > 120) queue = queue.slice(-120);
+    if (r.rows.length) { const t = performance.now(), got = r.rows.length / (lastIn ? Math.max(4, (t - lastIn) / 1000) : 10); rate = rate ? .6 * rate + .4 * got : got; lastIn = t; } } catch (e) {} };
+  const tickS = reduceMotion ? 3 : 1;
   const tick = () => {
     const now = performance.now(); live = live.filter(e => now - e.born < 4500);
-    const n = Math.min(queue.length, Math.max(1, Math.ceil(queue.length / 4)), Math.max(0, MAP_LINES - live.length));
+    carry += rate * tickS + Math.max(0, queue.length - rate * 12) / 4;
+    const n = Math.min(queue.length, Math.floor(carry), Math.max(0, MAP_LINES - live.length)); carry = queue.length > n ? Math.min(carry - n, MAP_LINES) : 0;
     for (const r of queue.splice(0, n)) {
       // a line needs the device's location (Settings → Devices); Live connections lists the flow without it too
       const s = siteGeo(r.exporter), up = r.dir === 'up';
@@ -484,7 +500,7 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
     lastLen = live.length;
   };
   let lastLen = -1;
-  if (arcs && !isCustom()) { poll(); every(4000, poll); every(reduceMotion ? 3000 : 1000, tick); }    // a past period: no live arcs
+  if (arcs && !isCustom()) { poll(); every(4000, poll); every(tickS * 1000, tick); }    // a past period: no live arcs
   return geo => { if (!c.isDisposed()) c.setOption(dataOpt(geo)); };
 }
 function globe(el, geo){
@@ -611,7 +627,7 @@ const fill = (id, html) => { const el = document.getElementById(id); if (el) { c
 const W_SETTLE_ROWS = 'tbody tr, .blist > .brow, .pbars > span, .dl > button, .dl > span:not(.p):not(.t), .wleg > div, .rows > *';
 function wSettle(el){
   el.classList.remove('wshow', 'wfade'); delete el.dataset.w;
-  if (REDUCED.matches) return;
+  if (REDUCED.matches || quietPage()) return;
   el.querySelectorAll(W_SETTLE_ROWS).forEach((r, i) => r.style.setProperty('--wi', Math.min(i, 14)));
   el.querySelectorAll('.pbars > .vbar, .pbars > b').forEach(b => { const w = b.previousElementSibling && b.previousElementSibling.style.getPropertyValue('--wi'); if (w) b.style.setProperty('--wi', w); });
   el.classList.add('wsettle'); clearTimeout(el._ws); el._ws = setTimeout(() => el.classList.remove('wsettle'), 1800);
@@ -1065,7 +1081,7 @@ function vFlows(){
   const mountRiver = () => {
     if (riverScope) riverScope.dispose();
     riverScope = childScope();
-    riverScope.run(() => createRiver(document.getElementById('river'), {compact:false, refreshMs:flowLive() ? 10000 : 0, onSelect:onRiverSelect,
+    riverScope.run(() => createRiver(document.getElementById('river'), {compact:false, refreshMs:flowLive() ? 10000 : isCustom() ? 0 : periodMs(), onSelect:onRiverSelect,
       // (2.0.0 build 4) the river grows with its row (a tall Inspector): as many pairs as fit, never fewer than the old 10
       fitTop:(h, cpt) => Math.max(10, Math.min(20, Math.floor((h - (cpt ? 22 : 30) + (cpt ? 6 : 8)) / (cpt ? 46 : 58)))),
       fetchData:top => api('river', {top:top || 10, live:flowLive() ? 1 : 0, win:120, metric:state.metric}), onData:d => { lastData = d; winLbl(d); }}));
@@ -1075,8 +1091,9 @@ function vFlows(){
   wireSeg('metricSeg', m => { if (m === state.metric) return; state.metric = m; setPressed('metricSeg', m); mountRiver(); });
   lockLive('liveSeg');
   wireSeg('liveSeg', m => { const live = m === 'live'; if (live === state.flowLive) return; state.flowLive = live; setPressed('liveSeg', m); mountRiver(); });
-  api('summary').then(s => { fill('kTot', fmtB(s.bytes)); fill('kFl', fmtN(s.flows)); }).catch(() => {});
-  api('series').then(s => { const el = document.getElementById('cVol'); if (el) trendChart(el, s); }).catch(e => fill('cVol', errBox(e)));
+  const heads = () => { api('summary').then(s => { fill('kTot', fmtB(s.bytes)); fill('kFl', fmtN(s.flows)); }).catch(() => {});
+    api('series').then(s => { const el = document.getElementById('cVol'); if (el) trendChart(el, s); }).catch(e => fill('cVol', errBox(e))); };
+  heads();
   const ingest = () => api('ingest').then(d => { const el = document.getElementById('cIng'); if (!el) return; el.classList.remove('loading'); delete el.dataset.wait;
     const c = echarts.getInstanceByDom(el); if (c) c.dispose(); ingestChart(el, d);
     const n = d.drops.reduce((a, x) => a + x[1], 0), top = Math.max(0, ...d.peak.map(x => x[1]));
@@ -1084,14 +1101,18 @@ function vFlows(){
       + (d.limit ? ' · ' + T('license limit {n}/s', {n: fmtN(d.limit)}) : '') + (n ? ` · <span style="color:${RED}">${T('{n} records over the limit not stored', {n: fmtN(n)})}</span>` : '')); })
     .catch(e => fill('cIng', errBox(e)));
   ingest(); if (!isCustom()) every(60000, ingest);
-  section('convBox', async () => { const t = await api('top', {dim:'conv', limit:6});
-    return `<div class="tw"><table class="compact"><thead><tr><th>${isInternal() ? T('Client') : T('col::Inside')}</th><th>${isInternal() ? T('Server') : T('Outside')}</th><th>${T('Service')}</th><th class="num">${T('Volume')}</th></tr></thead><tbody>${t.rows.map(x => `<tr class="click" data-conv="${esc(x.int_ip)}|${esc(x.ext_ip)}" title="${T('Filter by this conversation')}"><td class="ipl">${esc(x.name || x.int_ip)}</td><td class="ipl">${esc(x.ext_ip)}</td><td>${svcBadge(x.service)}</td><td class="num mono">${isInternal() ? `<div class="two-line"><b>${fmtB(tot(x))}</b><span class="nat"><span class="u" title="${T('the client sent')}">↑ ${fmtB(x.up)}</span> <span class="d" title="${T('the server answered')}">↓ ${fmtB(x.dn)}</span></span></div>` : fmtB(tot(x))}</td></tr>`).join('')}</tbody></table></div>`; });
   document.getElementById('convBox').addEventListener('click', e => { const tr = e.target.closest('tr[data-conv]'); if (!tr) return;
     const [ip, dst] = tr.dataset.conv.split('|'); putFilter({k:'ip', v:ip, neg:false}); putFilter({k:'dst', v:dst, neg:false}); state.sel = null; render(); });
-  section('protoBox', async () => { const t = await api('top', {dim:'l7', limit:6});
-    setTimeout(() => { const el = document.getElementById('cProto'); if (el) donut(el, t.rows, k => PAL[t.rows.findIndex(r => r.k === k) % PAL.length], [String(t.rows.length), T('protocols')]); });
-    return `<div class="donut-wrap"><div class="chart donut" id="cProto"></div><div class="dl">${t.rows.map((r, i) => `<i class="idot" style="background:${PAL[i]}"></i><button class="link" data-f="l7" data-v="${esc(r.k)}">${esc(dv(r.k))}</button><span class="p">${pct(tot(r), t.total)}</span><span class="t">${fmtB(tot(r))}</span>`).join('')}</div></div>`; });
-  section('recBox', async () => { const t = await api('flows', {limit:60}); window.__recs = t.rows; return recTable(t.rows); });
+  const lists = () => {
+    section('convBox', async () => { const t = await api('top', {dim:'conv', limit:6});
+      return `<div class="tw"><table class="compact"><thead><tr><th>${isInternal() ? T('Client') : T('col::Inside')}</th><th>${isInternal() ? T('Server') : T('Outside')}</th><th>${T('Service')}</th><th class="num">${T('Volume')}</th></tr></thead><tbody>${t.rows.map(x => `<tr class="click" data-conv="${esc(x.int_ip)}|${esc(x.ext_ip)}" title="${T('Filter by this conversation')}"><td class="ipl">${esc(x.name || x.int_ip)}</td><td class="ipl">${esc(x.ext_ip)}</td><td>${svcBadge(x.service)}</td><td class="num mono">${isInternal() ? `<div class="two-line"><b>${fmtB(tot(x))}</b><span class="nat"><span class="u" title="${T('the client sent')}">↑ ${fmtB(x.up)}</span> <span class="d" title="${T('the server answered')}">↓ ${fmtB(x.dn)}</span></span></div>` : fmtB(tot(x))}</td></tr>`).join('')}</tbody></table></div>`; });
+    section('protoBox', async () => { const t = await api('top', {dim:'l7', limit:6});
+      setTimeout(() => { const el = document.getElementById('cProto'); if (el) donut(el, t.rows, k => PAL[t.rows.findIndex(r => r.k === k) % PAL.length], [String(t.rows.length), T('protocols')]); });
+      return `<div class="donut-wrap"><div class="chart donut" id="cProto"></div><div class="dl">${t.rows.map((r, i) => `<i class="idot" style="background:${PAL[i]}"></i><button class="link" data-f="l7" data-v="${esc(r.k)}">${esc(dv(r.k))}</button><span class="p">${pct(tot(r), t.total)}</span><span class="t">${fmtB(tot(r))}</span>`).join('')}</div></div>`; });
+    section('recBox', async () => { const t = await api('flows', {limit:60}); window.__recs = t.rows; return recTable(t.rows); });
+  };
+  lists();
+  pageEvery(() => { heads(); lists(); });     // (2.12.1, #16) ingest has its own minute
 }
 // ===================== device map: hosts -> ports (dots on the device contour) -> lines inside -> ports -> hosts =====================
 // Inside interfaces are dots on the left edge of the box, WAN interfaces dots on the right edge, the device
@@ -1749,6 +1770,7 @@ function vPaths(){
     if (mapEl && mapEl.querySelector('canvas')) wb = waitBig(mapEl, 'device', sketchDevice(dev, ifs));   // (1.8.5) a sketch until the first answer
     try { draw(await load()); } catch (e) { fill('pTable', errBox(e)); }
     if (live) every(10000, () => load().then(d => { if (seq === renderSeq) draw(d); }).catch(() => {}));
+    else pageEvery(() => load().then(d => { if (seq === renderSeq) draw(d); }).catch(() => {}));     // (2.12.1, #16)
   })().catch(e => fill('cPaths', errBox(e)));
 }
 // ===================== path analysis: layer-3 neighbours of a device and the path of traffic across devices =====================
@@ -2464,6 +2486,7 @@ function vNetwork(){
   drawPath();
   load().then(d => { show(d); if (state.netPath && state.netSrc && state.netDst) trace(); }).catch(e => { if (wb) { wb.stop(); wb = null; } if (seq === renderSeq) { fill('cNet', errBox(e)); fill('nLinks', ''); } });
   if (live) every(10000, () => load().then(show).catch(() => {}));
+  else pageEvery(() => load().then(show).catch(() => {}));     // (2.12.1, #16)
 }
 // the top hosts as CSV: [header, rows]; inside traffic adds how many inside hosts each one connected to / was connected from
 function hostsCsv(rows, secs){
@@ -2712,16 +2735,21 @@ function vGeo(){
     <section class="glass panel s4">${ph('globe', T('Countries'), T('by destination address'))}<div id="ccBox" class="loading"></div></section>
     <section class="glass panel s8">${ph('nodes', T('Autonomous systems'), T('who actually serves the traffic'))}<div id="asBox" class="loading"></div></section></div>`;
   const tk = document.getElementById('ticker');
-  api('geo').then(g => { const el = document.getElementById('cMap'); if (!el) return; flatMap(el, g, r => {
+  let geoUpd = null;      // (2.12.1, #16) the map's own update: the aggregate lines and places change, the live arcs go on
+  api('geo').then(g => { const el = document.getElementById('cMap'); if (!el) return; geoUpd = flatMap(el, g, r => {
     if (tk.querySelector('.empty')) tk.innerHTML = '';
     const up = r.dir === 'up', site = siteCity(r.exporter), place = r.city || ccName(r.country);
     const d = document.createElement('div'); d.className = 'tick';
     d.innerHTML = `<span class="mono" style="color:var(--ink3)">${hms(r.t)}</span><span class="mid"><span class="ipl"><b class="${up ? 'u' : 'd'}">${up ? '↑' : '↓'}</b> ${esc(up ? site : place)} → ${esc(up ? place : site)}</span><span class="nat ipl">${esc(r.name || r.int_ip)} ${up ? '→' : '←'} ${esc(r.ext_ip)}:${r.ext_port} · ${esc(r.service)}</span></span><span class="mono">${fmtB(r.bytes)}</span>`;
     tk.prepend(d); while (tk.children.length > 14) tk.lastChild.remove(); }); }).catch(e => fill('cMap', errBox(e)));
-  section('ccBox', async () => ccList(await api('top', {dim:'country', limit:20})));
-  section('asBox', async () => { const t = await api('top', {dim:'asn', limit:25});
-    return `<div class="tw"><table><thead><tr><th>ASN</th><th>${T('Country')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th></tr></thead><tbody>
-      ${t.rows.map(r => `<tr><td>${r.k !== '0' ? `<button class="link" data-f="asn" data-v="${esc(r.k)}">AS${esc(r.k)} ${esc(r.as_org)}</button>` : T('local addresses')}</td><td><span class="tag mono">${esc(r.country || '—')}</span></td><td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono"><b>${fmtB(tot(r))}</b></td><td class="num mono">${pct(tot(r), t.total)}</td></tr>`).join('')}</tbody></table></div>`; });
+  const geoParts = () => {
+    section('ccBox', async () => ccList(await api('top', {dim:'country', limit:20})));
+    section('asBox', async () => { const t = await api('top', {dim:'asn', limit:25});
+      return `<div class="tw"><table><thead><tr><th>ASN</th><th>${T('Country')}</th><th class="num">↓</th><th class="num">↑</th><th class="num">${T('Total')}</th><th class="num">%</th></tr></thead><tbody>
+        ${t.rows.map(r => `<tr><td>${r.k !== '0' ? `<button class="link" data-f="asn" data-v="${esc(r.k)}">AS${esc(r.k)} ${esc(r.as_org)}</button>` : T('local addresses')}</td><td><span class="tag mono">${esc(r.country || '—')}</span></td><td class="num d mono">${fmtB(r.dn)}</td><td class="num u mono">${fmtB(r.up)}</td><td class="num mono"><b>${fmtB(tot(r))}</b></td><td class="num mono">${pct(tot(r), t.total)}</td></tr>`).join('')}</tbody></table></div>`; });
+  };
+  geoParts();
+  pageEvery(() => { api('geo').then(g => { if (geoUpd) geoUpd(g); }).catch(() => {}); geoParts(); });
 }
 // detections and anomalies: name, what triggers it, its thresholds (keys as in detect.KINDS)
 const EV_KINDS = () => ({
@@ -5362,7 +5390,7 @@ function render(){ if (state.view === 'devices' || state.view === 'users') { sta
   waitReset();
   PAGE_AC.abort(); PAGE_AC = new AbortController();       // and the browser stops waiting for it
   for (const [k, v] of API_SHARED) if (!v.done) API_SHARED.delete(k);     // nor is a cancelled answer shared with it
-  const vw = document.getElementById('view'); vw.style.visibility = ''; vw.style.minHeight = '';     // (2.12.1) a quiet reload cut short
+  const vw = document.getElementById('view'); vw.style.visibility = ''; vw.style.minHeight = ''; vw.classList.remove('quiet');     // (2.12.1) a quiet reload cut short
   cleanup(); renderShell(); renderUser(); saveUrl(); VIEWS[state.view](); kioskMax(); autoRefresh(); }
 
 // (2.12.1, GitHub #16) every data page reloads by itself like the Overview: each minute for periods up to 24 hours,
@@ -5370,12 +5398,13 @@ function render(){ if (state.view === 'devices' || state.view === 'users') { sta
 // old picture, which stays on screen (ids taken off, charts still drawn) until the new one has no panel left waiting
 // (at most 20 s), then the old one and its charts and timers go; the scroll stays. A tick is skipped while someone is
 // busy on the page: typing, a dialog or host card open, a panel full screen (not a kiosk), a dragged zoom, text selected.
-// Pages with their own refresh (Overview, Events) and the long-period ones (Usage, Capacity, Settings) are not in it.
-const SOFT_VIEWS = new Set(['flows', 'conversations', 'paths', 'network', 'qos', 'talkers', 'apps', 'applications', 'ports', 'geo']);
+// Pages with their own refresh (Overview, Events) and the long-period ones (Usage, Capacity, Settings) are not in it;
+// pages with a live or animated map (Flows, Through device, Path analysis, Geolocation) reload their parts in place
+// (pageEvery): drawing them again would restart the map, its particles and the Live connections list.
+const SOFT_VIEWS = new Set(['conversations', 'qos', 'talkers', 'apps', 'applications', 'ports']);
 let SOFT_BUSY = false, MOUSE_DOWN = false;
 addEventListener('mousedown', () => { MOUSE_DOWN = true; }, true); addEventListener('mouseup', () => { MOUSE_DOWN = false; }, true);
-// Path analysis and Through device in Live mode already redraw their map every 10 s: no page reload on top of that
-function autoRefresh(){ if (SOFT_VIEWS.has(state.view) && !isCustom() && !(state.view === 'network' && state.netLive) && !(state.view === 'paths' && state.pathsLive)) every(rangeSecs() <= 86400 ? 60000 : 300000, softRender); }
+function autoRefresh(){ if (SOFT_VIEWS.has(state.view) && !isCustom()) every(periodMs(), softRender); }
 function softBusy(){
   const v = document.getElementById('view'), a = document.activeElement, sel = getSelection && getSelection();
   return SOFT_BUSY || MOUSE_DOWN || state.dirty || document.getElementById('drawerRoot').childElementCount > 0 || document.getElementById('periodPop')
@@ -5400,6 +5429,7 @@ function softRender(){
   PAGE_AC.abort(); PAGE_AC = new AbortController();
   for (const [k, v] of API_SHARED) if (!v.done) API_SHARED.delete(k);
   const seq = renderSeq, t0 = Date.now();
+  view.classList.add('quiet');
   try { VIEWS[state.view](); kioskMax(); autoRefresh(); } catch (e) { console.error(e); }
   const done = () => {
     ghost.remove(); runScope(old);
