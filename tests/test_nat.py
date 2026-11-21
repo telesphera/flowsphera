@@ -80,6 +80,25 @@ class NatBehindProvider(unittest.TestCase):
         e = C.Exporter('192.0.2.1', {'wan_ifs': [2], 'public_ips': [self.WAN_ADDR]})
         self.assertEqual(self.row(e, rec(PEER, self.WAN_ADDR, 2, 0)), ('down', self.WAN_ADDR, 50000, PEER, '', 0))
 
+    def test_masquerade_address_learned_from_outgoing_records(self):
+        # (2.12.1) nobody told FlowSphera the router's WAN address: its outgoing records show it (the translated source)
+        c = C.Collector(accounting=False, rate_limit=False)
+        e = C.Exporter('192.0.2.1', {'wan_ifs': [2]})
+        c.buf = []
+        c.store(e, rec(PEER, self.WAN_ADDR, 2, 7, nat_dst=HOST, nat_dport=50001))      # before anything was learned
+        self.assertEqual(c.buf[-1]['int_ip'], self.WAN_ADDR)
+        c.store(e, rec(HOST, PEER, 7, 2, nat_src=self.WAN_ADDR, nat_sport=50001))      # the inside host's upload
+        c.store(e, rec(PEER, self.WAN_ADDR, 2, 7, nat_dst=HOST, nat_dport=50001))
+        self.assertEqual((c.buf[-1]['dir'], c.buf[-1]['int_ip'], c.buf[-1]['nat_ip']), ('down', HOST, self.WAN_ADDR))
+
+    def test_learned_address_keeps_the_fortigate_case(self):
+        c = C.Collector(accounting=False, rate_limit=False)
+        e = C.Exporter('192.0.2.1', {'wan_ifs': [2]})
+        c.buf = []
+        c.store(e, rec(HOST, PEER, 7, 2, nat_src=self.WAN_ADDR, nat_sport=50000))
+        c.store(e, rec(PEER, HOST, 2, 7, nat_dst=self.WAN_ADDR, nat_dport=50000))       # destination already the host
+        self.assertEqual((c.buf[-1]['int_ip'], c.buf[-1]['nat_ip']), (HOST, self.WAN_ADDR))
+
     def test_private_destination_not_the_router_unchanged(self):
         # an inside host as the destination and another inside address in the NAT field: not ours to swap
         e = C.Exporter('192.0.2.1', {'wan_ifs': [2], 'public_ips': [self.WAN_ADDR]})

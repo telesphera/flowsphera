@@ -80,6 +80,7 @@ BUFFER_MAX = 500000        # rows kept in memory while ClickHouse is down
 SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema.sql')
 DISPATCH_EVERY = 64        # packets per batch handed to a worker (or after DISPATCH_SECONDS)
 DISPATCH_SECONDS = 0.02
+NAT_OWN_MAX = 256          # (2.12.1) addresses a device masquerades to, learned from its records (a NAT pool is small)
 DUP_WINDOW = 2.0           # s: the same packet again from the same exporter within this time is a copy (dropped)
 QUEUE_MAX = 500            # batches waiting per worker (~32k packets, a few seconds of a burst); beyond that: queue drops
 
@@ -141,6 +142,10 @@ class Exporter:
         # typed for its WAN interfaces — also a private one when the provider's NAT / CGNAT is in front of it
         self.own = {norm_addr(self.ip)} | self.self_ips | {norm_addr(str(a).split('/')[0]) for i in self.wan
                                                              for a in (cfg.get('if_addrs') or {}).get(str(i), [])}
+        # (2.12.1) and the ones it shows itself: the translated source of its outgoing records is the address it
+        # masquerades its inside hosts to — its own WAN address, also when nobody typed it (learned in store())
+        if not hasattr(self, 'nat_own'):
+            self.nat_own = set()
         self.cfg_sampling = parse_ratio(cfg.get('sampling', '1:1'))
 
 
@@ -437,6 +442,8 @@ class Collector:
 
         if d == 'up':
             nat_ip, nat_port = nat_src, nat_sport
+            if nat_ip and nat_ip not in ('0.0.0.0', '::') and nat_ip not in e.nat_own and len(e.nat_own) < NAT_OWN_MAX:
+                e.nat_own.add(nat_ip)
         elif d == 'down':
             nat_ip, nat_port = nat_dst, nat_dport
         else:
@@ -449,7 +456,7 @@ class Collector:
         # device's own PRIVATE address (a WAN behind the provider's NAT or CGNAT): before, the download of every inside
         # host through that WAN was put on the router («RTR1 (self)»). A private destination that is not the device's
         # own stays (FortiGate: the reply's destination is the inside host already, its NAT field the router's address).
-        if d == 'down' and nat_ip and nat_ip != ii[0] and is_private(nat_ip) and (not is_private(ii[0]) or ii[0] in e.own):
+        if d == 'down' and nat_ip and nat_ip != ii[0] and is_private(nat_ip) and (not is_private(ii[0]) or ii[0] in e.own or ii[0] in e.nat_own):
             ii, (nat_ip, nat_port) = (nat_ip, nat_port), ii
 
         country, city, lat, lon, asn, as_org = self.geo.lookup(ei[0])
