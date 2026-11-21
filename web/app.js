@@ -5362,7 +5362,57 @@ function render(){ if (state.view === 'devices' || state.view === 'users') { sta
   waitReset();
   PAGE_AC.abort(); PAGE_AC = new AbortController();       // and the browser stops waiting for it
   for (const [k, v] of API_SHARED) if (!v.done) API_SHARED.delete(k);     // nor is a cancelled answer shared with it
-  cleanup(); renderShell(); renderUser(); saveUrl(); VIEWS[state.view](); kioskMax(); }
+  const vw = document.getElementById('view'); vw.style.visibility = ''; vw.style.minHeight = '';     // (2.12.1) a quiet reload cut short
+  cleanup(); renderShell(); renderUser(); saveUrl(); VIEWS[state.view](); kioskMax(); autoRefresh(); }
+
+// (2.12.1, GitHub #16) every data page reloads by itself like the Overview: each minute for periods up to 24 hours,
+// every 5 minutes for 7 and 30 days, never a custom period or a hidden tab. Quietly: the page is drawn again under the
+// old picture, which stays on screen (ids taken off, charts still drawn) until the new one has no panel left waiting
+// (at most 20 s), then the old one and its charts and timers go; the scroll stays. A tick is skipped while someone is
+// busy on the page: typing, a dialog or host card open, a panel full screen (not a kiosk), a dragged zoom, text selected.
+// Pages with their own refresh (Overview, Events) and the long-period ones (Usage, Capacity, Settings) are not in it.
+const SOFT_VIEWS = new Set(['flows', 'conversations', 'paths', 'network', 'qos', 'talkers', 'apps', 'applications', 'ports', 'geo']);
+let SOFT_BUSY = false, MOUSE_DOWN = false;
+addEventListener('mousedown', () => { MOUSE_DOWN = true; }, true); addEventListener('mouseup', () => { MOUSE_DOWN = false; }, true);
+// Path analysis and Through device in Live mode already redraw their map every 10 s: no page reload on top of that
+function autoRefresh(){ if (SOFT_VIEWS.has(state.view) && !isCustom() && !(state.view === 'network' && state.netLive) && !(state.view === 'paths' && state.pathsLive)) every(rangeSecs() <= 86400 ? 60000 : 300000, softRender); }
+function softBusy(){
+  const v = document.getElementById('view'), a = document.activeElement, sel = getSelection && getSelection();
+  return SOFT_BUSY || MOUSE_DOWN || state.dirty || document.getElementById('drawerRoot').childElementCount > 0 || document.getElementById('periodPop')
+    || (a && v.contains(a) && a.matches('input, select, textarea, [contenteditable]')) || (!KIOSK.max && v.querySelector('.is-max'))
+    || (sel && !sel.isCollapsed && v.contains(sel.anchorNode)) || v.querySelector('details[open], .alert.open');
+}
+function softRender(){
+  if (softBusy()) return;
+  const view = document.getElementById('view'), host = view.parentElement;
+  const old = rootScope.splice(0);                     // the old page's charts and timers live until the swap
+  const scrolls = [...view.querySelectorAll('[id]')].filter(e => e.scrollTop > 0 || e.scrollLeft > 0).map(e => [e.id, e.scrollTop, e.scrollLeft]);
+  if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+  const ghost = document.createElement('div'), h = view.offsetHeight;
+  ghost.className = 'soft-ghost'; ghost.setAttribute('aria-hidden', 'true');
+  ghost.style.cssText = `position:absolute;left:${view.offsetLeft}px;top:${view.offsetTop}px;width:${view.offsetWidth}px;pointer-events:none`;
+  while (view.firstChild) ghost.appendChild(view.firstChild);
+  ghost.querySelectorAll('[id]').forEach(e => e.removeAttribute('id'));
+  host.appendChild(ghost);
+  view.style.minHeight = h + 'px'; view.style.visibility = 'hidden';
+  SOFT_BUSY = true;
+  renderSeq++; PAGE_ID = Math.random().toString(36).slice(2, 12); waitReset();
+  PAGE_AC.abort(); PAGE_AC = new AbortController();
+  for (const [k, v] of API_SHARED) if (!v.done) API_SHARED.delete(k);
+  const seq = renderSeq, t0 = Date.now();
+  try { VIEWS[state.view](); kioskMax(); autoRefresh(); } catch (e) { console.error(e); }
+  const done = () => {
+    ghost.remove(); runScope(old);
+    view.style.visibility = ''; view.style.minHeight = '';
+    for (const [id, st, sl] of scrolls) { const e = document.getElementById(id); if (e) { e.scrollTop = st; e.scrollLeft = sl; } }
+    SOFT_BUSY = false;
+  };
+  const check = () => {
+    if (seq !== renderSeq) { ghost.remove(); runScope(old); SOFT_BUSY = false; return; }     // a real render came first (it showed the view)
+    if (!view.querySelector('.loading') || Date.now() - t0 > 20000) done(); else setTimeout(check, 200);
+  };
+  setTimeout(check, 200);
+}
 
 document.getElementById('devSel').onchange = e => { state.filters = state.filters.filter(f => f.k !== 'device'); if (e.target.value) putFilter({k:'device', v:e.target.value, neg:false}); render(); };
 document.getElementById('rangeSel').onchange = e => { const v = e.target.value; if (v === 'pick') { e.target.value = state.range; openPeriod(); return; } if (v !== 'custom') { state.range = v; render(); } };

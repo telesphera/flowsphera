@@ -122,11 +122,17 @@ def build(cfg, near, ifaces, exporting, pairs=(), fixed=()):
                 if _ip(a) not in shared:
                     owners.add(_net(a), d, int(i))
 
+    # (2.12.1, issue #17) an interface with the role WAN leads to the internet: the records never make it face another
+    # device — a device's own address seen there came over the internet (another site, an exchange point), and the
+    # same conversation recorded on a WAN interface and on a far device's customer interface says nothing about a link
+    # between them. A WAN interface that does face a device of yours gets it from a shared subnet, LLDP or by hand.
+    wan = {d: {int(i) for i in cfg.get(d, {}).get('wan_ifs', [])} for d in devs}
+
     def behind_map():
         out = {}                 # (device, iface) -> {other device: records}
         for r in near:
             o = owners.find(r['addr'])
-            if o and o[0] != r['exporter']:
+            if o and o[0] != r['exporter'] and int(r['iface']) not in wan.get(r['exporter'], ()):
                 k = (r['exporter'], int(r['iface']))
                 out.setdefault(k, {}).setdefault(o[0], 0)
                 out[k][o[0]] += int(r['records'])
@@ -134,7 +140,6 @@ def build(cfg, near, ifaces, exporting, pairs=(), fixed=()):
 
     behind = behind_map()
     # second pass: inside /24 networks entering a device on a LAN interface that leads to no other device
-    wan = {d: set(cfg.get(d, {}).get('wan_ifs', [])) for d in devs}
     seen = {}
     for r in near:
         k = (r['exporter'], int(r['iface']))
@@ -149,30 +154,6 @@ def build(cfg, near, ifaces, exporting, pairs=(), fixed=()):
         if len(where) == 1 or cnt >= 2 * sorted(where.values())[-2]:     # one clear home, else it is transit
             owners.add(n, d, i)
     behind = behind_map()
-    # the same conversation recorded by two devices: the interface it leaves one through faces the interface it enters
-    # the other through. Which device came first is not in a record, so both readings get the vote; the real pair of
-    # facing interfaces collects votes from every kind of traffic between the two, the other reading's interfaces
-    # (where the endpoints sit) differ from one kind to the next. A tie is settled by the addresses behind them.
-    votes = {}
-    for r in pairs:
-        a, b, n = r['a'], r['b'], int(r['n'])
-        if a == b:
-            continue
-        for k in (((a, int(r['ao'])), (b, int(r['bi']))), ((b, int(r['bo'])), (a, int(r['ai'])))):
-            (d1, x1), (d2, x2) = sorted(k)
-            votes.setdefault((d1, d2), {}).setdefault((x1, x2), 0)
-            votes[(d1, d2)][(x1, x2)] += n
-    for (d1, d2), cand in votes.items():
-        def score(xy):
-            bonus = (d2 in behind.get((d1, xy[0]), ())) + (d1 in behind.get((d2, xy[1]), ()))
-            return (cand[xy] * (1 + bonus), bonus)
-        ranked = sorted(cand, key=score, reverse=True)
-        if len(ranked) > 1 and score(ranked[0]) == score(ranked[1]):
-            continue                     # no way to tell which reading is right
-        x1, x2 = ranked[0]
-        behind.setdefault((d1, x1), set()).add(d2)
-        behind.setdefault((d2, x2), set()).add(d1)
-
     # a subnet configured on both ends: neighbours for sure (also when one end exports nothing); side: (a, b) -> a's
     # interface towards b
     vol = {(r['exporter'], int(r['iface'])): r for r in ifaces}
@@ -214,6 +195,43 @@ def build(cfg, near, ifaces, exporting, pairs=(), fixed=()):
                     side[(a, b)] = x
                     subnet[(a, b)] = (aa, ba, str(n))
     by_subnet = {(a, x) for (a, _), x in side.items() if x is not None}     # interfaces whose neighbours are known
+
+    # the same conversation recorded by two devices: the interface it leaves one through faces the interface it enters
+    # the other through. Which device came first is not in a record, so both readings get the vote; the real pair of
+    # facing interfaces collects votes from every kind of traffic between the two, the other reading's interfaces
+    # (where the endpoints sit) differ from one kind to the next. A tie is settled by the addresses behind them.
+    votes = {}
+    for r in pairs:
+        a, b, n = r['a'], r['b'], int(r['n'])
+        if a == b:
+            continue
+        for k in (((a, int(r['ao'])), (b, int(r['bi']))), ((b, int(r['bo'])), (a, int(r['ai'])))):
+            (d1, x1), (d2, x2) = sorted(k)
+            votes.setdefault((d1, d2), {}).setdefault((x1, x2), 0)
+            votes[(d1, d2)][(x1, x2)] += n
+    # (2.12.1, issue #17) a reading is out when one of its interfaces is a WAN interface, or an interface whose
+    # neighbour is already known (shared subnet, LLDP, by hand) to be another device
+    known = {}
+    for (a, b), x in side.items():
+        if x is not None:
+            known.setdefault((a, x), set()).add(b)
+
+    def fits(d, x, other):
+        return x not in wan.get(d, ()) and (d, x) not in known or other in known.get((d, x), ())
+    for (d1, d2), cand in votes.items():
+        cand = {xy: n for xy, n in cand.items() if fits(d1, xy[0], d2) and fits(d2, xy[1], d1)}
+        if not cand:
+            continue
+
+        def score(xy):
+            bonus = (d2 in behind.get((d1, xy[0]), ())) + (d1 in behind.get((d2, xy[1]), ()))
+            return (cand[xy] * (1 + bonus), bonus)
+        ranked = sorted(cand, key=score, reverse=True)
+        if len(ranked) > 1 and score(ranked[0]) == score(ranked[1]):
+            continue                     # no way to tell which reading is right
+        x1, x2 = ranked[0]
+        behind.setdefault((d1, x1), set()).add(d2)
+        behind.setdefault((d2, x2), set()).add(d1)
 
     # the records: devices behind an interface; on an interface with a configured link only that link's other end is
     # a neighbour (whatever is seen behind it is further away)
