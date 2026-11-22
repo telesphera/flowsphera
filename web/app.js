@@ -4500,7 +4500,7 @@ function vBackups(){
       <div class="two"><label>${T('At (server time)')}<input id="bkTime" type="time" value="${esc(s.time)}"></label>
         <label>${T('Full backup')}<select id="bkFullSel"><option value="week" ${s.full === 'week' ? 'selected' : ''}>${T('once a week, the changes on the other days')}</option><option value="day" ${s.full === 'day' ? 'selected' : ''}>${T('every day')}</option></select></label></div>
       <div class="two"><label>${T('Full backup on')}<select id="bkDay">${days.map((n, i) => `<option value="${i}" ${s.weekday === i ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-        <label>${T('Keep full backups (with their changes)')}<input id="bkKeep" type="number" min="1" max="60" value="${esc(c.keep_full)}"></label></div>
+        <label>${T('Keep full backups (plus the 3 newest changes)')}<input id="bkKeep" type="number" min="1" max="60" value="${esc(c.keep_full)}"></label></div>
       <p class="note" style="margin:0" id="bkEst"></p>`);
     const est = () => { const n = +document.getElementById('bkKeep').value || 1, wk = document.getElementById('bkFullSel').value === 'week';
       document.getElementById('bkEst').textContent = fullSz ? T('About {size} with these settings: a full backup ≈ {full}, a day of changes ≈ {day}.', {size:fmtB(n * (wk ? fullSz + 6 * daySz : fullSz)), full:fmtB(fullSz), day:fmtB(daySz)}) : ''; };

@@ -700,6 +700,9 @@ def make(full=False, log=print):
     if base and backup_db(base) != DB:
         base = None                       # (2.0) a full backup of the database under its 1.x name is no base for it
     kind = 'full' if full or not base else 'diff'
+    if kind == 'diff' and _changes_too_big(ms, base):
+        kind = 'full'
+        log(tr('The changes since the full backup {id} are already half its size: a new full backup is made instead.', id=base['id']))
     size = _db_size()
     need = size if kind == 'full' else size // 4
     free = shutil.disk_usage(DIR).free
@@ -913,12 +916,40 @@ def delete(ids, copies=False, log=print, errors=None):
     return gone
 
 
+# (2.12.3, Yegor 22.11) a differential backup («changes») always holds everything since its full one, so a restore needs
+# the full one and ONE change; older changes are only older points to go back to. Kept: the newest `keep_full` full
+# backups (a point a week with the weekly schedule) and, of the newest chain only, its 3 newest changes (the last days).
+# With no schedule or many manual backups a chain used to grow for ever (prod: 9 changes of ~450 MB on one full).
+KEEP_CHANGES = 3
+HALF = 0.5          # changes this big next to their full one → the next backup is a full one
+
+
+def kept_ids(ms, keep):
+    """The ids `prune` keeps: per chain (newest first, `keep` of them) its full backup; the newest chain also keeps its
+    KEEP_CHANGES newest changes; a chain whose full one is gone keeps its newest change."""
+    out = set()
+    for i, c in enumerate(chains(ms)[:keep]):
+        full = [m for m in c if m['kind'] == 'full']
+        diffs = sorted((m for m in c if m['kind'] != 'full'), key=lambda m: m['id'], reverse=True)
+        n = KEEP_CHANGES if i == 0 else 0
+        out |= {m['id'] for m in full + diffs[:max(n, 0 if full else 1)]}
+    return out
+
+
+def _changes_too_big(ms, base):
+    """True when the newest change on `base` is already HALF its size or more: a full backup costs about the same then,
+    and a restore needs one backup instead of two."""
+    last = max((m for m in ms if m['kind'] != 'full' and m.get('base') == base['id']), key=lambda m: m['id'], default=None)
+    return bool(last and base.get('data_size') and last.get('data_size', 0) >= HALF * base['data_size'])
+
+
 def prune(cfg, log=print, errors=None):
-    """Keep the newest `keep_full` chains here and on every place; older ones go (and their copies). What could not
-    be deleted is logged and added to `errors` (a list), never passed over in silence (1.8.8)."""
+    """Keep what kept_ids says here and on every place; the rest goes (and its copies). What could not be deleted is
+    logged and added to `errors` (a list), never passed over in silence (1.8.8)."""
     ms = manifests()
     keep = cfg['keep_full']
-    old = [m for c in chains(ms)[keep:] for m in c]
+    keep_now, known = kept_ids(ms, keep), {m['id'] for m in ms}
+    old = [m for m in ms if m['id'] not in keep_now]
     gone = set()
     errors = [] if errors is None else errors
 
@@ -934,7 +965,7 @@ def prune(cfg, log=print, errors=None):
         gone.add(m['id'])
         log(tr('Deleted the old backup {id}.', id=m['id']))
     # the copies: also those of backups the folder here no longer has
-    keep_ids = {m['id'] for c in chains(manifests())[:keep] for m in c}
+    keep_ids = kept_ids(manifests(), keep)
     for kind in DESTS:
         if not cfg[kind]['on']:
             continue
@@ -949,7 +980,9 @@ def prune(cfg, log=print, errors=None):
             if not ids & keep_ids and keep_ids:        # nothing kept is there yet: never empty a place
                 continue
             for bid in sorted(ids - keep_ids):
-                if bid > min(keep_ids, default='9'):   # newer than the kept ones (another server's?): leave it
+                # newer than the kept ones and never a backup of this server (another server's?): leave it; one of
+                # ours — a change trimmed from an older chain (2.12.3) — goes like the rest
+                if bid > min(keep_ids, default='9') and bid not in known:
                     continue
                 try:
                     for n in (bid + '.ftbk', bid + '.json'):
