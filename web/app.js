@@ -2712,7 +2712,7 @@ function vApplications(){
     <section class="glass panel kcard gcard s3"><span class="ico">${icon(ICO.pie, 22)}</span><span class="k">${T('Identified')}</span><span class="v" id="kIdent">—</span><span class="nat">${T('of the traffic of the devices that name applications')}</span></section>
     <section class="glass panel kcard gcard s3"><span class="ico">${icon(ICO.chart, 22)}</span><span class="k">${T('Top category')}</span><span class="v" id="kCat" style="font-size:18px">—</span><span class="nat" id="kCatSub"></span></section>
     <section class="glass panel s8" id="appSec">${ph('chart', T('Applications over time'), T('named by the firewall'))}<div class="chart" id="cAppT" data-wait="line"></div></section>
-    <section class="glass panel s4">${ph('pie', T('Categories'), T('FortiGate application categories'))}<div id="catBox" class="loading"></div></section>
+    <section class="glass panel s4">${ph('pie', T('Categories'), T('application categories the firewall sends'))}<div id="catBox" class="loading"></div></section>
     <section class="glass panel s6" id="newSec">${ph('pulse', T('New applications'), T('none like them in the days before'))}<div id="newBox" class="loading"></div></section>
     <section class="glass panel s6" id="userSec">${ph(USER_ICON, T('Users'), T('named by the firewall (User-ID)'))}<div id="userBox" class="loading"></div></section>
     <section class="glass panel s12">${ph('grid', T('Applications'), T('click to filter every page by the application'), '<button class="lnk" id="appMore"></button>')}<div id="appBox" class="loading"></div></section></div>`;

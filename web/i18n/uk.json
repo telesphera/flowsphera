@@ -2038,7 +2038,7 @@
  "Top category": "Головна категорія",
  "this device sends no categories": "пристрій не надсилає категорій",
  "Categories": "Категорії",
- "FortiGate application categories": "категорії застосунків FortiGate",
+ "application categories the firewall sends": "категорії застосунків, які надсилає фаєрвол",
  "New applications": "Нові застосунки",
  "none like them in the days before": "таких не було в попередні дні",
  "Category": "Категорія",
