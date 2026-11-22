@@ -3482,6 +3482,7 @@ async function editionPanel(returned){
       <div class="lic-step"><span class="lic-n">2</span><div><b>${pro ? T('Enter a renewed license') : T('Enter the license')}</b>
         <p class="note">${T('Paste the license key (FTK-…): FlowSphera activates it online. Or load the .lic file (or paste the FTL-… code) from your vendor: it works at once and is then confirmed by the license server daily — only an offline license never needs the internet.')}</p></div></div>
       <textarea id="edKey" rows="4" spellcheck="false" autocomplete="off" placeholder="FTK-XXXXX-… / FTL-XXXXX-…" aria-label="${T('License key or code')}"></textarea>
+      ${eulaBox(ed.eula)}
       <div class="acts"><span class="nat" id="edMsg" role="status"></span><input type="file" id="licFile" accept=".lic,.txt,text/plain" hidden>
         <button class="btn" id="licLoad">${T('Load file…')}</button><button class="btn primary" id="edSave">${T('Activate')}</button></div>
     </div>
@@ -3503,10 +3504,13 @@ async function editionPanel(returned){
   const file = document.getElementById('licFile');
   document.getElementById('licLoad').onclick = () => file.click();
   file.onchange = async () => { const f = file.files[0]; if (!f) return; document.getElementById('edKey').value = (await f.text()).trim(); file.value = ''; say(f.name); };
-  document.getElementById('edSave').onclick = async () => { const k = document.getElementById('edKey').value.trim();
+  const eulaOk = document.getElementById('eulaOk'), save = document.getElementById('edSave');
+  const eulaSync = () => { save.disabled = !eulaOk.checked; }; eulaOk.onchange = () => { eulaSync(); if (eulaOk.checked) say(''); }; eulaSync();
+  save.onclick = async () => { const k = document.getElementById('edKey').value.trim();
     if (!k) return say(T('Paste the license key or code first'), 'var(--crit)');
+    if (!eulaOk.checked) return say(T('Accept the License Agreement first'), 'var(--crit)');
     say(/^\s*ftk/i.test(k) ? T('Activating at the license server…') : T('Checking…'));
-    try { await apiPost('license', {key:k}); await refresh(); } catch (e) { say(e.message, 'var(--crit)'); } };
+    try { await apiPost('license', {key:k, accept_eula:true}); await refresh(); } catch (e) { say(e.message, 'var(--crit)'); } };
   const rc = document.getElementById('retCopy'); if (rc) rc.onclick = e => copyText(returned, e.currentTarget);
   const off = document.getElementById('licOff'); if (off) off.onclick = async () => {
     if (ed.status !== 'active') {           // a license that does not work here: just remove it
@@ -3514,6 +3518,15 @@ async function editionPanel(returned){
       try { await apiPost('license', {key:''}); await refresh(); } catch (e) { alert(e.message); } return; }
     if (!confirm(T('Deactivate the license on this server? Community limits apply here again, and this server will not accept this license again. You get a return code to move the license to another server.'))) return;
     try { const r = await apiPost('license/deactivate', {}); await refresh(r.released ? 'released' : r.return_code); } catch (e) { alert(e.message); } };
+}
+// (2.13.0) the License Agreement next to the license field: a checkbox (activation needs it) + the last acceptance here
+function eulaBox(eu){
+  if (!eu) return '';
+  const url = (eu.url || {})[LANG === 'uk' ? 'uk' : 'en'] || (eu.url || {}).en || '', a = eu.accepted;
+  const how = {install:T('at install'), web:T('in the web interface'), cli:T('on the command line')};
+  return `<label class="lic-eula"><input type="checkbox" id="eulaOk"><span>${T('I accept the')} <a href="${esc(url)}" target="_blank" rel="noopener">${T('FlowSphera License Agreement')}</a> ${T('(version {v})').replace('{v}', esc(eu.version))}</span></label>
+    ${a ? `<p class="note lic-eula-done">${T('Accepted here: version {v}, {when}, {who} {how}').replace('{v}', esc(a.version)).replace('{when}', esc(new Date(a.ts * 1000).toLocaleString(LANG === 'uk' ? 'uk-UA' : 'en-GB')))
+      .replace('{who}', esc(a.by || '')).replace('{how}', how[a.how] || esc(a.how || ''))}</p>` : ''}`;
 }
 // edition badge under the logo: Community / Pro, coloured when a license ends soon or has ended; opens the license panel
 function editionBadge(){

@@ -561,13 +561,56 @@ def _write_license(text):
     os.replace(tmp, LICENSE_FILE)
 
 
-def save_license(text):
+# ---------------------------------------------------------------- license agreement (2.13.0)
+# The FlowSphera License Agreement (EULA) is accepted at install (install.sh) and again when a license is entered
+# (Settings → License, flowsphera-license activate, install.sh --license). Each acceptance is kept here with its
+# version, time and who accepted; an online activation also sends it to the license server. Installs from before
+# 2.13.0 have no record and are not asked until a license is entered.
+EULA_VERSION = '1.0'
+EULA_DATE = '2026-11-19'
+EULA_URL = {'uk': 'https://telesphera.net/legal/eula/1.0/', 'en': 'https://telesphera.net/legal/eula/1.0/en/'}
+EULA_FILE = os.path.join(STATE_DIR, 'eula.json')
+
+
+def eula_record():
+    """-> {'version', 'ts', 'by', 'how'} of the last acceptance on this installation, or None."""
+    try:
+        with open(EULA_FILE) as f:
+            hist = json.load(f).get('accepted') or []
+        return hist[-1] if hist else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def accept_eula(by, how):
+    """Record that `by` (a user name, 'root', …) accepted the current EULA version via `how` (install | web | cli).
+    -> the record. Every acceptance is kept (the file is small: one line per install or license)."""
+    import time as _t
+    try:
+        with open(EULA_FILE) as f:
+            hist = json.load(f).get('accepted') or []
+    except (OSError, ValueError, AttributeError):
+        hist = []
+    rec = {'version': EULA_VERSION, 'ts': int(_t.time()), 'by': str(by or '')[:64], 'how': how}
+    hist = (hist + [rec])[-200:]
+    tmp = EULA_FILE + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'accepted': hist}, f)
+    os.chmod(tmp, 0o640)
+    os.replace(tmp, EULA_FILE)
+    return rec
+
+
+def save_license(text, accept=None):
     """Activate a license code (it must be valid for this installation now), or a license key (FTK-…) through the
-    license server; '' removes the license. -> edition()."""
+    license server; '' removes the license. accept = (who, how) records the EULA acceptance first (the callers that
+    enter a license — web, CLI, installer — require it). -> edition()."""
     import licensing
     text = (text or '').strip()
+    if text and accept:
+        accept_eula(*accept)
     if ''.join(text.split()).upper().startswith('FTK'):
-        text = licensing.activate_key(text)              # raises licensing.ServerError with the server's reason
+        text = licensing.activate_key(text, eula_record())   # raises licensing.ServerError with the server's reason
     if text:
         text = _check_new_license(text)      # raises LicenseError (a ValueError) with the reason
         _release_replaced(text)

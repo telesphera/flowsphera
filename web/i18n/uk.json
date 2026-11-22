@@ -2295,5 +2295,14 @@
  "download": "завантаження",
  "upload": "вивантаження",
  "the newest": "найновіша",
- "None of the selected traffic over this link in the period; all its traffic: {v}": "Вибраного трафіку цим зв'язком за період не було; усього трафіку: {v}"
+ "None of the selected traffic over this link in the period; all its traffic: {v}": "Вибраного трафіку цим зв'язком за період не було; усього трафіку: {v}",
+ "Accept the FlowSphera License Agreement to activate a license": "Щоб активувати ліцензію, прийміть Ліцензійну угоду FlowSphera",
+ "Accept the License Agreement first": "Спершу прийміть Ліцензійну угоду",
+ "I accept the": "Я приймаю",
+ "FlowSphera License Agreement": "Ліцензійну угоду FlowSphera",
+ "(version {v})": "(редакція {v})",
+ "Accepted here: version {v}, {when}, {who} {how}": "Прийнято на цьому сервері: редакція {v}, {when}, {who} {how}",
+ "at install": "під час встановлення",
+ "in the web interface": "у вебінтерфейсі",
+ "on the command line": "у командному рядку"
 }

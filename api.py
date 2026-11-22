@@ -815,6 +815,7 @@ def edition_info(admin=False):
         out['instance'], out['request'] = licensing.instance_id(), licensing.request_code()
         out['online'] = bool((ed['license'] or {}).get('online'))
         out['lease_until'], out['last_checkin'] = ed.get('lease_until'), licensing.last_checkin()
+        out['eula'] = {'version': common.EULA_VERSION, 'date': common.EULA_DATE, 'url': common.EULA_URL, 'accepted': common.eula_record()}
     return out
 
 
@@ -867,9 +868,13 @@ def license_message(code, msg, lic=None):
     return (tr(msg) if msg in _LICENSE_MSGS else msg) if msg else ''
 
 
-def post_license(body):
+def post_license(body, user=''):
+    """{key, accept_eula} — entering a license (not removing one) needs the License Agreement accepted (2.13.0)."""
+    key = (body.get('key') or '').strip()
+    if key and body.get('accept_eula') is not True:
+        raise BadRequest(tr('Accept the FlowSphera License Agreement to activate a license'))
     try:
-        save_license(body.get('key', ''))
+        save_license(key, accept=(user or 'admin', 'web') if key else None)
     except ValueError as ex:
         raise BadRequest(license_message(getattr(ex, 'code', 'invalid'), str(ex), getattr(ex, 'license', None))) from None
     return edition_info(admin=True)
@@ -3816,7 +3821,7 @@ class H(BaseHTTPRequestHandler):
                 '/api/devices/interfaces': lambda: post_device_interfaces(body, user),
                 '/api/devices/snmp_test': lambda: post_snmp_test(body, user),
                 '/api/devices/snmp_poll': lambda: post_snmp_poll(body, user),
-                '/api/license': lambda: post_license(body),
+                '/api/license': lambda: post_license(body, user),
                 '/api/license/deactivate': post_license_deactivate,
                 '/api/license/checkin': post_license_checkin,
                 '/api/events/config': lambda: post_events_config(body),

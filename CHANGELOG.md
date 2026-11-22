@@ -4,6 +4,16 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## Unreleased (2.13.0)
+
+### New
+- **FlowSphera License Agreement.** A new installation asks you to accept the FlowSphera License Agreement
+  (https://telesphera.net/legal/eula/1.0/en/) before anything is installed; with `--yes` add `--accept-eula` (or
+  `FT_ACCEPT_EULA=yes`). Entering a license asks again: a checkbox in Settings → License, a question in
+  `flowsphera-license activate` (or `--accept-eula`), and with `install.sh --license`. Each acceptance is kept on the
+  server with its version, time and who accepted; an online activation sends it to the license server too. Upgrades and
+  installations from before 2.13.0 are not asked.
+
 ## 2.12.1 — 2026-11-22
 
 ### New

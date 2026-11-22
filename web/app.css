@@ -479,6 +479,10 @@ tr.unseen td{opacity:.75}
 .lic-online{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px}
 .lic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px}
 .lic-col{display:grid;gap:10px;align-content:start;min-width:0}
+.lic-eula{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.45;cursor:pointer}
+.lic-eula input{margin-top:2px;flex:none;width:16px;height:16px;accent-color:var(--blue)}
+.lic-eula a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.lic-eula-done{margin:-4px 0 0 26px}
 .lic-step{display:flex;gap:12px;align-items:flex-start}
 .lic-step b{font-size:14px}
 .lic-step .note{margin-top:4px}

@@ -10,13 +10,15 @@
 #           --upgrade      update code of an existing install, keep settings
 #           --uninstall    remove FlowSphera (asks whether to keep the data)
 #           --lang en|uk   installer language
+#           --accept-eula  accept the FlowSphera License Agreement without the question (needed with --yes on a new
+#                          install and with --license): https://telesphera.net/legal/eula/1.0/en/  (or FT_ACCEPT_EULA=yes)
 #           --core FILE          the compiled FlowSphera core (ftcore-<version>-linux-<arch>.so from the GitHub release)
 #                                for servers without access to github.com; it must match ftcore.lock
 #           --backup-dir DIR     where backups are kept on this server (default /var/backups/flowsphera); a disk
 #                                mounted from a NAS works too. Copies to S3 / SFTP / FTP: Settings → Backups
 #           --license KEY|CODE|FILE  activate a license key (FTK-…, online) or a license (FTL-…) issued for this
 #                                server's activation request: sudo flowsphera-license request (also in Settings → License)
-#                          e.g. … | sudo bash -s -- --upgrade --license ./flowsphera.lic
+#                          e.g. … | sudo bash -s -- --upgrade --license ./flowsphera.lic --accept-eula
 # Variables for --yes:  FT_NETFLOW_PORT FT_WEB_PORT FT_NETFLOW_IFACE FT_WEB_IFACE (interface name, IP or
 #                       'all'; default: the interface of the default route) FT_EXPORTER_IP FT_VENDOR FT_DEVICE_NAME
 #                       FT_WAN_IFS FT_CITY FT_COUNTRY FT_ADMIN_PASSWORD FT_OPEN_FIREWALL=yes|no
@@ -47,6 +49,12 @@ USE_TLS=yes; case "${FT_TLS:-yes}" in no|NO|0|false|off) USE_TLS=no ;; esac
 PROTO=https; [ "$USE_TLS" = yes ] || PROTO=http
 
 YES=0; MODE=""; LANG_SEL=""; CORE_SRC=""; LIC_SRC=""
+# (2.13.0) the FlowSphera License Agreement: accepted on a new install and whenever a license is entered
+EULA_VERSION=1.0
+EULA_URL_UK=https://telesphera.net/legal/eula/1.0/
+EULA_URL_EN=https://telesphera.net/legal/eula/1.0/en/
+ACCEPT_EULA=0; case "${FT_ACCEPT_EULA:-}" in yes|YES|1|true) ACCEPT_EULA=1 ;; esac
+EULA_NOW=0         # 1 = accepted during this run: recorded on the installation once its state directory exists
 while [ $# -gt 0 ]; do
   case "$1" in
     --core) CORE_SRC=${2:-}; shift ;;
@@ -56,11 +64,12 @@ while [ $# -gt 0 ]; do
     --license) LIC_SRC=${2:-}; shift ;;
     --license=*) LIC_SRC=${1#--license=} ;;
     --yes|-y) YES=1 ;;
+    --accept-eula) ACCEPT_EULA=1 ;;
     --upgrade) MODE=upgrade ;;
     --uninstall) MODE=uninstall ;;
     --lang) LANG_SEL=${2:-}; shift ;;
     --lang=*) LANG_SEL=${1#--lang=} ;;
-    -h|--help) sed -n '2,20p' "$0" 2>/dev/null || true; exit 0 ;;
+    -h|--help) sed -n '2,25p' "$0" 2>/dev/null || true; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -332,6 +341,25 @@ if [ "$EXISTING" = 1 ] && [ -z "$MODE" ]; then
 fi
 [ "$MODE" = upgrade ] && [ "$EXISTING" = 0 ] && MODE=""
 [ "$MODE" = uninstall ] && { uninstall; exit 0; }
+
+# ------------------------------------------------------------------ license agreement (2.13.0)
+# A new installation, or a license entered with --license, needs the License Agreement accepted — before anything is
+# installed. Upgrades and reconfiguring an existing installation are not asked (installations from before 2.13.0 too).
+if { [ "$EXISTING" = 0 ] || [ -n "$LIC_KEY" ]; } && [ "$MODE" != uninstall ]; then
+  if [ "$ACCEPT_EULA" = 1 ]; then EULA_NOW=1
+  elif [ "$YES" = 1 ]; then
+    die "$(t "FlowSphera is installed under the FlowSphera License Agreement $EULA_VERSION: $EULA_URL_EN
+  Read it, then run the command again with --accept-eula (or FT_ACCEPT_EULA=yes)." "FlowSphera встановлюється на умовах Ліцензійної угоди FlowSphera, редакція $EULA_VERSION: $EULA_URL_UK
+  Прочитайте її та запустіть команду ще раз з --accept-eula (або FT_ACCEPT_EULA=yes).")"
+  else
+    say ""; say "${B}$(t 'FlowSphera License Agreement' 'Ліцензійна угода FlowSphera')${N} ${D}$(t "version $EULA_VERSION" "редакція $EULA_VERSION")${N}"
+    say "  $(t "$EULA_URL_EN" "$EULA_URL_UK")"
+    say "  ${D}$(t 'FlowSphera (Community and Pro) is used under this agreement: please read it before you continue.' 'FlowSphera (Community і Pro) використовується на умовах цієї угоди: прочитайте її, перш ніж продовжити.')${N}"
+    ask_yn eula_ans "$(t 'Do you accept the License Agreement?' 'Ви приймаєте Ліцензійну угоду?')" n
+    [ "$eula_ans" = y ] || { say "$(t 'Nothing was installed.' 'Нічого не встановлено.')"; exit 1; }
+    EULA_NOW=1
+  fi
+fi
 
 # ------------------------------------------------------------------ dependencies
 pkg_install() {   # installs only what is missing — never upgrades the user's existing packages
@@ -754,8 +782,23 @@ install_units() {
 # FlowSphera license on this server: status | request | activate FILE|CODE | deactivate
 [ "\$(id -u)" = 0 ] || exec sudo "\$0" "\$@"
 # the license server setting the services read from $ETC/env (only that, not the database password)
-run() { runuser -u flowsphera -- env FT_STATE_DIR="$STATE" \$(grep -sE '^FT_LICENSE_SERVER(_PIN)?=[^ ]*\$' "$ETC/env") "$PREFIX/venv/bin/python" "$PREFIX/app/licensing.py" "\$@"; }
-if [ "\$1" = activate ] && [ -f "\$2" ]; then run activate - < "\$2"; else run "\$@"; fi
+run() { runuser -u flowsphera -- env FT_STATE_DIR="$STATE" FT_BY="\${FT_BY:-root}" \$(grep -sE '^FT_LICENSE_SERVER(_PIN)?=[^ ]*\$' "$ETC/env") "$PREFIX/venv/bin/python" "$PREFIX/app/licensing.py" "\$@"; }
+if [ "\$1" = activate ]; then
+  src=\${2:-}; acc=""; for a in "\$@"; do [ "\$a" = --accept-eula ] && acc=--accept-eula; done
+  if [ -z "\$acc" ] && { : < /dev/tty; } 2>/dev/null; then
+    # entering a license = accepting the License Agreement: ask once on the terminal
+    if [ "\$(cat $ETC/install-lang 2>/dev/null)" = uk ]; then
+      printf '%s\\n' "Ліцензійна угода FlowSphera, редакція $EULA_VERSION: $EULA_URL_UK" "Активуючи ліцензію, ви приймаєте цю угоду."
+      printf '%s' "Приймаєте? Введіть yes: "
+    else
+      printf '%s\\n' "FlowSphera License Agreement, version $EULA_VERSION: $EULA_URL_EN" "Activating a license means accepting this agreement."
+      printf '%s' "Do you accept it? Type yes: "
+    fi
+    read -r ans < /dev/tty; case "\$ans" in yes|YES|Yes|так|Так|ТАК) acc=--accept-eula ;; *) echo "Not activated."; exit 1 ;; esac
+  fi
+  export FT_BY="\${SUDO_USER:-root}"
+  if [ -f "\$src" ]; then run activate - \$acc < "\$src"; else run activate "\$src" \$acc; fi
+else run "\$@"; fi
 WRAP
   chmod 755 /usr/local/bin/flowsphera-license
   # `flowsphera upgrade | status | license … | reconfigure | uninstall`; replaced by a rename, because
@@ -832,13 +875,24 @@ if [ "$MIGRATED_V1" = 1 ] && [ -n "$ID_BEFORE" ]; then
   else warn "$(t "Instance ID changed ($ID_BEFORE → ${ID_AFTER:-?}): the license may need to be activated again — write to flowsphera@telesphera.net" "Instance ID змінився ($ID_BEFORE → ${ID_AFTER:-?}): ліцензію, можливо, треба активувати знову — напишіть на flowsphera@telesphera.net")"; fi
 fi
 
+# the License Agreement accepted above: kept on the installation with its version, time and who ran the installer
+record_eula() {
+  runuser -u flowsphera -- env FT_STATE_DIR="$STATE" FT_BY="${SUDO_USER:-root}" "$PREFIX/venv/bin/python" -c '
+import os, sys; sys.path.insert(0, "'"$PREFIX"'/app")
+import common
+print(common.accept_eula(os.environ["FT_BY"], "install"))'
+}
+if [ "$EULA_NOW" = 1 ] && [ -z "$LIC_KEY" ]; then
+  step "$(t 'License Agreement accepted' 'Ліцензійну угоду прийнято')" record_eula || warn "$(t 'The acceptance was not recorded' 'Прийняття не записано')"
+fi
+
 # the license last: the install or upgrade above is complete either way; a refused key leaves the previous edition
 install_license() {
-  printf '%s' "$LIC_KEY" | runuser -u flowsphera -- env FT_STATE_DIR="$STATE" "$PREFIX/venv/bin/python" -c '
-import sys; sys.path.insert(0, "'"$PREFIX"'/app")
+  printf '%s' "$LIC_KEY" | runuser -u flowsphera -- env FT_STATE_DIR="$STATE" FT_BY="${SUDO_USER:-root}" "$PREFIX/venv/bin/python" -c '
+import os, sys; sys.path.insert(0, "'"$PREFIX"'/app")
 import common
 try:
-    ed = common.save_license(sys.stdin.read())
+    ed = common.save_license(sys.stdin.read(), accept=(os.environ["FT_BY"], "install"))
 except ValueError as ex:
     sys.exit(f"license refused: {ex}")
 lic = ed["license"] or {}

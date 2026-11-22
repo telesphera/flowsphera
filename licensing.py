@@ -20,8 +20,10 @@ vendor) need no network.
 The work is done by the compiled FlowSphera core (`ftcore`), which also holds the vendor's public key and the
 Community limits; this module is its Python face.
 
-Command line (installed as `flowsphera-license`): licensing.py status | request | activate FILE|CODE|KEY|- | checkin | renew | deactivate
-(renew: ask the license server now whether the vendor renewed the installed license — offline ones too)
+Command line (installed as `flowsphera-license`): licensing.py status | request | activate FILE|CODE|KEY|- --accept-eula | checkin | renew | deactivate
+(renew: ask the license server now whether the vendor renewed the installed license — offline ones too;
+activate needs --accept-eula: the FlowSphera License Agreement, https://telesphera.net/legal/eula/1.0/en/ — the
+flowsphera-license wrapper asks for it on a terminal)
 """
 import hashlib
 import http.client
@@ -176,9 +178,13 @@ def save_lease(text):
     return ftcore.save_lease(text, STATE_DIR)
 
 
-def activate_key(key):
-    """License key (FTK-…) -> the online license (FTL-…) for this installation; its lease is stored."""
-    r = _post('/v1/activate', {'key': ' '.join(key.split()), 'request': request_code()})
+def activate_key(key, eula=None):
+    """License key (FTK-…) -> the online license (FTL-…) for this installation; its lease is stored. eula = the
+    acceptance record (common.eula_record()): its version, time and user go to the license server with the request."""
+    body = {'key': ' '.join(key.split()), 'request': request_code()}
+    if eula:
+        body['eula'] = {k: eula.get(k) for k in ('version', 'ts', 'by', 'how')}
+    r = _post('/v1/activate', body)
     ftcore.save_lease(r['lease'], STATE_DIR)
     _record(True)
     return r['license']
@@ -229,9 +235,12 @@ def _cli(argv):
         if lic:
             print('Licensed to:', lic['customer'], '· until', time.strftime('%Y-%m-%d', time.gmtime(lic['expires'])))
     elif cmd == 'activate' and len(argv) > 2:
+        if '--accept-eula' not in argv[3:]:
+            sys.exit(f'error: activating a license means accepting the FlowSphera License Agreement {common.EULA_VERSION}: '
+                     f"{common.EULA_URL['en']} — read it, then add --accept-eula")
         src = argv[2]
         text = sys.stdin.read() if src == '-' else open(src).read() if os.path.exists(src) else src
-        ed = common.save_license(text)
+        ed = common.save_license(text, accept=(os.environ.get('FT_BY') or 'root', 'cli'))
         print('Activated:', ed['license']['customer'], '· until', time.strftime('%Y-%m-%d', time.gmtime(ed['license']['expires'])))
     elif cmd == 'checkin':
         ed = common.license_checkin()
