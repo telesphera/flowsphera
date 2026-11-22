@@ -96,13 +96,12 @@ class Web(unittest.TestCase):
         self.assertIn('id="eulaOk"', js)
         with open(os.path.join(ROOT, 'web', 'i18n', 'uk.json'), encoding='utf-8') as f:
             uk = json.load(f)
-        for t in ('I accept the', 'FlowSphera License Agreement', '(version {v})', 'Accept the License Agreement first',
+        for t in ('I accept the', 'FlowSphera License Agreement', 'Accept the License Agreement first',
                   'Accepted here: version {v}, {when}, {who} {how}', 'Accept the FlowSphera License Agreement to activate a license'):
             self.assertIn(t, uk)
 
     def test_urls_are_the_published_ones(self):
-        self.assertEqual(common.EULA_URL['uk'], f'https://telesphera.net/legal/eula/{common.EULA_VERSION}/')
-        self.assertEqual(common.EULA_URL['en'], f'https://telesphera.net/legal/eula/{common.EULA_VERSION}/en/')
+        self.assertEqual(common.EULA_URL, {'uk': 'https://telesphera.net/legal/eula/', 'en': 'https://telesphera.net/legal/eula/en/'})
 
 
 class Cli(unittest.TestCase):

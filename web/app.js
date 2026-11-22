@@ -3524,7 +3524,7 @@ function eulaBox(eu){
   if (!eu) return '';
   const url = (eu.url || {})[LANG === 'uk' ? 'uk' : 'en'] || (eu.url || {}).en || '', a = eu.accepted;
   const how = {install:T('at install'), web:T('in the web interface'), cli:T('on the command line')};
-  return `<label class="lic-eula"><input type="checkbox" id="eulaOk"><span>${T('I accept the')} <a href="${esc(url)}" target="_blank" rel="noopener">${T('FlowSphera License Agreement')}</a> ${T('(version {v})').replace('{v}', esc(eu.version))}</span></label>
+  return `<label class="lic-eula"><input type="checkbox" id="eulaOk"><span>${T('I accept the')} <a href="${esc(url)}" target="_blank" rel="noopener">${T('FlowSphera License Agreement')}</a></span></label>
     ${a ? `<p class="note lic-eula-done">${T('Accepted here: version {v}, {when}, {who} {how}').replace('{v}', esc(a.version)).replace('{when}', esc(new Date(a.ts * 1000).toLocaleString(LANG === 'uk' ? 'uk-UA' : 'en-GB')))
       .replace('{who}', esc(a.by || '')).replace('{how}', how[a.how] || esc(a.how || ''))}</p>` : ''}`;
 }

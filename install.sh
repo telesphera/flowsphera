@@ -11,7 +11,7 @@
 #           --uninstall    remove FlowSphera (asks whether to keep the data)
 #           --lang en|uk   installer language
 #           --accept-eula  accept the FlowSphera License Agreement without the question (needed with --yes on a new
-#                          install and with --license): https://telesphera.net/legal/eula/1.0/en/  (or FT_ACCEPT_EULA=yes)
+#                          install and with --license): https://telesphera.net/legal/eula/en/  (or FT_ACCEPT_EULA=yes)
 #           --core FILE          the compiled FlowSphera core (ftcore-<version>-linux-<arch>.so from the GitHub release)
 #                                for servers without access to github.com; it must match ftcore.lock
 #           --backup-dir DIR     where backups are kept on this server (default /var/backups/flowsphera); a disk
@@ -51,8 +51,8 @@ PROTO=https; [ "$USE_TLS" = yes ] || PROTO=http
 YES=0; MODE=""; LANG_SEL=""; CORE_SRC=""; LIC_SRC=""
 # (2.13.0) the FlowSphera License Agreement: accepted on a new install and whenever a license is entered
 EULA_VERSION=1.0
-EULA_URL_UK=https://telesphera.net/legal/eula/1.0/
-EULA_URL_EN=https://telesphera.net/legal/eula/1.0/en/
+EULA_URL_UK=https://telesphera.net/legal/eula/
+EULA_URL_EN=https://telesphera.net/legal/eula/en/
 ACCEPT_EULA=0; case "${FT_ACCEPT_EULA:-}" in yes|YES|1|true) ACCEPT_EULA=1 ;; esac
 EULA_NOW=0         # 1 = accepted during this run: recorded on the installation once its state directory exists
 while [ $# -gt 0 ]; do
@@ -348,11 +348,11 @@ fi
 if { [ "$EXISTING" = 0 ] || [ -n "$LIC_KEY" ]; } && [ "$MODE" != uninstall ]; then
   if [ "$ACCEPT_EULA" = 1 ]; then EULA_NOW=1
   elif [ "$YES" = 1 ]; then
-    die "$(t "FlowSphera is installed under the FlowSphera License Agreement $EULA_VERSION: $EULA_URL_EN
-  Read it, then run the command again with --accept-eula (or FT_ACCEPT_EULA=yes)." "FlowSphera встановлюється на умовах Ліцензійної угоди FlowSphera, редакція $EULA_VERSION: $EULA_URL_UK
+    die "$(t "FlowSphera is installed under the FlowSphera License Agreement: $EULA_URL_EN
+  Read it, then run the command again with --accept-eula (or FT_ACCEPT_EULA=yes)." "FlowSphera встановлюється на умовах Ліцензійної угоди FlowSphera: $EULA_URL_UK
   Прочитайте її та запустіть команду ще раз з --accept-eula (або FT_ACCEPT_EULA=yes).")"
   else
-    say ""; say "${B}$(t 'FlowSphera License Agreement' 'Ліцензійна угода FlowSphera')${N} ${D}$(t "version $EULA_VERSION" "редакція $EULA_VERSION")${N}"
+    say ""; say "${B}$(t 'FlowSphera License Agreement' 'Ліцензійна угода FlowSphera')${N}"
     say "  $(t "$EULA_URL_EN" "$EULA_URL_UK")"
     say "  ${D}$(t 'FlowSphera (Community and Pro) is used under this agreement: please read it before you continue.' 'FlowSphera (Community і Pro) використовується на умовах цієї угоди: прочитайте її, перш ніж продовжити.')${N}"
     ask_yn eula_ans "$(t 'Do you accept the License Agreement?' 'Ви приймаєте Ліцензійну угоду?')" n
@@ -788,10 +788,10 @@ if [ "\$1" = activate ]; then
   if [ -z "\$acc" ] && { : < /dev/tty; } 2>/dev/null; then
     # entering a license = accepting the License Agreement: ask once on the terminal
     if [ "\$(cat $ETC/install-lang 2>/dev/null)" = uk ]; then
-      printf '%s\\n' "Ліцензійна угода FlowSphera, редакція $EULA_VERSION: $EULA_URL_UK" "Активуючи ліцензію, ви приймаєте цю угоду."
+      printf '%s\\n' "Ліцензійна угода FlowSphera: $EULA_URL_UK" "Активуючи ліцензію, ви приймаєте цю угоду."
       printf '%s' "Приймаєте? Введіть yes: "
     else
-      printf '%s\\n' "FlowSphera License Agreement, version $EULA_VERSION: $EULA_URL_EN" "Activating a license means accepting this agreement."
+      printf '%s\\n' "FlowSphera License Agreement: $EULA_URL_EN" "Activating a license means accepting this agreement."
       printf '%s' "Do you accept it? Type yes: "
     fi
     read -r ans < /dev/tty; case "\$ans" in yes|YES|Yes|так|Так|ТАК) acc=--accept-eula ;; *) echo "Not activated."; exit 1 ;; esac

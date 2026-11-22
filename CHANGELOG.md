@@ -8,7 +8,7 @@ a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera 
 
 ### New
 - **FlowSphera License Agreement.** A new installation asks you to accept the FlowSphera License Agreement
-  (https://telesphera.net/legal/eula/1.0/en/) before anything is installed; with `--yes` add `--accept-eula` (or
+  (https://telesphera.net/legal/eula/en/, one agreement for all versions) before anything is installed; with `--yes` add `--accept-eula` (or
   `FT_ACCEPT_EULA=yes`). Entering a license asks again: a checkbox in Settings → License, a question in
   `flowsphera-license activate` (or `--accept-eula`), and with `install.sh --license`. Each acceptance is kept on the
   server with its version, time and who accepted; an online activation sends it to the license server too. Upgrades and

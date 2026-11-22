@@ -563,12 +563,13 @@ def _write_license(text):
 
 # ---------------------------------------------------------------- license agreement (2.13.0)
 # The FlowSphera License Agreement (EULA) is accepted at install (install.sh) and again when a license is entered
-# (Settings → License, flowsphera-license activate, install.sh --license). Each acceptance is kept here with its
+# (Settings → License, flowsphera-license activate, install.sh --license). The agreement is ONE for all FlowSphera
+# versions (Yegor 22.11): EULA_VERSION changes only with a new edition of the text. Each acceptance is kept here with its
 # version, time and who accepted; an online activation also sends it to the license server. Installs from before
 # 2.13.0 have no record and are not asked until a license is entered.
 EULA_VERSION = '1.0'
 EULA_DATE = '2026-11-19'
-EULA_URL = {'uk': 'https://telesphera.net/legal/eula/1.0/', 'en': 'https://telesphera.net/legal/eula/1.0/en/'}
+EULA_URL = {'uk': 'https://telesphera.net/legal/eula/', 'en': 'https://telesphera.net/legal/eula/en/'}   # the one agreement, in force
 EULA_FILE = os.path.join(STATE_DIR, 'eula.json')
 
 

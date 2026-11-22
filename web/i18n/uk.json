@@ -2300,7 +2300,6 @@
  "Accept the License Agreement first": "Спершу прийміть Ліцензійну угоду",
  "I accept the": "Я приймаю",
  "FlowSphera License Agreement": "Ліцензійну угоду FlowSphera",
- "(version {v})": "(редакція {v})",
  "Accepted here: version {v}, {when}, {who} {how}": "Прийнято на цьому сервері: редакція {v}, {when}, {who} {how}",
  "at install": "під час встановлення",
  "in the web interface": "у вебінтерфейсі",

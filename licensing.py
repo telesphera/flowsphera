@@ -22,7 +22,7 @@ Community limits; this module is its Python face.
 
 Command line (installed as `flowsphera-license`): licensing.py status | request | activate FILE|CODE|KEY|- --accept-eula | checkin | renew | deactivate
 (renew: ask the license server now whether the vendor renewed the installed license — offline ones too;
-activate needs --accept-eula: the FlowSphera License Agreement, https://telesphera.net/legal/eula/1.0/en/ — the
+activate needs --accept-eula: the FlowSphera License Agreement, https://telesphera.net/legal/eula/en/ — the
 flowsphera-license wrapper asks for it on a terminal)
 """
 import hashlib
@@ -236,7 +236,7 @@ def _cli(argv):
             print('Licensed to:', lic['customer'], '· until', time.strftime('%Y-%m-%d', time.gmtime(lic['expires'])))
     elif cmd == 'activate' and len(argv) > 2:
         if '--accept-eula' not in argv[3:]:
-            sys.exit(f'error: activating a license means accepting the FlowSphera License Agreement {common.EULA_VERSION}: '
+            sys.exit('error: activating a license means accepting the FlowSphera License Agreement: '
                      f"{common.EULA_URL['en']} — read it, then add --accept-eula")
         src = argv[2]
         text = sys.stdin.read() if src == '-' else open(src).read() if os.path.exists(src) else src
