@@ -502,7 +502,16 @@ def ch(query, params=None, data=None, fmt=None, timeout=30, raw=False, settings=
         at = body.find('Code: ')         # with FORMAT JSON the error follows the start of the output: keep the error
         raise CHError(body[at:at + 500] if at >= 0 else body[:500]) from None
     if fmt == 'JSON' and not raw:
-        return json.loads(out)['data']
+        # (2.12.2) a query stopped after its answer had begun (a page reloaded, KILL QUERY) comes back as HTTP 200 with
+        # the error inside the JSON — or cut short: an error like any other, never «no rows» (a traceback in the API)
+        try:
+            j = json.loads(out)
+        except ValueError:
+            at = out.find('Code: ')
+            raise CHError(out[at:at + 500] if at >= 0 else 'cut-short answer: ' + out[-200:]) from None
+        if j.get('exception'):
+            raise CHError(str(j['exception'])[:500])
+        return j['data']
     return out
 
 
@@ -561,12 +570,12 @@ def _write_license(text):
     os.replace(tmp, LICENSE_FILE)
 
 
-# ---------------------------------------------------------------- license agreement (2.13.0)
+# ---------------------------------------------------------------- license agreement (2.12.2)
 # The FlowSphera License Agreement (EULA) is accepted at install (install.sh) and again when a license is entered
 # (Settings → License, flowsphera-license activate, install.sh --license). The agreement is ONE for all FlowSphera
 # versions (Yegor 22.11): EULA_VERSION changes only with a new edition of the text. Each acceptance is kept here with its
 # version, time and who accepted; an online activation also sends it to the license server. Installs from before
-# 2.13.0 have no record and are not asked until a license is entered.
+# 2.12.2 have no record and are not asked until a license is entered.
 EULA_VERSION = '1.0'
 EULA_DATE = '2026-11-19'
 EULA_URL = {'uk': 'https://telesphera.net/legal/eula/', 'en': 'https://telesphera.net/legal/eula/en/'}   # the one agreement, in force

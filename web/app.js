@@ -136,7 +136,7 @@ const rangeLabel = () => isCustom() ? periodText(state.from, state.to) : ({'15m'
 // (2.4.0) a device is also found by an earlier address (its records from there are its own)
 const devOf = ip => META.devices.find(d => d.ip === ip) || META.devices.find(d => (d.aliases || []).includes(ip));
 const devName = ip => (devOf(ip) || {}).name || ip;
-const ifLabel = (ip, idx) => { const d = devOf(ip) || {}, n = (d.if_names || {})[String(idx)] || (d.local_if === idx ? 'local' : ''); return n ? `${n} (${idx})` : String(idx); };
+const ifLabel = (ip, idx) => { const d = devOf(ip) || {}, n = (d.if_names || {})[String(idx)] || (d.local_if === idx || (d.local_if == null && idx === 0) ? 'local' : '');   /* (2.12.2) index 0 = the device itself unless set otherwise */ return n ? `${n} (${idx})` : String(idx); };
 const hostLabel = h => h.name ? `${esc(h.name)}` : esc(h.ip);
 
 // ===================== lifecycle =====================
@@ -162,12 +162,32 @@ function mkChart(el){ const was = echarts.getInstanceByDom(el); if (was) { was.d
   if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (!c.isDisposed()) c.resize(); }); onCleanup(() => { c.dispose(); const i = charts.indexOf(c); if (i >= 0) charts.splice(i, 1); }); return c; }
 window.addEventListener('resize', () => charts.forEach(c => c.resize()));
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-function every(ms, fn){ const t = setInterval(() => { if (!document.hidden) fn(); }, ms); onCleanup(() => clearInterval(t)); }   // paused while the tab is hidden
+// paused while the tab is hidden; (2.12.2) a tick missed while hidden runs as soon as the tab is shown again, so a page
+// that comes back to the front (another window was over it, another tab was chosen) never waits a whole period
+function every(ms, fn){
+  let missed = false;
+  const t = setInterval(() => { if (document.hidden) missed = true; else fn(); }, ms);
+  const vis = () => { if (!document.hidden && missed) { missed = false; fn(); } };
+  document.addEventListener('visibilitychange', vis);
+  onCleanup(() => { clearInterval(t); document.removeEventListener('visibilitychange', vis); }); }
 // (2.12.1, #16) how often a page reloads by itself: each minute up to 24 hours, every 5 minutes for 7 and 30 days
 const periodMs = () => rangeSecs() <= 86400 ? 60000 : 300000;
 // a page part that reloads in place (pages with a live map): never a custom period, never while someone is busy on it;
 // the page turns quiet (no entry animations) for the rest of its life
-function pageEvery(fn){ if (!isCustom()) every(periodMs(), () => { if (softBusy()) return; document.getElementById('view').classList.add('quiet'); fn(); }); }
+function pageEvery(fn){ if (!isCustom()) softEvery(periodMs(), () => { document.getElementById('view').classList.add('quiet'); fn(); }); }
+// (2.12.2, #16 again) a reload that waits for someone busy on the page runs as soon as they stop (looked at every 5 s),
+// not a whole period later; and only a real dialog, typing or a full-screen panel holds it for long: a held mouse
+// button, selected text or an open fold hold it at most 1 minute (a selection left behind used to stop it for good)
+function softEvery(ms, fn){
+  let retry = 0, since = 0;
+  const tick = () => {
+    retry = 0;
+    const b = softBusy();
+    if (b === 'hard' || (b === 'soft' && (since = since || Date.now()) && Date.now() - since < 60000)) { retry = setTimeout(tick, 5000); return; }
+    since = 0; fn();
+  };
+  every(ms, () => { if (!retry) tick(); });
+  onCleanup(() => clearTimeout(retry)); }
 
 // ===================== chart helpers =====================
 // the axis spans the whole period even without data, so an empty chart still maps a drag to real times
@@ -611,7 +631,18 @@ window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = set
 function maxLeave(){ const x = document.querySelector('section.is-max'); if (x) maxToggle(x); }
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { document.querySelectorAll('section.is-max').forEach(x => { x.classList.remove('is-max'); if (x._reload) x._reload(); }); maxMark(); } });
 document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; const x = document.querySelector('section.is-max'); if (x) maxToggle(x); });
-const seg = (id, opts, val) => `<div class="seg" id="${id}" role="group">${opts.map(([v, l, tip]) => `<button data-v="${v}" aria-pressed="${v === val}"${tip ? ` title="${tip}"` : ''}>${l}</button>`).join('')}</div>`;
+// (2.12.2, forum #78) an option may carry an icon: shown instead of the word only when its panel's title line is too
+// narrow for the words (fitHead), so the buttons stay on the title line; the word stays as the tooltip and label
+const seg = (id, opts, val) => `<div class="seg" id="${id}" role="group">${opts.map(([v, l, tip, ic]) => `<button data-v="${v}" aria-pressed="${v === val}"${tip || ic ? ` title="${tip || l}"` : ''}${ic ? ` aria-label="${l}"` : ''}>${ic ? `<span class="si">${icon(ic, 15)}</span><span class="sl">${l}</span>` : l}</button>`).join('')}</div>`;
+// the first of these that keeps a panel's switches on its title line wins (forum #68: the legend on the title's line;
+// #78: the switches too): words + legend inline → icons (words as tooltips) + legend inline → words + the legend on a
+// line of its own under the title → icons + legend under it. Measured again on every resize
+function fitHead(sec){
+  const head = sec && sec.querySelector(':scope > .ph'); if (!head || !window.ResizeObserver) return;
+  const wraps = () => { const r = head.querySelector(':scope > .right'), t = head.querySelector(':scope > .ttl'); return r && t && r.offsetTop > t.offsetTop + t.offsetHeight / 2; };
+  const fit = () => { for (const c of [[], ['hicons'], ['hleg'], ['hicons', 'hleg']]) {
+    sec.classList.remove('hicons', 'hleg'); sec.classList.add(...c); if (!wraps()) return; } };
+  const ro = new ResizeObserver(fit); ro.observe(sec); onCleanup(() => ro.disconnect()); fit(); }
 const flowLive = () => state.flowLive && !isCustom();
 const heroLive = () => state.heroLive && !isCustom();
 // a past period has no live window: the Live button stays visible but off
@@ -910,10 +941,10 @@ function mountHero(){
         : `<span class="legend mid"><span><i class="bar" style="background:${C.down}"></i>${T('download')}</span><span><i class="bar" style="background:${C.up}"></i>${T('upload')}</span>${g ? '' : `<span><i style="background:${C.int}"></i>${T('inside')}</span><span><i style="background:${C.ext}"></i>${T('outside')}</span>`}</span>`);
   fill('heroSec', `${ph('flow', T('Network traffic'), `<span id="heroLbl" class="tnum">${sub}</span>`,
       (g ? seg('scaleSeg', [['sqrt', T('Compressed'), T('Width ∝ √volume — small flows stand out next to large ones')], ['lin', T('Linear'), T('Width proportional to volume')]], state.scale) : '')
-      + seg('heroLiveSeg', [['live', T('Live'), T('The last 2 minutes of data, updated as it arrives')], ['period', T('toggle::Period'), T('The whole selected period')]], live ? 'live' : 'period')
-      + (isInternal() ? '' : seg('heroSeg', [['map', T('Map')], ['graph', T('Graph')], ['3d', '3D']], state.heroMode)), false, maxBtn(), heroLegend)}
+      + seg('heroLiveSeg', [['live', T('Live'), T('The last 2 minutes of data, updated as it arrives'), ICO.pulse], ['period', T('toggle::Period'), T('The whole selected period'), ICO.chart]], live ? 'live' : 'period')
+      + (isInternal() ? '' : seg('heroSeg', [['map', T('Map'), '', ICO.globe], ['graph', T('Graph'), '', ICO.flow], ['3d', '3D']], state.heroMode)), false, maxBtn(), heroLegend)}
     <div id="heroBody" class="${g ? 'river' : 'chart hero-h'}"></div><div id="heroNote" class="heronote" hidden></div><div id="heroOvl"></div>`);
-  lockLive('heroLiveSeg'); maxMark();
+  lockLive('heroLiveSeg'); maxMark(); heroScope.run(() => fitHead(document.getElementById('heroSec')));
   wireSeg('heroSeg', m => { if (m === state.heroMode) return; state.heroMode = m; mountHero(); });
   wireSeg('heroLiveSeg', m => { const l = m === 'live'; if (l === !!state.heroLive) return; state.heroLive = l; mountHero(); });
   wireSeg('scaleSeg', m => { state.scale = m; setPressed('scaleSeg', m); RIVERS.forEach(k => k()); });
@@ -936,9 +967,11 @@ function mountHero(){
       const [h, d, s] = await Promise.all([api('top', {dim:'int_ip', limit:5}), api('top', {dim:'ext_ip', limit:1}), api('top', {dim:'service', limit:5})]);   // the same requests as the top lists beside it
       if (heroScope !== myScope) return null;
       const a = h.rows[0], b = d.rows[0], c = s.rows[0];
+      // (2.12.2, forum #78) an address is never cut to «10.88.102.…»: its card keeps its width (the cards wrap instead)
+      const whole = x => /^[\d.]+$|^[\da-f:]+$/i.test(x || '') ? ' class="whole"' : '';
       return `<div class="overlay"><div class="ovl">
-        <div><span class="ico">${icon(ICO.users, 15)}</span><span>${T('Top source')}</span><b title="${esc(a ? a.name || a.k : '—')}">${esc(a ? a.name || a.k : '—')}</b><small>${a ? fmtB(tot(a)) : ''}</small></div>
-        <div><span class="ico">${icon(ICO.globe, 15)}</span><span>${T('Top destination')}</span><b title="${esc(b ? b.k : '—')}">${esc(b ? b.k : '—')}</b><small>${b ? [b.city, fmtB(tot(b))].filter(Boolean).join(' · ') : ''}</small></div>
+        <div${whole(a && (a.name || a.k))}><span class="ico">${icon(ICO.users, 15)}</span><span>${T('Top source')}</span><b title="${esc(a ? a.name || a.k : '—')}">${esc(a ? a.name || a.k : '—')}</b><small>${a ? fmtB(tot(a)) : ''}</small></div>
+        <div${whole(b && b.k)}><span class="ico">${icon(ICO.globe, 15)}</span><span>${T('Top destination')}</span><b title="${esc(b ? b.k : '—')}">${esc(b ? b.k : '—')}</b><small>${b ? [b.city, fmtB(tot(b))].filter(Boolean).join(' · ') : ''}</small></div>
         <div><span class="ico">${icon(ICO.grid, 15)}</span><span>${T('Top service')}</span><b title="${esc(c ? c.k : '—')}">${esc(c ? c.k : '—')}</b><small>${c ? pct(tot(c), s.total) : ''}</small></div></div>
         ${!live ? '' : `<div class="livebadge"><b>${T('Live')}</b>${T('new connections')}</div>`}</div>`;
     });
@@ -1126,7 +1159,7 @@ function createDevMap(host, opts){
   const cv = host.querySelector('canvas'), tip = host.querySelector('.rtip'), ctx = cv.getContext('2d');
   let W = 0, H = 0, dpr = 1, data = null, hover = null, shapes = [];
   const {ifs, dev} = opts;
-  const roleOf = i => (ifs.get(i) || {}).role || (i === dev.config.local_if ? 'local' : 'lan');
+  const roleOf = i => (ifs.get(i) || {}).role || (i === dev.config.local_if || (dev.config.local_if == null && i === 0) ? 'local' : 'lan');
   const nameOf = i => { const x = ifs.get(i); return x ? (x.custom_name || x.name) : (i === 0 ? 'local' : `if ${i}`); };
   const addrOf = i => { const x = ifs.get(i); return x ? (ifAddrs(x)[0] || '') : ''; };
   const fmtV = v => state.metric === 'bytes' ? fmtB(v) : fmtN(v);
@@ -3519,7 +3552,7 @@ async function editionPanel(returned){
     if (!confirm(T('Deactivate the license on this server? Community limits apply here again, and this server will not accept this license again. You get a return code to move the license to another server.'))) return;
     try { const r = await apiPost('license/deactivate', {}); await refresh(r.released ? 'released' : r.return_code); } catch (e) { alert(e.message); } };
 }
-// (2.13.0) the License Agreement next to the license field: a checkbox (activation needs it) + the last acceptance here
+// (2.12.2) the License Agreement next to the license field: a checkbox (activation needs it) + the last acceptance here
 function eulaBox(eu){
   if (!eu) return '';
   const url = (eu.url || {})[LANG === 'uk' ? 'uk' : 'en'] || (eu.url || {}).en || '', a = eu.accepted;
@@ -4895,7 +4928,7 @@ function openDevice(dev){
           <button type="button" class="btn primary" id="fMoveOk">${T('Move')}</button><p class="nat">${T('Everything set here moves to the new address; the records from the old one stay this device\'s.')}</p></div>` : ''}
         <div class="two"><label>${T('Model')}<input id="fModel" value="${esc(c.model || '')}" placeholder="FortiGate 60F"></label><label>${T('form::Sampling')}<input id="fSamp" value="${esc(c.sampling || '1:1')}"></label></div>
         <p class="note warn" id="fSampNote" hidden></p>
-        <div class="two"><label>${T('snmp-index of WAN interfaces (comma-separated)')}<input id="fWan" value="${esc((c.wan_ifs || []).join(', '))}" placeholder="1"></label><label>${T('Index of «the device itself» (FortiOS: 0)')}<input id="fLocal" value="${c.local_if ?? ''}" placeholder="0"></label></div>
+        <div class="two"><label>${T('snmp-index of WAN interfaces (comma-separated)')}<input id="fWan" value="${esc((c.wan_ifs || []).join(', '))}" placeholder="1"></label><label>${T('Index of «the device itself» (empty = 0)')}<input id="fLocal" value="${c.local_if ?? ''}" placeholder="0"></label></div>
         <div id="fIfs">${ifBox()}</div>
         <label>${T('Public IPs of the device (comma-separated)')}<input id="fPub" value="${esc((c.public_ips || []).join(', '))}" placeholder="198.51.100.10"></label>
         <div class="two"><label>${T('City')}<input id="fCity" value="${esc(c.city || '')}" placeholder="Amsterdam"></label><label>${T('Country code')}<input id="fCc" value="${esc(c.country || '')}" maxlength="2" placeholder="NL"></label></div>
@@ -5418,16 +5451,23 @@ function render(){ if (state.view === 'devices' || state.view === 'users') { sta
 // (pageEvery): drawing them again would restart the map, its particles and the Live connections list.
 const SOFT_VIEWS = new Set(['conversations', 'qos', 'talkers', 'apps', 'applications', 'ports']);
 let SOFT_BUSY = false, MOUSE_DOWN = false;
-addEventListener('mousedown', () => { MOUSE_DOWN = true; }, true); addEventListener('mouseup', () => { MOUSE_DOWN = false; }, true);
-function autoRefresh(){ if (SOFT_VIEWS.has(state.view) && !isCustom()) every(periodMs(), softRender); }
+// (2.12.2) a press counts only while the browser says a button is held: it does not always tell the release (a right-click
+// menu, the scrollbar, a release outside the window) — any move without a button, leaving the window or 15 s end it
+addEventListener('mousedown', () => { MOUSE_DOWN = Date.now(); }, true);
+['mouseup', 'pointerup', 'pointercancel', 'dragend', 'contextmenu'].forEach(k => addEventListener(k, () => { MOUSE_DOWN = false; }, true));
+addEventListener('blur', e => { if (e.target === window) MOUSE_DOWN = false; });     // the window, not a field inside it
+addEventListener('mousemove', e => { if (MOUSE_DOWN && !e.buttons) MOUSE_DOWN = false; }, true);
+function autoRefresh(){ if (SOFT_VIEWS.has(state.view) && !isCustom()) softEvery(periodMs(), softRender); }
+// (2.12.2) 'hard' = a dialog, a host card, the period picker, typing, a full-screen panel, unsaved changes, a reload
+// under way: the page waits as long as it lasts; 'soft' = a held button, selected text, an open fold: at most 1 minute
 function softBusy(){
   const v = document.getElementById('view'), a = document.activeElement, sel = getSelection && getSelection();
-  return SOFT_BUSY || MOUSE_DOWN || state.dirty || document.getElementById('drawerRoot').childElementCount > 0 || document.getElementById('periodPop')
-    || (a && v.contains(a) && a.matches('input, select, textarea, [contenteditable]')) || (!KIOSK.max && v.querySelector('.is-max'))
-    || (sel && !sel.isCollapsed && v.contains(sel.anchorNode)) || v.querySelector('details[open], .alert.open');
+  if (SOFT_BUSY || state.dirty || document.getElementById('drawerRoot').childElementCount > 0 || document.getElementById('periodPop')
+    || (a && v.contains(a) && a.matches('input, select, textarea, [contenteditable]')) || (!KIOSK.max && v.querySelector('.is-max'))) return 'hard';
+  if ((MOUSE_DOWN && Date.now() - MOUSE_DOWN < 15000) || (sel && !sel.isCollapsed && v.contains(sel.anchorNode)) || v.querySelector('details[open], .alert.open')) return 'soft';
+  return '';
 }
 function softRender(){
-  if (softBusy()) return;
   const view = document.getElementById('view'), host = view.parentElement;
   const old = rootScope.splice(0);                     // the old page's charts and timers live until the swap
   const scrolls = [...view.querySelectorAll('[id]')].filter(e => e.scrollTop > 0 || e.scrollLeft > 0).map(e => [e.id, e.scrollTop, e.scrollLeft]);

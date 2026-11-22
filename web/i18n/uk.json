@@ -222,7 +222,7 @@
  "Ignore {addr}? Its events will no longer be recorded or shown. You can undo it in Settings → Events.": "Ігнорувати {addr}? Її події більше не записуватимуться і не показуватимуться. Скасувати можна в «Налаштування → Події».",
  "Inbound up to {mbps} Mbit/s on {device} (usual peak {base_mbps} Mbit/s), {minutes} min, {srcs} addresses.": "Вхідний трафік до {mbps} Мбіт/с на {device} (звичайний пік {base_mbps} Мбіт/с), {minutes} хв, {srcs} адрес.",
  "Index": "Індекс",
- "Index of «the device itself» (FortiOS: 0)": "Індекс «сам пристрій» (FortiOS: 0)",
+ "Index of «the device itself» (empty = 0)": "Індекс «сам пристрій» (порожньо = 0)",
  "Ingest": "Прийом записів",
  "Input": "Вхід",
  "Inside": "внутрішня",

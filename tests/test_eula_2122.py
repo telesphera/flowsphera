@@ -1,4 +1,4 @@
-"""(2.13.0) The FlowSphera License Agreement: every acceptance is kept on the installation (version, time, who, how);
+"""(2.12.2) The FlowSphera License Agreement: every acceptance is kept on the installation (version, time, who, how);
 entering a license needs it — web (accept_eula), CLI (--accept-eula), installer (asked on a new install and with
 --license, --yes needs --accept-eula); an online activation sends it to the license server; removing a license and
 upgrades are not asked. Run: python -m unittest discover -s tests"""
@@ -132,8 +132,8 @@ class Installer(unittest.TestCase):
     def test_asked_only_for_new_installs_and_licenses(self):
         self.assertIn('if { [ "$EXISTING" = 0 ] || [ -n "$LIC_KEY" ]; } && [ "$MODE" != uninstall ]; then', self.sh)
         # before anything is installed, and --yes without --accept-eula stops
-        self.assertLess(self.sh.index('# ---- license agreement (2.13.0)'.replace('----', '-' * 66)), self.sh.index('pkg_install() {'))
-        block = self.sh[self.sh.index('license agreement (2.13.0)'):self.sh.index('pkg_install() {')]
+        self.assertLess(self.sh.index('# ---- license agreement (2.12.2)'.replace('----', '-' * 66)), self.sh.index('pkg_install() {'))
+        block = self.sh[self.sh.index('license agreement (2.12.2)'):self.sh.index('pkg_install() {')]
         self.assertRegex(block, re.compile(r'elif \[ "\$YES" = 1 \]; then\s+die'))
         self.assertIn('--accept-eula) ACCEPT_EULA=1 ;;', self.sh)
 

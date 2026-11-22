@@ -447,8 +447,9 @@ Details: [docs/editions.md](docs/editions.md).
 ## License
 
 [Elastic License 2.0](LICENSE): free to use, run and modify, including in companies; not allowed: offering FlowSphera as
-a hosted service or circumventing the license checks. The FlowSphera core (`ftcore`) ships compiled under the FlowSphera
-End User License Agreement. Versions up to 1.1.0 were published under MIT and stay so. IP geolocation by
+a hosted service or circumventing the license checks. The FlowSphera core (`ftcore`) ships compiled under the
+[FlowSphera License Agreement](https://telesphera.net/legal/eula/en/) — one agreement for all versions; a new installation
+asks you to accept it (unattended: `--accept-eula`). Versions up to 1.1.0 were published under MIT and stay so. IP geolocation by
 [DB-IP](https://db-ip.com), licensed under CC BY 4.0. Fonts Manrope and JetBrains Mono ship with FlowSphera under the
 [SIL Open Font License 1.1](web/fonts/). PDF reports are made with [ReportLab](https://www.reportlab.com) (BSD).
 Screenshots show demo data, no real network.

@@ -144,6 +144,11 @@ main{min-width:0;padding:18px 22px 36px}
 .ovl .ico{width:30px;height:30px;border-radius:9px;grid-row:span 3}
 .ovl span{font-size:11.5px;color:var(--ink2)}
 .ovl b{font:600 13.5px var(--f-mono);color:var(--blue-hi)}
+.ovl div.whole{flex:0 0 auto}.ovl div.whole b{overflow:visible;text-overflow:clip}
+.seg .si{display:none}.seg .si svg{display:block}
+.hleg > .ph > .legend.mid{order:3;flex-basis:100%;margin:-8px 0 0 56px}
+.hicons .seg .si{display:inline-flex;align-items:center;height:18px}.hicons .seg .sl{display:none}.hicons .seg button{padding:5px 7px}
+.hicons > .ph{gap:10px}
 .ovl small{font:11.5px var(--f-mono);color:var(--ink2)}
 .livebadge{flex:none;pointer-events:auto;padding:8px 14px;border-radius:12px;background:rgba(8,16,40,.72);border:1px solid var(--edge);font-size:12px;color:var(--ink2);display:grid}
 .livebadge b{color:var(--ok);font-weight:700}
@@ -989,3 +994,4 @@ html.kiosk .updpill{display:none}
 .ovl{flex-wrap:nowrap}
 .ovl div{max-width:min(300px,100%);flex:1 1 0}
 .ovl span:not(.ico){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hicons > .ph > .legend.mid{gap:8px}.hicons > .ph > .right{gap:8px}

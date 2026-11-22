@@ -869,7 +869,7 @@ def license_message(code, msg, lic=None):
 
 
 def post_license(body, user=''):
-    """{key, accept_eula} — entering a license (not removing one) needs the License Agreement accepted (2.13.0)."""
+    """{key, accept_eula} — entering a license (not removing one) needs the License Agreement accepted (2.12.2)."""
     key = (body.get('key') or '').strip()
     if key and body.get('accept_eula') is not True:
         raise BadRequest(tr('Accept the FlowSphera License Agreement to activate a license'))
@@ -1586,10 +1586,16 @@ def iface(c, idx, nbytes, ext, seen=(), sn=None, nb=None):
     """c: the configured device (raw); sn: what SNMP found on it (or None); nb: (2.9.0) {ifIndex: [neighbour]} of
     this device (neighbours.by_interface)"""
     names = c.get('if_names', {})
-    role = ('wan' if idx in c.get('wan_ifs', []) else 'local' if c.get('local_if') == idx and c.get('local_if') is not None
+    si = (sn or {}).get('ifs', {}).get(str(idx), {})
+    # (2.12.2, forum) index 0 in NetFlow/IPFIX is the device itself (RouterOS, FortiOS, Cisco: traffic to and from the
+    # router — SNMP, tunnels it ends, its DNS, OSPF, syslog); SNMP never numbers an interface 0. So with no own setting
+    # index 0 is «the device itself», not a mystery «if 0» that holds the networks of the router's own addresses
+    lif = c.get('local_if')
+    if lif is None and idx == 0 and not si:
+        lif = 0
+    role = ('wan' if idx in c.get('wan_ifs', []) else 'local' if lif == idx and lif is not None
             else 'mgmt' if idx in (c.get('mgmt_ifs') or []) else 'lan')
     custom = names.get(str(idx), '')
-    si = (sn or {}).get('ifs', {}).get(str(idx), {})
     past = (sn or {}).get('past', {}).get(str(idx), '')        # (2.6.0) the name a gone index had
     name = custom or si.get('name') or past or ('local' if role == 'local' else f'if {idx}')
     return {'index': idx, 'name': name, 'custom_name': custom, 'dyn': iface_dynamic(c, idx, name),     # (2.6.0) a VPN session's interface

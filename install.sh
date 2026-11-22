@@ -49,7 +49,7 @@ USE_TLS=yes; case "${FT_TLS:-yes}" in no|NO|0|false|off) USE_TLS=no ;; esac
 PROTO=https; [ "$USE_TLS" = yes ] || PROTO=http
 
 YES=0; MODE=""; LANG_SEL=""; CORE_SRC=""; LIC_SRC=""
-# (2.13.0) the FlowSphera License Agreement: accepted on a new install and whenever a license is entered
+# (2.12.2) the FlowSphera License Agreement: accepted on a new install and whenever a license is entered
 EULA_VERSION=1.0
 EULA_URL_UK=https://telesphera.net/legal/eula/
 EULA_URL_EN=https://telesphera.net/legal/eula/en/
@@ -342,9 +342,9 @@ fi
 [ "$MODE" = upgrade ] && [ "$EXISTING" = 0 ] && MODE=""
 [ "$MODE" = uninstall ] && { uninstall; exit 0; }
 
-# ------------------------------------------------------------------ license agreement (2.13.0)
+# ------------------------------------------------------------------ license agreement (2.12.2)
 # A new installation, or a license entered with --license, needs the License Agreement accepted — before anything is
-# installed. Upgrades and reconfiguring an existing installation are not asked (installations from before 2.13.0 too).
+# installed. Upgrades and reconfiguring an existing installation are not asked (installations from before 2.12.2 too).
 if { [ "$EXISTING" = 0 ] || [ -n "$LIC_KEY" ]; } && [ "$MODE" != uninstall ]; then
   if [ "$ACCEPT_EULA" = 1 ]; then EULA_NOW=1
   elif [ "$YES" = 1 ]; then

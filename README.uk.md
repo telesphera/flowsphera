@@ -454,7 +454,8 @@ curl -fsSL https://raw.githubusercontent.com/telesphera/flowsphera/main/install.
 
 [Elastic License 2.0](LICENSE): можна вільно використовувати, запускати й змінювати, зокрема в компаніях; не можна —
 надавати FlowSphera як хостинговий сервіс чи обходити перевірку ліцензії. Ядро FlowSphera (`ftcore`) постачається
-скомпільованим за Ліцензійною угодою кінцевого користувача FlowSphera. Версії до 1.1.0 опубліковано за MIT, і вони
+скомпільованим за [Ліцензійною угодою FlowSphera](https://telesphera.net/legal/eula/) — одна угода для всіх версій; нове
+встановлення просить її прийняти (без запитань: `--accept-eula`). Версії до 1.1.0 опубліковано за MIT, і вони
 такими лишаються. IP-геолокація — [DB-IP](https://db-ip.com), ліцензія CC BY 4.0. Шрифти Manrope і JetBrains Mono
 постачаються з FlowSphera за [SIL Open Font License 1.1](web/fonts/). PDF-звіти створює
 [ReportLab](https://www.reportlab.com) (BSD). На скриншотах — демонстраційні дані,
