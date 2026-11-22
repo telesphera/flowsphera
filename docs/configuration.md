@@ -44,7 +44,8 @@ A device as either file (or an export) describes it:
 }
 ```
 
-`wan_ifs` are the exporter's interface indexes (`INPUT_SNMP`/`OUTPUT_SNMP`); `public_ips` mark traffic
+`wan_ifs` are the exporter's interface indexes (`INPUT_SNMP`/`OUTPUT_SNMP`); `local_if` is the index the device uses for
+traffic to and from itself — (2.12.2) without it index 0 is taken, as MikroTik, FortiGate and Cisco use it; `public_ips` mark traffic
 the device itself originates; coordinates place the site on the map — (2.6.0) without them `city` + `country` do,
 from the place list of the GeoIP data (see Features → How to put a device on the map).
 `if_caps` (1.12) is an interface's capacity in Mbit/s, in and out — e.g. an ISP contract of 300 / 50 on a faster port;

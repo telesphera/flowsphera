@@ -4,6 +4,36 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.12.2 — 2026-11-22
+
+### New
+- **FlowSphera License Agreement.** A new installation asks you to accept the FlowSphera License Agreement
+  (https://telesphera.net/legal/eula/en/, one agreement for all versions) before anything is installed; with `--yes` add
+  `--accept-eula` (or `FT_ACCEPT_EULA=yes`). Entering a license asks again: a checkbox in Settings → License, a question
+  in `flowsphera-license activate` (or `--accept-eula`), and with `install.sh --license`. Each acceptance is kept on the
+  server with its version, time and who accepted; an online activation sends it to the license server too. Upgrades and
+  installations from before 2.12.2 are not asked.
+
+### Fixed
+- **Pages kept themselves up to date only now and then** (GitHub #16, forum). On Flows the totals, Traffic volume,
+  Top conversations and the records could stand still for many minutes while Ingest moved on. A page waits with its
+  reload while you work on it, and the browser does not always say that a mouse button was released (a right-click
+  menu, the scrollbar, a release outside the window) — so the page thought you were still busy, until the next click;
+  text left selected stopped it the same way. Now a press counts for 15 seconds at most and selected text for a minute,
+  a reload that waited runs as soon as you stop (not a whole minute later), and a page whose window was covered or
+  whose tab was in the background catches up the moment you look at it again.
+- **«if 0» in the interface list** (forum). Index 0 in NetFlow / IPFIX is the device itself (MikroTik, FortiGate and
+  Cisco use it for traffic to and from the router: SNMP, the tunnels it ends, its own DNS, OSPF, syslog). Without a
+  setting of your own it is now shown as «local» — the device itself — instead of an unknown «if 0» with the networks
+  of the router's own addresses. The index field in the device settings says «empty = 0».
+- **Network traffic on the Overview keeps its switches on the title line** (forum). On a narrower panel the legend goes
+  under the title instead of pushing Live / Period and Map / Graph / 3D to a line of their own; where even that is too
+  narrow, the switches show icons (the words stay as tooltips). An address in the Top source / Top destination cards is
+  never cut short to «10.88.102.…» any more.
+- **City names on the maps no longer run into each other.** The name of your device's place stays and wins: a city
+  whose name would cross it, or run under the device's mark, is hidden (its name shows on hover); two devices in one
+  city show its name once.
+
 ## 2.12.1 — 2026-11-22
 
 ### New

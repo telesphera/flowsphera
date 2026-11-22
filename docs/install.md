@@ -25,8 +25,12 @@ Unattended install:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/telesphera/flowsphera/main/install.sh | \
-  sudo FT_ADMIN_PASSWORD='change-me-now' FT_VENDOR=Fortinet FT_EXPORTER_IP=192.0.2.1 bash -s -- --yes
+  sudo FT_ADMIN_PASSWORD='change-me-now' FT_VENDOR=Fortinet FT_EXPORTER_IP=192.0.2.1 bash -s -- --yes --accept-eula
 ```
+
+(2.12.2) A new installation needs the [FlowSphera License Agreement](https://telesphera.net/legal/eula/en/) accepted
+before anything is installed: the installer asks, and with `--yes` you add `--accept-eula` (or `FT_ACCEPT_EULA=yes`);
+without it an unattended install stops and installs nothing. Upgrades are not asked.
 
 Without `FT_ADMIN_PASSWORD` the installer makes a random password for `admin` and shows it at the end.
 
