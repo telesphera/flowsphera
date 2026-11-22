@@ -5,8 +5,9 @@
 *Settings → Backups* (admins) and `sudo flowsphera backup | restore` keep the flow data and every setting safe:
 
 - **Schedule**: a full backup once a week (or daily) and the changes since it on the other days, at the hour you set,
-  run by `flowsphera-backup.timer` on the server itself. *Back up now* any time; the keeping rule removes the oldest full
-  backups together with their changes. The first scheduled backup after an install or upgrade waits for its hour.
+  run by `flowsphera-backup.timer` on the server itself. *Back up now* any time. (2.12.3) Kept: the newest full backups (as many as you set, 4 by
+  default), of the newest one also its 3 newest changes; older full backups keep no changes, and when the changes reach
+  half the size of their full backup the next backup is a full one. The first scheduled backup after an install or upgrade waits for its hour.
 - **Where**: always a folder on the server (`/var/backups/flowsphera`, or `--backup-dir DIR` when installing or upgrading
   — e.g. a disk mounted from a NAS), plus copies to **S3** (Amazon or any S3 storage: MinIO, Backblaze B2, Wasabi,
   Cloudflare R2, Hetzner…), **SFTP** (key or password; the server's key is accepted once and then checked) and **FTP**

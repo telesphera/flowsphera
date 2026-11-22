@@ -4,6 +4,16 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.12.3 — 2026-11-22
+
+### Changed
+- **Backups keep a predictable size** (Settings → Backups). A backup of changes always holds everything since its full
+  backup, so a restore needs the full one and a single change; older changes are only older points to go back to. Kept
+  now: the newest full backups you set (4 by default — a point a week with the weekly schedule) and, of the newest one,
+  its 3 newest changes (the last days); older full backups keep no changes. When the changes have grown to half the
+  size of their full backup, the next backup is a full one. Before, without a schedule or with many manual backups, the
+  changes of one full backup piled up without a limit. Copies on S3, SFTP and FTP follow the same rule.
+
 ## 2.12.2 — 2026-11-22
 
 ### New
