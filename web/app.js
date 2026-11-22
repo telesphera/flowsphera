@@ -477,6 +477,7 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
         return {name:g.name, full:`${g.name}, ${ccName(g.cc)}`, city:g.city, cc:g.cc, value:[g.lon, g.lat, g.v], v:g.v, label:onSite ? {show:false} : undefined}; })}]};
   };
   const sites = META.devices.filter(d => d.lat != null).map(d => ({name:d.city || d.name, full:`${d.city || ''}${d.country ? ', ' + ccName(d.country) : ''} · ${d.name}`, value:[d.lon, d.lat, 1]}));
+  const siteLbl = [...new Map(sites.map(x => [`${x.name}|${Math.round(x.value[0] * 2)}|${Math.round(x.value[1] * 2)}`, x])).values()];
   const lbl = (pos, size) => ({show:true, position:pos, distance:7, color:'#F2F6FF', fontFamily:'Manrope', fontWeight:700, fontSize:size, textBorderColor:'rgba(4,10,28,.95)', textBorderWidth:3.5, formatter:'{b}'});
   c.setOption({animation:false, tooltip:{...tipBase(), trigger:'item', formatter:p => p.seriesType === 'lines' ? '' : p.componentType === 'geo' ? esc(p.name) : `${esc(p.data && p.data.full || p.name)}${p.data && p.data.v ? '<br><b>' + fmtB(p.data.v) + '</b>' : ''}${p.seriesId === 'remotes' ? '<br><span style="opacity:.7">' + T('Click: show only this place') + '</span>' : ''}`},
     geo:{map:'world', roam:true, zoom:1.25, center:[15, 35], scaleLimit:{min:1, max:10}, label:{show:false},
@@ -486,7 +487,15 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
       {id:'live', type:'lines', coordinateSystem:'geo', zlevel:2, silent:true, effect:{show:!reduceMotion, period:2.4, trailLength:0, symbol:'circle', symbolSize:5}, lineStyle:{width:1.4, opacity:.75, curveness:.28}, data:[]},
       {id:'remotes', type:'scatter', coordinateSystem:'geo', zlevel:3, symbolSize:d => 5 + 12 * Math.sqrt(d[2] / rmax), itemStyle:{color:C.ext, shadowBlur:12, shadowColor:C.ext},
         label:lbl('right', 12), labelLayout:{hideOverlap:true}, emphasis:{label:{show:true}}, data:[]},
-      {id:'sites', type:'scatter', coordinateSystem:'geo', zlevel:4, symbolSize:12, itemStyle:{color:C.int, borderColor:'rgba(255,255,255,.85)', borderWidth:2, shadowBlur:10, shadowColor:C.int}, label:lbl('left', 13), data:sites},
+      {id:'sites', type:'scatter', coordinateSystem:'geo', zlevel:4, symbolSize:12, itemStyle:{color:C.int, borderColor:'rgba(255,255,255,.85)', borderWidth:2, shadowBlur:10, shadowColor:C.int}, label:{show:false}, data:sites},
+      // (2.12.2) Yegor's rule — no overlapping labels: one name per place (two devices in Kyiv = one «Kyiv»), carried by an
+      // invisible 48 px mark so it outranks every city label in ECharts' overlap check (priority = the mark's area): a
+      // city whose name would cross it is hidden (its name shows on hover), never drawn over it
+      {id:'siteLbl', type:'scatter', coordinateSystem:'geo', zlevel:4, silent:true, symbolSize:48, itemStyle:{color:'rgba(0,0,0,0)'}, tooltip:{show:false},
+        label:{...lbl('left', 13), distance:-11}, labelLayout:{hideOverlap:true}, data:siteLbl},
+      // …and a blank label over the device's own mark: a city name that would run under it is hidden as well
+      {id:'siteGuard', type:'scatter', coordinateSystem:'geo', zlevel:4, silent:true, symbolSize:48, itemStyle:{color:'rgba(0,0,0,0)'}, tooltip:{show:false},
+        label:{show:true, position:'inside', formatter:'\u2003', fontSize:16, color:'rgba(0,0,0,0)'}, labelLayout:{hideOverlap:true}, data:siteLbl},
     ]});
   c.setOption(dataOpt(geo));
   // (2.12.0) a city mark is a filter (its tooltip says so); the pointer shows it can be clicked
