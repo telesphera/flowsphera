@@ -785,7 +785,8 @@ install_units() {
 run() { runuser -u flowsphera -- env FT_STATE_DIR="$STATE" FT_BY="\${FT_BY:-root}" \$(grep -sE '^FT_LICENSE_SERVER(_PIN)?=[^ ]*\$' "$ETC/env") "$PREFIX/venv/bin/python" "$PREFIX/app/licensing.py" "\$@"; }
 if [ "\$1" = activate ]; then
   src=\${2:-}; acc=""; for a in "\$@"; do [ "\$a" = --accept-eula ] && acc=--accept-eula; done
-  if [ -z "\$acc" ] && { : < /dev/tty; } 2>/dev/null; then
+  # a subshell: /bin/sh (dash) quits the whole script when a redirection of ':' fails (no terminal — cron, ssh, CI)
+  if [ -z "\$acc" ] && ( : < /dev/tty ) 2>/dev/null; then
     # entering a license = accepting the License Agreement: ask once on the terminal
     if [ "\$(cat $ETC/install-lang 2>/dev/null)" = uk ]; then
       printf '%s\\n' "Ліцензійна угода FlowSphera: $EULA_URL_UK" "Активуючи ліцензію, ви приймаєте цю угоду."

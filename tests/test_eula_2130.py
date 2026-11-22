@@ -141,6 +141,9 @@ class Installer(unittest.TestCase):
         self.assertIn('common.accept_eula(os.environ["FT_BY"], "install")', self.sh)
         self.assertIn('common.save_license(sys.stdin.read(), accept=(os.environ["FT_BY"], "install"))', self.sh)
         self.assertIn('run activate - \\$acc < "\\$src"', self.sh)      # the flowsphera-license wrapper
+        # (Lab #181) dash quits on a failed redirection of ':' in braces: the terminal check must be a subshell
+        self.assertIn('( : < /dev/tty ) 2>/dev/null; then', self.sh)
+        self.assertNotIn('"\\$acc" ] && { : < /dev/tty; }', self.sh)
 
 
 if __name__ == '__main__':
