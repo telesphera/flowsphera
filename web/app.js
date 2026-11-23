@@ -455,32 +455,35 @@ function createRiver(host, opts){
 // ===================== maps =====================
 const siteGeo = ip => { const d = META.devices.find(x => x.ip === ip); return d && d.lat != null ? [d.lon, d.lat] : null; };
 const siteCity = ip => { const d = META.devices.find(x => x.ip === ip); return d ? (d.city || d.name) : ip; };
-// lines on the map and the globe: the biggest places only (the rows come sorted by volume) — more are neither
-// readable nor drawable on a busy network; the regions and the city marks keep every place
+// lines on the globe and the live arcs: the biggest places only (the rows come sorted by volume) — more are neither
+// readable nor drawable on a busy network; (2.12.4, forum #85) the flat map draws a line to every place it marks
+// (≤300 rows), the small ones thin and faint, so a city is never a dot without its line
 const MAP_LINES = 20;
 function flatMap(el, geo, onConn, arcs = !isCustom()){
   if (!echarts.getMap('world')) { el.innerHTML = '<div class="empty">' + T('Failed to load world map outlines') + '</div>'; return; }
   const c = mkChart(el);
   let nameEn; try { nameEn = new Intl.DisplayNames(['en'], {type:'region'}); } catch (e) {}
   const EN_FIX = {'United States':'United States', 'Czechia':'Czech Rep.', 'Bosnia & Herzegovina':'Bosnia and Herz.', 'South Korea':'Korea', 'Dominican Republic':'Dominican Rep.'};
-  let rmax = 1;
+  let rmax = 1, ccOf = new Map();
   // everything that depends on the data: applied again when a live map refreshes
   const dataOpt = geo => {
     const rows = geo.rows; rmax = rows.length ? tot(rows[0]) : 1;
     const byCountry = new Map(); for (const r of rows) byCountry.set(r.country, (byCountry.get(r.country) || 0) + tot(r));
     const cmax = Math.max(1, ...byCountry.values());
-    const regions = [...byCountry].map(([cc, v]) => { let n = nameEn ? nameEn.of(cc) : cc; n = EN_FIX[n] || n; return {name:n, itemStyle:{areaColor:`rgba(47,123,255,${(0.18 + 0.42 * v / cmax).toFixed(2)})`}}; });
+    ccOf = new Map();       // (2.12.4, forum #81) the map's country name -> its code: a click on a country filters it
+    const regions = [...byCountry].map(([cc, v]) => { let n = nameEn ? nameEn.of(cc) : cc; n = EN_FIX[n] || n; ccOf.set(n, cc); return {name:n, itemStyle:{areaColor:`rgba(47,123,255,${(0.18 + 0.42 * v / cmax).toFixed(2)})`}}; });
     const cities = new Map(); for (const r of rows) { const k = r.city + '|' + r.country; const g = cities.get(k) || {name:r.city || ccName(r.country), city:r.city, cc:r.country, lon:r.lo, lat:r.la, v:0}; g.v += tot(r); cities.set(k, g); }
     return {geo:{regions}, series:[
-      {id:'agg', data:rows.slice(0, MAP_LINES).map(r => { const s = siteGeo(r.exporter); return s && {coords:[s, [r.lo, r.la]], lineStyle:{width:.6 + 3.4 * tot(r) / rmax, opacity:.22, color:r.up > r.dn ? C.up : C.down}}; }).filter(Boolean)},
+      {id:'agg', data:rows.map((r, k) => { const s = siteGeo(r.exporter); if (!s) return null; const f = tot(r) / rmax;
+        return {coords:[s, [r.lo, r.la]], lineStyle:{width:k < MAP_LINES ? .6 + 3.4 * f : .4 + .6 * f, opacity:k < MAP_LINES ? .22 : .1, color:r.up > r.dn ? C.up : C.down}}; }).filter(Boolean)},
       {id:'remotes', data:[...cities.values()].map(g => { const onSite = META.devices.some(d => d.lat != null && Math.abs(d.lat - g.lat) < 0.6 && Math.abs(d.lon - g.lon) < 0.9);
         return {name:g.name, full:`${g.name}, ${ccName(g.cc)}`, city:g.city, cc:g.cc, value:[g.lon, g.lat, g.v], v:g.v, label:onSite ? {show:false} : undefined}; })}]};
   };
   const sites = META.devices.filter(d => d.lat != null).map(d => ({name:d.city || d.name, full:`${d.city || ''}${d.country ? ', ' + ccName(d.country) : ''} · ${d.name}`, value:[d.lon, d.lat, 1]}));
   const siteLbl = [...new Map(sites.map(x => [`${x.name}|${Math.round(x.value[0] * 2)}|${Math.round(x.value[1] * 2)}`, x])).values()];
   const lbl = (pos, size) => ({show:true, position:pos, distance:7, color:'#F2F6FF', fontFamily:'Manrope', fontWeight:700, fontSize:size, textBorderColor:'rgba(4,10,28,.95)', textBorderWidth:3.5, formatter:'{b}'});
-  c.setOption({animation:false, tooltip:{...tipBase(), trigger:'item', formatter:p => p.seriesType === 'lines' ? '' : p.componentType === 'geo' ? esc(p.name) : `${esc(p.data && p.data.full || p.name)}${p.data && p.data.v ? '<br><b>' + fmtB(p.data.v) + '</b>' : ''}${p.seriesId === 'remotes' ? '<br><span style="opacity:.7">' + T('Click: show only this place') + '</span>' : ''}`},
-    geo:{map:'world', roam:true, zoom:1.25, center:[15, 35], scaleLimit:{min:1, max:10}, label:{show:false},
+  c.setOption({animation:false, tooltip:{...tipBase(), trigger:'item', formatter:p => p.seriesType === 'lines' ? '' : p.componentType === 'geo' ? esc(p.name) + (ccOf.has(p.name) ? '<br><span class="muted">' + T('Click: show only this country') + '</span>' : '') : `${esc(p.data && p.data.full || p.name)}${p.data && p.data.v ? '<br><b>' + fmtB(p.data.v) + '</b>' : ''}${p.seriesId === 'remotes' ? '<br><span style="opacity:.7">' + T('Click: show only this place') + '</span>' : ''}`},
+    geo:{map:'world', roam:true, zoom:1.25, center:[15, 35], scaleLimit:{min:1, max:60}, label:{show:false},     /* (2.12.4, forum #81) closer than 10×: devices across one city */
       itemStyle:{areaColor:'rgba(30,56,120,.38)', borderColor:'rgba(110,160,255,.38)', borderWidth:.5}, emphasis:{label:{show:false}, itemStyle:{areaColor:'rgba(47,123,255,.55)'}}},
     series:[
       {id:'agg', type:'lines', coordinateSystem:'geo', silent:true, zlevel:1, lineStyle:{curveness:.28}, data:[]},
@@ -499,7 +502,8 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
     ]});
   c.setOption(dataOpt(geo));
   // (2.12.0) a city mark is a filter (its tooltip says so); the pointer shows it can be clicked
-  c.on('click', e => { if (e.seriesId === 'remotes' && e.data) placeFilter(e.data.city, e.data.cc); });
+  c.on('click', e => { if (e.seriesId === 'remotes' && e.data) placeFilter(e.data.city, e.data.cc);
+    else if (e.componentType === 'geo' && ccOf.has(e.name)) placeFilter('', ccOf.get(e.name)); });     // (2.12.4, forum #81) a country
   // pin the top of the map (Greenland) to the top edge of the panel; the default layout centres it vertically
   let roamed = false; c.on('georoam', () => { roamed = true; });
   const pinTop = () => { if (roamed || c.isDisposed() || !el.clientHeight) return;
@@ -532,6 +536,7 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
   if (arcs && !isCustom()) { poll(); every(4000, poll); every(tickS * 1000, tick); }    // a past period: no live arcs
   return geo => { if (!c.isDisposed()) c.setOption(dataOpt(geo)); };
 }
+const globeStill = () => { try { return localStorage.getItem('ft-globe-still') === '1'; } catch (e) { return false; } };
 function globe(el, geo){
   if (!echarts.getMap('world') || !window['echarts-gl']) { el.innerHTML = '<div class="empty">' + T('3D mode is not available in this browser') + '</div>'; return; }
   try {
@@ -542,7 +547,7 @@ function globe(el, geo){
     const places = geo => { const m = new Map(); for (const r of geo.rows.slice(0, 10)) m.set(r.city, {name:r.city || ccName(r.country), city:r.city, cc:r.country, value:[r.lo, r.la, 0]}); return [...m.values()]; };
     const devs = [...new Map(META.devices.filter(d => d.lat != null).map(d => [d.city || d.name, {name:d.city || d.name, lon:d.lon, lat:d.lat}])).values()];   // one label per site
     c.setOption({globe:{baseTexture:tex, shading:'lambert', environment:'none', globeRadius:100, light:{ambient:{intensity:.55}, main:{intensity:1.1, alpha:30, beta:40}},
-        atmosphere:{show:true, color:'#2F7BFF', glowPower:5, innerGlowPower:2}, viewControl:{autoRotate:!reduceMotion && !KIOSK.still, autoRotateSpeed:4, autoRotateAfterStill:3, animation:false, distance:180, minDistance:60, maxDistance:260, alpha:45, beta:115}},
+        atmosphere:{show:true, color:'#2F7BFF', glowPower:5, innerGlowPower:2}, viewControl:{autoRotate:!reduceMotion && !KIOSK.still && !globeStill(), autoRotateSpeed:4, autoRotateAfterStill:3, animation:false, distance:180, minDistance:60, maxDistance:260, alpha:45, beta:115}},
       series:[
         {id:'arcs', type:'lines3D', coordinateSystem:'globe', blendMode:'lighter', effect:{show:!reduceMotion, trailWidth:2.5, trailLength:.22, trailOpacity:1, constantSpeed:28}, lineStyle:{width:1.2, opacity:.35}, data:arcs(geo)},
         {type:'scatter3D', coordinateSystem:'globe', blendMode:'lighter', symbolSize:10, itemStyle:{color:C.int}, label:{show:false}, data:devs.map(d => ({name:d.name, value:[d.lon, d.lat, 0]}))},
@@ -550,6 +555,17 @@ function globe(el, geo){
       ]});
     // the wheel scrolls the page, not the globe (zooming it stopped the rotation); Ctrl/⌘ + wheel still zooms
     el.addEventListener('wheel', e => { if (!e.ctrlKey && !e.metaKey) e.stopPropagation(); }, {capture:true});
+    // (2.12.4, forum #82) a click (not a drag) on the globe stops the turning for good, the next click starts it again;
+    // remembered in this browser. A city name is a filter, not a click on the globe; a kiosk link with spin=0 stays still
+    if (!reduceMotion && !KIOSK.still) {
+      let down = null;
+      el.addEventListener('pointerdown', e => { down = e.button === 0 && !e.target.closest('.gl-lbl') ? {x:e.clientX, y:e.clientY, t:Date.now()} : null; }, true);
+      el.addEventListener('pointerup', e => { const d = down; down = null;
+        if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || Date.now() - d.t > 500 || c.isDisposed()) return;
+        const still = !globeStill(); try { localStorage.setItem('ft-globe-still', still ? '1' : ''); } catch (x) {}
+        c.setOption({globe:{viewControl:{autoRotate:!still}}}); el.title = still ? T('Click: turn the globe again') : T('Click: stop the globe'); }, true);
+      el.title = globeStill() ? T('Click: turn the globe again') : T('Click: stop the globe');
+    }
     // city names: an HTML layer placed from the globe's camera every frame — only on the near side, fading towards the
     // rim, never cut by the globe's surface (labels drawn inside the 3D scene sank into it as it turned)
     if (getComputedStyle(el).position === 'static') el.style.position = 'relative';

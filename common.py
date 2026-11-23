@@ -409,6 +409,14 @@ def listen_signature(spec):
         return None
 
 
+def address_moved(start, now):
+    """(2.12.4, forum #84) Restart for another address only when one is THERE that we do not listen on. An interface
+    that lost its address (Wi-Fi reconnecting, the router restarting) is waited out: a bound socket outlives its address
+    and takes connections again the moment the same address returns. A restart there made the page unreachable for the
+    whole wait (and `Failed` in the journal looked like a crash)."""
+    return bool(now) and not set(now) <= set(start or ())
+
+
 def listen_label(item):
     """'ens19 (203.0.113.5)', '203.0.113.5' or 'all interfaces' for one describe_listeners() entry."""
     if item['iface']:

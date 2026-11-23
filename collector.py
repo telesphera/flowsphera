@@ -30,7 +30,7 @@ import ifcounters  # noqa: E402
 import recovery  # noqa: E402
 import rollups  # noqa: E402
 from common import (BUILD, STATE_DIR, VERSION, CHError, Geo, apply_schema, ch, classify_l7, describe_listeners, edition,  # noqa: E402
-                    exporters_mtime, flows_keep_days, flows_shorten, is_group, is_private, keep_days, load_ignored, retention_choice, license_checkin, listen_label, listen_signature, load_exporters, open_listeners, server_is_src,
+                    exporters_mtime, flows_keep_days, flows_shorten, is_group, is_private, keep_days, load_ignored, retention_choice, license_checkin, listen_label, listen_signature, address_moved, load_exporters, open_listeners, server_is_src,
                     service_name, PORT_NAMES, default_l7, load_port_names, reload_port_names)
 
 BIND = os.environ.get('FT_BIND', '0.0.0.0')
@@ -995,6 +995,7 @@ class Receiver:
             self.sflow_listeners = []
         self.socks = [s for s, _ in self.listeners + self.sflow_listeners]
         self.listen_sig = listen_signature(BIND)
+        self.addr_gone = False
         for sock in self.socks:
             sock.setblocking(False)
         self.rcvbuf = self.socks[0].getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
@@ -1078,9 +1079,15 @@ class Receiver:
                 self.reload_config()
                 self.apply_retention()
                 sig = listen_signature(BIND)
-                if sig != self.listen_sig:          # an interface got another address (DHCP): systemd restarts us
-                    log(f'listening addresses changed ({", ".join(self.listen_sig)} -> {", ".join(sig or ["none"])}); restarting')
+                # an interface got another address (DHCP): systemd restarts us; (2.12.4, forum #84) an address that only
+                # went away (Wi-Fi, the router restarting) is waited out — the sockets receive again when it is back
+                if address_moved(self.listen_sig, sig):
+                    log(f'listening addresses changed ({", ".join(self.listen_sig)} -> {", ".join(sig)}); restarting')
                     stop = True
+                elif (sig != self.listen_sig) != self.addr_gone:
+                    self.addr_gone = sig != self.listen_sig
+                    log('interface address gone: waiting for it, records are received again as soon as it is back' if self.addr_gone
+                        else 'address back: receiving again')
         self.dispatch()
         for q in self.queues:
             try:

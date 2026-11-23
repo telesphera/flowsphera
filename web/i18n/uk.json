@@ -2304,5 +2304,8 @@
  "Accepted here: version {v}, {when}, {who} {how}": "Прийнято на цьому сервері: редакція {v}, {when}, {who} {how}",
  "at install": "під час встановлення",
  "in the web interface": "у вебінтерфейсі",
- "on the command line": "у командному рядку"
+ "on the command line": "у командному рядку",
+ "Click: show only this country": "Клік: показати лише цю країну",
+ "Click: stop the globe": "Клік: зупинити глобус",
+ "Click: turn the globe again": "Клік: знову обертати глобус"
 }

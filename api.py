@@ -36,7 +36,7 @@ import rollups  # noqa: E402
 import snmp  # noqa: E402
 import topology  # noqa: E402
 import neighbours  # noqa: E402
-from common import (web_query, BUILD, COMMUNITY, STATE_DIR, VERSION, CHError, ch, describe_listeners, edition, exporters_mtime, save_license, deactivate_license, license_checkin, license_refresh, iface_addrs, is_private, listen_signature,  # noqa: E402
+from common import (web_query, BUILD, COMMUNITY, STATE_DIR, VERSION, CHError, ch, describe_listeners, edition, exporters_mtime, save_license, deactivate_license, license_checkin, license_refresh, iface_addrs, is_private, listen_signature, address_moved, LOOPBACK,  # noqa: E402
                     listen_label, load_exporters, load_json, load_ui_exporter, open_listeners, save_ui_exporter, set_lang, tr,
                     trn, N_, get_lang, languages)
 
@@ -4403,12 +4403,19 @@ if __name__ == '__main__':
     print(f'[flowsphera-api] serving {"https" if ctx else "http"} on TCP {PORT}: {where}'
           f'{" (plain HTTP redirects to HTTPS)" if ctx else ""}', flush=True)
     def watch_addresses(start=listen_signature(BIND)):
+        gone = False
         while True:                      # an interface got another address (DHCP): exit, systemd restarts us
             time.sleep(30)
             sig = listen_signature(BIND)
-            if sig != start:
-                print(f'[flowsphera-api] listening addresses changed ({", ".join(start)} -> {", ".join(sig or ["none"])}); restarting', flush=True)
-                os._exit(3)
+            # (2.12.4, forum #84) an address that only went away is waited out (the sockets take it back); a clean exit
+            # (0, Restart=always) so the journal does not say «Failed» for a planned move
+            if address_moved(start, sig):
+                urls = ', '.join('https://%s:%s' % ('[%s]' % a if ':' in a else a, PORT) for a in sig if a not in start and a not in LOOPBACK)
+                print(f'[flowsphera-api] listening addresses changed ({", ".join(start)} -> {", ".join(sig)}); restarting, the page moves to {urls}', flush=True)
+                os._exit(0)
+            if (sig != start) != gone:
+                gone = sig != start
+                print(f'[flowsphera-api] {"interface address gone: waiting for it, the page answers again as soon as it is back" if gone else "address back: answering again"}', flush=True)
     if any(dev for _, dev in LISTENERS):
         threading.Thread(target=watch_addresses, daemon=True).start()
     POLLER.start()

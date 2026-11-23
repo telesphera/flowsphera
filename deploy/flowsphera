@@ -108,6 +108,20 @@ case "${1:-}" in
   status)
     echo "FlowSphera $(shown "$(version)" "$(build)")"
     for u in flowsphera-collector flowsphera-web; do printf '  %-22s %s\n' "$u" "$(systemctl is-active "$u" 2>/dev/null)"; done
+    # (2.12.4, forum #84) where the page is now: the address may change (DHCP) or be missing for a while (Wi-Fi, the router
+    # restarting) — the web interface waits for it and answers again as soon as it is back;
+    # what the web service listens on now (ss needs no root; the env file is root's only)
+    wp=$(sed -n 's/^FT_WEB_PORT=//p' /etc/flowsphera/env 2>/dev/null | tr -d '"'); wp=${wp:-3030}
+    ls=$(ss -ltnH "sport = :$wp" 2>/dev/null | awk '{print $4}' | sed -E 's/:[0-9]+$//; s/^\[(.*)\]$/\1/' | grep -v -E '^(127\.|::1$)' | sort -u)
+    case " $(echo $ls) " in
+      *" 0.0.0.0 "*|*" * "*|*" :: "*) as=$(ip -o -4 addr show scope global 2>/dev/null | grep -v -E ' (docker[0-9]*|br-[0-9a-f]+|virbr[0-9]*|veth[^ ]*) ' | awk '{split($4, a, "/"); print a[1]}') ;;
+      *) as=$ls ;;
+    esac
+    gone=""; for a in $as; do ip -o addr show 2>/dev/null | grep -q " ${a}/" || gone="$gone $a"; done
+    for a in $as; do case " $gone " in *" $a "*) ;; *) case $a in *:*) echo "  $(t 'Web interface' 'Веб-інтерфейс'):  https://[$a]:$wp" ;; *) echo "  $(t 'Web interface' 'Веб-інтерфейс'):  https://$a:$wp" ;; esac ;; esac; done
+    if [ -n "$gone" ] || { [ -z "$as" ] && [ "$(systemctl is-active flowsphera-web 2>/dev/null)" = active ]; }; then
+      echo "  $(t 'Web interface' 'Веб-інтерфейс'):  $(t "waiting for the server's address$gone (Wi-Fi or the router may be restarting): the page answers again as soon as it is back" "чекаємо адресу сервера$gone (Wi-Fi чи роутер можуть перезапускатися): сторінка відповість, щойно вона повернеться")"
+    fi
     [ -x /usr/local/bin/flowsphera-license ] && /usr/local/bin/flowsphera-license status | sed 's/^/  /' ;;
   version|--version|-v) shown "$(version)" "$(build)" ;;
   ''|help|-h|--help) usage ;;
