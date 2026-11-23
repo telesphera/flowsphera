@@ -118,7 +118,9 @@ or a laptop alike, with no scroll bar and no empty half.
 <p align="center"><img src="docs/media/en/wall-list.webp" alt="Recent flows opened full screen on a 1920×1080 wall: twenty rows down to the bottom of the screen" width="100%"></p>
 
 **Click a city on the map** (2.12.0): every page then shows only the traffic of that place — the city together with its
-country, so Paris, France is never mixed with Paris, Texas. It works on the flat map and on the 3D globe.
+country, so Paris, France is never mixed with Paris, Texas. It works on the flat map and on the 3D globe. Since 2.12.4
+a click on a **country** filters it too, the flat map zooms in up to 60× and draws a line to every place it marks, and a
+click on the globe stops its turning (the next click starts it again).
 
 <p align="center"><img src="docs/media/en/map-city.webp" alt="The live map with a city's tooltip: «San Francisco, United States · Click: show only this place»" width="80%"></p>
 
