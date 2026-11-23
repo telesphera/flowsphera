@@ -482,8 +482,10 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
   const sites = META.devices.filter(d => d.lat != null).map(d => ({name:d.city || d.name, full:`${d.city || ''}${d.country ? ', ' + ccName(d.country) : ''} · ${d.name}`, value:[d.lon, d.lat, 1]}));
   const siteLbl = [...new Map(sites.map(x => [`${x.name}|${Math.round(x.value[0] * 2)}|${Math.round(x.value[1] * 2)}`, x])).values()];
   const lbl = (pos, size) => ({show:true, position:pos, distance:7, color:'#F2F6FF', fontFamily:'Manrope', fontWeight:700, fontSize:size, textBorderColor:'rgba(4,10,28,.95)', textBorderWidth:3.5, formatter:'{b}'});
-  c.setOption({animation:false, tooltip:{...tipBase(), trigger:'item', formatter:p => p.seriesType === 'lines' ? '' : p.componentType === 'geo' ? esc(p.name) + (ccOf.has(p.name) ? '<br><span class="muted">' + T('Click: show only this country') + '</span>' : '') : `${esc(p.data && p.data.full || p.name)}${p.data && p.data.v ? '<br><b>' + fmtB(p.data.v) + '</b>' : ''}${p.seriesId === 'remotes' ? '<br><span style="opacity:.7">' + T('Click: show only this place') + '</span>' : ''}`},
+  c.setOption({animation:false, tooltip:{...tipBase(), trigger:'item', formatter:p => p.seriesType === 'lines' ? '' : p.componentType === 'geo' ? esc(p.name) : `${esc(p.data && p.data.full || p.name)}${p.data && p.data.v ? '<br><b>' + fmtB(p.data.v) + '</b>' : ''}${p.seriesId === 'remotes' ? '<br><span style="opacity:.7">' + T('Click: show only this place') + '</span>' : ''}`},
     geo:{map:'world', roam:true, zoom:1.25, center:[15, 35], scaleLimit:{min:1, max:60}, label:{show:false},     /* (2.12.4, forum #81) closer than 10×: devices across one city */
+      // (2.12.4) a country's own tooltip: ECharts gives the geo regions the component's tooltip, not the chart's formatter
+      tooltip:{formatter:p => esc(p.name) + (ccOf.has(p.name) ? '<br><span style="opacity:.7">' + T('Click: show only this country') + '</span>' : '')},
       itemStyle:{areaColor:'rgba(30,56,120,.38)', borderColor:'rgba(110,160,255,.38)', borderWidth:.5}, emphasis:{label:{show:false}, itemStyle:{areaColor:'rgba(47,123,255,.55)'}}},
     series:[
       {id:'agg', type:'lines', coordinateSystem:'geo', silent:true, zlevel:1, lineStyle:{curveness:.28}, data:[]},
