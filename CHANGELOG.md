@@ -4,6 +4,27 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.12.4 — 2026-11-23
+
+### Fixed
+- **The page answers again the moment the server's address is back.** When the router restarts or Wi-Fi reconnects, the
+  server loses its address for a while. The web interface and the collector used to restart and wait, so the page stayed
+  unreachable longer than the network was gone. Now they keep listening and answer as soon as the same address returns.
+  A really new address (another DHCP lease) still moves the page there, and the journal no longer calls that a failure.
+- **An address that is not usable yet no longer stops FlowSphera.** On a server with IPv6 from the provider, an address
+  still being checked by the network (duplicate address detection) made the web interface and the collector fail to
+  start for minutes after a boot. Now they start at once on the addresses that work and add the late one when it is ready.
+- **Through device shows the outside addresses of every WAN link.** With several WAN links, the busiest ones took all
+  the cards and a quieter link showed only its dot; now each link shows its own biggest addresses.
+- **`flowsphera status` shows where the page is**: the web address, or that the server is waiting for its address.
+- **A line to every place on the flat map.** Small places got a dot without a line; now every marked place has its line,
+  the small ones thin and faint.
+
+### New
+- **A click on a country filters it**, on the flat map, the same as a click on a city.
+- **Closer zoom on the flat map** (up to 60×), for devices spread across one city or one country.
+- **A click on the globe stops it**, the next click turns it again; the browser remembers the choice.
+
 ## 2.12.3 — 2026-11-22
 
 ### Changed
