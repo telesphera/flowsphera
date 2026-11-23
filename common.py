@@ -1,6 +1,7 @@
 """Shared FlowSphera helpers: config, ClickHouse HTTP client, enrichment."""
 import base64
 import contextlib
+import errno
 import ipaddress
 import json
 import os
@@ -309,13 +310,16 @@ def bind_targets(spec):
 
 
 def iface_addrs(dev):
-    """Current global addresses of an interface (IPv4 first)."""
+    """Current global addresses of an interface (IPv4 first). (2.12.4, forum #84) Not one the kernel cannot bind yet or
+    ever: an IPv6 address still in duplicate address detection (tentative) or failed it (dadfailed) — Errno 99 for it
+    stopped the web and the collector for minutes (68 restarts) while the IPv4 address was ready."""
     try:
         r = subprocess.run(['ip', '-j', 'addr', 'show', 'dev', dev], capture_output=True, text=True, timeout=5)
         data = json.loads(r.stdout or '[]')
     except (OSError, ValueError, subprocess.SubprocessError):
         return []
-    addrs = [(a.get('family'), a.get('local')) for d in data for a in d.get('addr_info', []) if a.get('scope') == 'global' and a.get('local')]
+    addrs = [(a.get('family'), a.get('local')) for d in data for a in d.get('addr_info', [])
+             if a.get('scope') == 'global' and a.get('local') and not a.get('tentative') and not a.get('dadfailed')]
     return [ip for fam, ip in sorted(addrs, key=lambda x: x[0] != 'inet')]
 
 
@@ -367,16 +371,24 @@ def _bound(host, port, socktype, configure):
         return _bound('0.0.0.0', port, socktype, configure)
 
 
-def open_listeners(spec, port, socktype, configure=lambda s: None, log=print, wait=None, tick=None):
+# (2.12.4, forum #84) an interface address the kernel refuses (Errno 99) is retried this long; then the services start on
+# the interface's addresses that do bind and pick the late one up when it can be bound (the watchers)
+NOT_READY_WAIT = 20
+
+
+def open_listeners(spec, port, socktype, configure=lambda s: None, log=print, wait=None, tick=None, settle=None):
     """Bound (not yet listening) sockets for FT_BIND / FT_WEB_BIND, as [(socket, interface or None)].
     ::1 is skipped quietly when IPv6 is disabled. An interface without an address yet is waited for up to `wait` seconds
-    (BIND_WAIT); `tick()` is called meanwhile (the collector tells systemd to extend its start timeout)."""
+    (BIND_WAIT); `tick()` is called meanwhile (the collector tells systemd to extend its start timeout). (2.12.4) An
+    interface address that cannot be bound yet (Errno 99) is retried for `settle` seconds (NOT_READY_WAIT); then the
+    sockets of the interface's other addresses are enough — none at all is waited for like a missing address."""
     wait = BIND_WAIT if wait is None else wait
-    deadline, said = time.monotonic() + wait, False
+    settle = NOT_READY_WAIT if settle is None else settle
+    t0 = time.monotonic()
+    deadline, said, said_late = t0 + wait, False, set()
     while True:
         try:
             plan = bind_plan(spec)
-            break
         except NoAddress as ex:
             if time.monotonic() >= deadline:
                 raise
@@ -386,19 +398,52 @@ def open_listeners(spec, port, socktype, configure=lambda s: None, log=print, wa
             if tick:
                 tick()
             time.sleep(2)
+            continue
+        out, late = [], []
+        for host, dev in plan:
+            try:
+                out.append((_bound(host, port, socktype, configure), dev))
+            except OSError as ex:
+                if host == '::1':
+                    continue
+                if dev and ex.errno == errno.EADDRNOTAVAIL:
+                    late.append(host)
+                    continue
+                for s, _ in out:
+                    s.close()
+                raise
+        now = time.monotonic()
+        if not late or (any(d for _, d in out) and now - t0 >= settle):
+            break
+        for s, _ in out:
+            s.close()
+        if now >= deadline:
+            raise OSError(errno.EADDRNOTAVAIL, f'cannot use any address of the interface yet ({", ".join(late)})')
+        if set(late) - said_late:
+            log(f'address {", ".join(sorted(set(late) - said_late))} not ready yet (the network is still checking it): waiting')
+            said_late |= set(late)
+        if tick:
+            tick()
+        time.sleep(2)
     if said:
         log(f'{", ".join(sorted({d for _, d in plan if d}))}: address there, listening')
-    out = []
-    for host, dev in plan:
-        try:
-            out.append((_bound(host, port, socktype, configure), dev))
-        except OSError:
-            if host == '::1':
-                continue
-            for s, _ in out:
-                s.close()
-            raise
+    if late:
+        log(f'listening without {", ".join(late)} for now (not ready); it is added as soon as it can be used')
     return out
+
+
+def bound_signature(listeners):
+    """(2.12.4) The addresses really listened on (+ loopback, which listen_signature always names) — the watchers' start."""
+    return sorted({s.getsockname()[0] for s, _ in listeners} | set(LOOPBACK))
+
+
+def bindable(host, port, socktype):
+    """(2.12.4) Can a socket be bound to host:port now? (a trial before restarting for a new address)"""
+    try:
+        _bound(host, port, socktype, lambda s: None).close()
+        return True
+    except OSError:
+        return False
 
 
 def listen_signature(spec):
@@ -409,12 +454,19 @@ def listen_signature(spec):
         return None
 
 
-def address_moved(start, now):
+def address_moved(start, now, ready=lambda a: True):
     """(2.12.4, forum #84) Restart for another address only when one is THERE that we do not listen on. An interface
     that lost its address (Wi-Fi reconnecting, the router restarting) is waited out: a bound socket outlives its address
     and takes connections again the moment the same address returns. A restart there made the page unreachable for the
-    whole wait (and `Failed` in the journal looked like a crash)."""
-    return bool(now) and not set(now) <= set(start or ())
+    whole wait (and `Failed` in the journal looked like a crash). A new address counts only when `ready(address)` (a
+    trial bind): a restart for one the kernel still refuses would loop."""
+    return bool(now) and any(a not in set(start or ()) and ready(a) for a in now)
+
+
+def address_gone(start, now):
+    """(2.12.4) None of the interface addresses listened on is there now (loopback does not count)."""
+    mine = set(start or ()) - set(LOOPBACK)
+    return bool(mine) and not mine & set(now or ())
 
 
 def listen_label(item):

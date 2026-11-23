@@ -36,7 +36,7 @@ import rollups  # noqa: E402
 import snmp  # noqa: E402
 import topology  # noqa: E402
 import neighbours  # noqa: E402
-from common import (web_query, BUILD, COMMUNITY, STATE_DIR, VERSION, CHError, ch, describe_listeners, edition, exporters_mtime, save_license, deactivate_license, license_checkin, license_refresh, iface_addrs, is_private, listen_signature, address_moved, LOOPBACK,  # noqa: E402
+from common import (web_query, BUILD, COMMUNITY, STATE_DIR, VERSION, CHError, ch, describe_listeners, edition, exporters_mtime, save_license, deactivate_license, license_checkin, license_refresh, iface_addrs, is_private, listen_signature, address_moved, address_gone, bindable, bound_signature, LOOPBACK,  # noqa: E402
                     listen_label, load_exporters, load_json, load_ui_exporter, open_listeners, save_ui_exporter, set_lang, tr,
                     trn, N_, get_lang, languages)
 
@@ -4402,19 +4402,24 @@ if __name__ == '__main__':
     where = '; '.join(listen_label(x) for x in WEB_LISTEN)
     print(f'[flowsphera-api] serving {"https" if ctx else "http"} on TCP {PORT}: {where}'
           f'{" (plain HTTP redirects to HTTPS)" if ctx else ""}', flush=True)
-    def watch_addresses(start=listen_signature(BIND)):
-        gone = False
+    def watch_addresses(start=bound_signature(LISTENERS)):
+        gone, said = False, set()
+        ready = lambda a: bindable(a, PORT, socket.SOCK_STREAM)
         while True:                      # an interface got another address (DHCP): exit, systemd restarts us
             time.sleep(30)
             sig = listen_signature(BIND)
             # (2.12.4, forum #84) an address that only went away is waited out (the sockets take it back); a clean exit
             # (0, Restart=always) so the journal does not say «Failed» for a planned move
-            if address_moved(start, sig):
+            if address_moved(start, sig, ready):
                 urls = ', '.join('https://%s:%s' % ('[%s]' % a if ':' in a else a, PORT) for a in sig if a not in start and a not in LOOPBACK)
                 print(f'[flowsphera-api] listening addresses changed ({", ".join(start)} -> {", ".join(sig)}); restarting, the page moves to {urls}', flush=True)
                 os._exit(0)
-            if (sig != start) != gone:
-                gone = sig != start
+            late = {a for a in sig or () if a not in start} - said     # (2.12.4) there, but the kernel refuses it still
+            if late:
+                print(f'[flowsphera-api] address {", ".join(sorted(late))} not ready yet: listening without it for now', flush=True)
+                said |= late
+            if address_gone(start, sig) != gone:
+                gone = not gone
                 print(f'[flowsphera-api] {"interface address gone: waiting for it, the page answers again as soon as it is back" if gone else "address back: answering again"}', flush=True)
     if any(dev for _, dev in LISTENERS):
         threading.Thread(target=watch_addresses, daemon=True).start()
