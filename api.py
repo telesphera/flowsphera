@@ -1340,7 +1340,8 @@ def api_devmap(q):
         GROUP BY host, iface ORDER BY v DESC LIMIT {{n:UInt8}} BY iface LIMIT 60""", p, fmt='JSON')
     # the outside addresses beyond the WAN ports: a busy network has hundreds of thousands a day — the biggest few per
     # port are found approximately (constant memory; grouping them all with their names took 1.5 GiB on a day of
-    # 2,400 records/s), then counted exactly
+    # 2,400 records/s), then counted exactly; (2.12.4, forum #89) the biggest few of EACH port, as inside — one limit for
+    # all ports left a quieter WAN without a single card (its dot alone, as if there were no room)
     ext = lambda: iface_from(p, where, live, ['in_if', 'out_if', 'out_ip', 'service', 'country', 'city'])      # noqa: E731
     cand = ch(f"""SELECT if(dir = 'up', out_if, in_if) AS iface, topKWeighted({{k:UInt8}})(out_ip, toUInt64({metric})) AS top
         FROM {ext()} AND dir IN ('up', 'down') GROUP BY iface""", {**p, 'k': 3 * p['n']}, fmt='JSON')
@@ -1348,7 +1349,7 @@ def api_devmap(q):
     outside = ch(f"""SELECT out_ip AS host, if(dir = 'up', out_if, in_if) AS iface, sumIf({metric}, dir = 'up') AS up, sumIf({metric}, dir = 'down') AS dn,
             sum({metric}) AS v, any(service) AS service, any(country) AS country, any(city) AS city
         FROM {ext()} AND dir IN ('up', 'down') AND has({{cand:Array(String)}}, out_ip)
-        GROUP BY host, iface ORDER BY v DESC LIMIT {{n:UInt8}}""", p, fmt='JSON') if p['cand'] else []
+        GROUP BY host, iface ORDER BY v DESC LIMIT {{n:UInt8}} BY iface LIMIT 60""", p, fmt='JSON') if p['cand'] else []
     num = ('in_if', 'out_if', 'iface', 'fl', 'hosts')
     for rows in (paths, inside, outside):
         for r in rows:
