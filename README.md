@@ -454,4 +454,6 @@ a hosted service or circumventing the license checks. The FlowSphera core (`ftco
 asks you to accept it (unattended: `--accept-eula`). Versions up to 1.1.0 were published under MIT and stay so. IP geolocation by
 [DB-IP](https://db-ip.com), licensed under CC BY 4.0. Fonts Manrope and JetBrains Mono ship with FlowSphera under the
 [SIL Open Font License 1.1](web/fonts/). PDF reports are made with [ReportLab](https://www.reportlab.com) (BSD).
+Charts, the world map and the 3D globe are drawn with [Apache ECharts](https://echarts.apache.org) and ECharts GL; the world
+map data (`web/vendor/world.js`) comes from the ECharts project — all under the Apache License 2.0.
 Screenshots show demo data, no real network.

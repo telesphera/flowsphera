@@ -460,5 +460,7 @@ curl -fsSL https://raw.githubusercontent.com/telesphera/flowsphera/main/install.
 встановлення просить її прийняти (без запитань: `--accept-eula`). Версії до 1.1.0 опубліковано за MIT, і вони
 такими лишаються. IP-геолокація — [DB-IP](https://db-ip.com), ліцензія CC BY 4.0. Шрифти Manrope і JetBrains Mono
 постачаються з FlowSphera за [SIL Open Font License 1.1](web/fonts/). PDF-звіти створює
-[ReportLab](https://www.reportlab.com) (BSD). На скриншотах — демонстраційні дані,
+[ReportLab](https://www.reportlab.com) (BSD). Графіки, карту світу і 3D-глобус малює
+[Apache ECharts](https://echarts.apache.org) з ECharts GL; дані карти світу (`web/vendor/world.js`) — з проєкту ECharts;
+усе за Apache License 2.0. На скриншотах — демонстраційні дані,
 не реальна мережа.
