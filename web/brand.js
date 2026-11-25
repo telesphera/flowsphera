@@ -90,6 +90,12 @@
     icon();
     if (!still) { requestAnimationFrame(t => { last = t; frame(t); }); return; }
     all();                                // still: drawn once, and again when a page puts a new one in
-    new MutationObserver(() => requestAnimationFrame(all)).observe(document.body, {childList: true, subtree: true});
+    // (2.12.5) only when the added nodes bring a logo: the pages are drawn again often, and every change redrew it
+    const hasLogo = n => n.nodeType === 1 && (n.matches('canvas[data-logo]') || !!n.querySelector('canvas[data-logo]'));
+    let queued = false;
+    new MutationObserver(list => {
+      if (queued || !list.some(m => [...m.addedNodes].some(hasLogo))) return;
+      queued = true; requestAnimationFrame(() => { queued = false; all(); });
+    }).observe(document.body, {childList: true, subtree: true});
   });
 })();

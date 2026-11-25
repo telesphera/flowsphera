@@ -205,6 +205,7 @@ class Session:
         with os.fdopen(fd, 'w') as f:
             f.write(_conf(entry))
         self.raw = False
+        self.partial = []           # (2.12.5) walks the device ended with an error after some rows
         self.env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'SNMPCONFPATH': self.dir, 'SNMP_PERSISTENT_DIR': self.dir,
                     'HOME': self.dir, 'MIBS': '', 'MIBDIRS': '/dev/null'}
 
@@ -227,6 +228,12 @@ class Session:
         err = '\n'.join(x for x in (r.stderr.strip() or r.stdout.strip()).splitlines() if not x.startswith('Created directory'))
         if r.returncode and not rows:
             raise SnmpError(classify(err), err.splitlines()[0] if err else f'{tool} exit {r.returncode}')
+        if r.returncode:
+            # (2.12.5) the device broke the walk part way (RouterOS 7.17 ipCidrRoute: rows, then «OID not increasing»):
+            # the rows read are kept, but the journal says the table may be incomplete instead of passing it as whole
+            first = err.splitlines()[0] if err else f'exit {r.returncode}'
+            print(f'snmp {self.target}: {" ".join(oids)} ended early after {len(rows)} values ({first}) — the table may be incomplete', flush=True)
+            self.partial.append(' '.join(oids))
         return rows
 
     def get(self, *oids):
@@ -265,15 +272,23 @@ def value(t, v, raw=False):
     if raw and (t == 'STRING' or (not t and v.startswith('"'))):
         return value(t, v).encode('utf-8', 'replace').hex()
     if t == 'Hex-STRING':
+        # (2.12.5) net-snmp prints a text with non-ASCII letters (an interface alias in Ukrainian) as Hex-STRING: that is
+        # decoded; bytes that are no UTF-8 text (a MAC address, a chassis ID) stay hex instead of turning into «\ufffd»
         try:
-            return bytes.fromhex(v.replace(' ', '')).decode('utf-8', 'replace')
+            b = bytes.fromhex(re.sub(r'[^0-9a-fA-F]', '', v))
         except ValueError:
             return ''
+        try:
+            txt = b.decode('utf-8')
+        except UnicodeDecodeError:
+            return b.hex()
+        txt = txt.rstrip('\x00')
+        return txt if txt.isprintable() else b.hex()
     if t == 'STRING' or (not t and v.startswith('"')):
         return v[1:-1].replace('\\"', '"').replace('\\\\', '\\') if len(v) >= 2 and v[0] == v[-1] == '"' else v
     if t in ('INTEGER', 'Gauge32', 'Counter32', 'Counter64', 'Unsigned32', 'Timeticks'):
         m = re.match(r'-?\d+', v.split('(')[-1])
-        return int(m.group()) if m else 0
+        return int(m.group()) if m else None        # (2.12.5) unreadable ≠ a real 0
     if t == 'OID':
         return v.lstrip('.')
     return v

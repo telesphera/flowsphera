@@ -58,7 +58,7 @@ def rows(ip, found, t):
     ts = datetime.fromtimestamp(t, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     out = []
     for idx, v in sorted(found.items()):
-        if v.get('if_type') in SKIP_TYPES or 'in_octets' not in v or 'out_octets' not in v:
+        if v.get('if_type') in SKIP_TYPES or v.get('in_octets') is None or v.get('out_octets') is None:     # (2.12.5) unreadable = not read
             continue
         out.append({'ts': ts, 'exporter': ip, 'if_index': idx, 'if_type': int(v.get('if_type') or 0),
                     'speed': int(v.get('speed_m') or 0) * 1_000_000, 'direction': 0,

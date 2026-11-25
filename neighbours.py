@@ -17,11 +17,38 @@ import snmp
 LINK_MAX = 8            # candidate interfaces kept per end (a port, its LAG and the LAG's VLAN units)
 
 
+# (2.12.5) Cisco-style long names and their short forms -> one spelling. The old rule cut every prefix to two letters,
+# so TwoGigabitEthernet1/0/1 (Tw) and TwentyFiveGigE1/0/1 (Twe) — both on a Catalyst 9300 — became one name and the
+# LLDP neighbour went to neither port; MikroTik sfp1 and sfp-sfpplus1 collided the same way. Only these known forms
+# are folded; any other name (ether1, sfp-sfpplus1, lan1, ge-0/0/0) is kept whole.
+_IF_LONG = {
+    'fastethernet': 'fa', 'fa': 'fa',
+    'gigabitethernet': 'gi', 'gi': 'gi', 'gig': 'gi',
+    'twogigabitethernet': 'tw', 'tw': 'tw',
+    'fivegigabitethernet': 'fi', 'fi': 'fi',
+    'tengigabitethernet': 'te', 'te': 'te', 'ten': 'te',
+    'twentyfivegige': 'twe', 'twe': 'twe',
+    'fortygigabitethernet': 'fo', 'fo': 'fo',
+    'fiftygige': 'fif', 'fif': 'fif',
+    'hundredgige': 'hu', 'hu': 'hu',
+    'twohundredgige': 'two', 'fourhundredgige': 'fou',
+    'ethernet': 'et', 'et': 'et', 'eth': 'et',
+    'port-channel': 'po', 'portchannel': 'po', 'po': 'po',
+    'vlan': 'vl', 'vl': 'vl',
+    'loopback': 'lo', 'lo': 'lo',
+    'tunnel': 'tu', 'tu': 'tu',
+    'appgigabitethernet': 'ap', 'ap': 'ap',
+}
+
+
 def _norm(name):
-    """'GigabitEthernet0/0/1' and 'Gi0/0/1' -> 'gi0/0/1'; 'xe-0/0/0' -> 'xe0/0/0'; 'Port-channel1.20' -> 'po1.20'"""
-    n = str(name or '').strip().lower()
+    """'GigabitEthernet0/0/1' and 'Gi0/0/1' -> 'gi0/0/1'; 'Ethernet 1' -> 'et1'; 'TwentyFiveGigE1/0/1' -> 'twe1/0/1'
+    (not TwoGigabitEthernet's 'tw1/0/1'); 'xe-0/0/0' -> 'xe0/0/0'; names outside the Cisco family stay whole."""
+    n = re.sub(r'\s+', '', str(name or '').strip().lower())
     m = re.match(r'([a-z][a-z-]*?)-?(\d[\w/.:-]*)$', n)
-    return m[1][:2] + m[2] if m else n
+    if not m:
+        return n
+    return _IF_LONG.get(m[1], m[1]) + m[2]
 
 
 def _unique(hits):
@@ -55,7 +82,13 @@ def local_if(d, port):
             hit = _by_name(ifs, desc)
         if hit is not None:
             return hit
-    return int(port) if str(port) in ifs else None              # most devices number LLDP ports by ifIndex
+        # (2.12.5) the device names its LLDP ports and none of the names is an interface: its port number is no ifIndex
+        # either (Cisco IOS numbers LLDP ports on its own) — a guess here put a neighbour on a wrong port; leave it unknown
+        if sub != 3 and (txt or desc):
+            return None
+    # no own entry for the port (FortiOS has no lldpLocPortTable: port 5 = ifIndex 5, proven on a FortiWiFi 40F), or one
+    # that gives only a MAC: most devices number LLDP ports by ifIndex
+    return int(port) if str(port) in ifs else None
 
 
 def remote_if(d, psub, phex, pdesc):
