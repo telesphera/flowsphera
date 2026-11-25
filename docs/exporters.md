@@ -48,7 +48,7 @@ slowly, a few at a time. FlowSphera keeps the names it has learned (state `app_n
 before its name arrived under that name as soon as it is known. Settings → Devices says «applications: off» for a
 FortiGate or a Palo Alto that sends none.
 
-**Cisco IOS-XE** (Flexible NetFlow) — a record with `flow direction`, so egress copies can be removed:
+**Cisco IOS-XE** (Flexible NetFlow) — a record for each direction, with `flow direction` so egress copies can be removed. (2.12.5) Catalyst 9000 switches on IOS-XE 17 take an output monitor only with a record keyed on the output interface, and absolute times instead of sys-uptime; the same lines work on IOS-XE routers. For IPFIX add `export-protocol ipfix` to the exporter and send it to port 4739:
 
 ```
 flow record FT-REC
@@ -62,22 +62,44 @@ flow record FT-REC
  collect interface output
  collect counter bytes long
  collect counter packets long
- collect timestamp sys-uptime first
- collect timestamp sys-uptime last
+ collect timestamp absolute first
+ collect timestamp absolute last
+!
+flow record FT-REC-OUT
+ match ipv4 source address
+ match ipv4 destination address
+ match ipv4 protocol
+ match transport source-port
+ match transport destination-port
+ match interface output
+ match flow direction
+ collect interface input
+ collect counter bytes long
+ collect counter packets long
+ collect timestamp absolute first
+ collect timestamp absolute last
+!
 flow exporter FLOWSPHERA
  destination <COLLECTOR_IP>
  transport udp 2055
  template data timeout 60
+!
 flow monitor FT-MON
  exporter FLOWSPHERA
  record FT-REC
  cache timeout active 60
+!
+flow monitor FT-MON-OUT
+ exporter FLOWSPHERA
+ record FT-REC-OUT
+ cache timeout active 60
+!
 interface GigabitEthernet0/0/0
  ip flow monitor FT-MON input
- ip flow monitor FT-MON output
+ ip flow monitor FT-MON-OUT output
 interface GigabitEthernet0/0/1
  ip flow monitor FT-MON input
- ip flow monitor FT-MON output
+ ip flow monitor FT-MON-OUT output
 ```
 
 **MikroTik RouterOS 7**

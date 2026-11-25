@@ -4,6 +4,32 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.12.5 — 2026-11-25
+### Fixed
+- **Cisco IOS-XE lines that Catalyst 9000 switches take.** On IOS-XE 17 a Catalyst 9000 refused the output monitor of
+  the suggested commands (one record keyed on the input interface) and offers no sys-uptime times. The lines in
+  Settings → Devices and in the documentation now use a record for each direction (`FT-REC`, `FT-REC-OUT`) and absolute
+  times; they work on IOS-XE routers as well. Thanks to the customer who sent the working configuration.
+- **NetFlow v9 with absolute times keeps each flow's own start and end.** A device that sends v9 records with absolute
+  times (as Cisco IOS-XE does with `collect timestamp absolute`) had its flows stored at the moment they arrived; now
+  they keep the times the device gave. The compiled core is 1.9.1.
+- **The map overlay no longer covers the map.** Top source, Top destination and Top service are now one thin,
+  see-through strip along the bottom of the map, and the world map is fitted above it, so no continent sits under it.
+  A long IPv6 address stays whole and no longer runs over Top service; on narrow screens the strip takes a second line.
+- **A country stays lit while the pointer is on it.** On the live map it went dark again after a moment, every time new
+  connections were drawn.
+- **«Local / unknown» in the countries lists is a filter too**, like every other row (in the search: `country:unknown`).
+- **LLDP neighbours on 2.5G and 25G ports.** A Catalyst 9300 with both TwoGigabitEthernet and TwentyFiveGigE ports (and
+  a MikroTik with both sfp1 and sfp-sfpplus1) had two ports with one short name, so a neighbour seen on such a port was
+  placed on neither. Names of the same port written in full and short still match («GigabitEthernet1/0/1» and
+  «Gi1/0/1», «Ethernet 1» and «Ethernet1»).
+- **No guessed links on Cisco.** When the port a device named for an LLDP neighbour matched none of its interfaces, the
+  port's number was taken as the interface number — on Cisco IOS these differ, and Path analysis could show a link on
+  a wrong port. Such a neighbour now stays unplaced instead. Devices without an LLDP port table (FortiGate) work as before.
+- **SNMP readings are stricter.** A device that breaks off a table part way is now noted in the collector journal as
+  an incomplete answer; a value the device sent unreadable is no longer taken as 0; binary values (MAC addresses) are
+  never turned into garbled text.
+
 ## 2.12.4 — 2026-11-23
 
 ### Fixed
