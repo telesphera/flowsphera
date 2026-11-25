@@ -513,13 +513,27 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
   // (2.12.0) a city mark is a filter (its tooltip says so); the pointer shows it can be clicked
   c.on('click', e => { if (e.seriesId === 'remotes' && e.data) placeFilter(e.data.city, e.data.cc);
     else if (e.componentType === 'geo' && ccOf.has(e.name)) placeFilter('', ccOf.get(e.name)); });     // (2.12.4, forum #81) a country
-  // pin the top of the map (Greenland) to the top edge of the panel; the default layout centres it vertically
+  // pin the top of the map (Greenland) to the top edge of the panel; the default layout centres it vertically.
+  // (2.12.5, forum #100) on Overview the land also ends above the strip of top source / destination / service along the
+  // bottom: the zoom shrinks (never grows past 1.25) until Tierra del Fuego (-56°) sits above the strip's top edge
   let roamed = false; c.on('georoam', () => { roamed = true; });
+  const strip = () => { const o = el.parentElement && el.parentElement.querySelector('#heroOvl .overlay'); return o && o.offsetHeight ? o : null; };
   const pinTop = () => { if (roamed || c.isDisposed() || !el.clientHeight) return;
-    const dy = c.convertToPixel({geoIndex:0}, [-40, 83.6])[1] - 6; if (Math.abs(dy) < 1) return;
-    c.setOption({geo:{center:c.convertFromPixel({geoIndex:0}, [el.clientWidth / 2, el.clientHeight / 2 + dy])}}); };
+    const o = strip(), er = el.getBoundingClientRect();
+    const bottom = o ? o.getBoundingClientRect().top - er.top - 6 : el.clientHeight;
+    for (let i = 0; i < 3; i++) {
+      const top = c.convertToPixel({geoIndex:0}, [-40, 83.6])[1], low = c.convertToPixel({geoIndex:0}, [-68, -56])[1];
+      const z0 = c.getOption().geo[0].zoom, z = Math.min(1.25, o ? z0 * (bottom - 6) / (low - top) : 1.25);
+      const dy = top - 6;
+      if (Math.abs(dy) < 1 && Math.abs(z - z0) < .005) return;
+      c.setOption({geo:{zoom:z, center:c.convertFromPixel({geoIndex:0}, [el.clientWidth / 2, el.clientHeight / 2 + dy])}});
+    } };
   pinTop();
-  if (window.ResizeObserver) { const ro = new ResizeObserver(() => requestAnimationFrame(pinTop)); ro.observe(el); onCleanup(() => ro.disconnect()); }
+  if (window.ResizeObserver) { const ro = new ResizeObserver(() => requestAnimationFrame(pinTop)); ro.observe(el); onCleanup(() => ro.disconnect());
+    // the strip comes after the map and may wrap to a second line: refit when it appears or changes height
+    const host = el.parentElement && el.parentElement.querySelector('#heroOvl');
+    if (host) { const mo = new MutationObserver(() => { const o = strip(); if (o) ro.observe(o); requestAnimationFrame(pinTop); });
+      mo.observe(host, {childList:true}); onCleanup(() => mo.disconnect()); } }
   // live arcs: poll new flows, then release them gradually so bursts from the exporter become a steady stream
   // (2.12.1) released at the pace they come in (records per second, smoothed), not a quarter of the queue a tick: the
   // collector writes every 10 s, and a queue emptied in ~4 s left the map still for the next 6 s. A backlog beyond
@@ -1002,12 +1016,14 @@ function mountHero(){
       if (heroScope !== myScope) return null;
       const a = h.rows[0], b = d.rows[0], c = s.rows[0];
       // (2.12.2, forum #78) an address is never cut to «10.88.102.…»: its card keeps its width (the cards wrap instead)
-      const whole = x => /^[\d.]+$|^[\da-f:]+$/i.test(x || '') ? ' class="whole"' : '';
+      // an address is shown whole; a very long one (IPv6 over 28 characters) drops its city and bytes, which stay in the
+      // card's tooltip, so the service next to it keeps its name (2.12.5, forum #100)
+      const whole = x => /^[\d.]+$|^[\da-f:.]+$/i.test(x || '') ? ` class="whole${x.length > 28 ? ' long' : ''}"` : '';
       return `<div class="overlay"><div class="ovl">
         <div${whole(a && (a.name || a.k))}><span class="ico">${icon(ICO.users, 15)}</span><span>${T('Top source')}</span><b title="${esc(a ? a.name || a.k : '—')}">${esc(a ? a.name || a.k : '—')}</b><small>${a ? fmtB(tot(a)) : ''}</small></div>
-        <div${whole(b && b.k)}><span class="ico">${icon(ICO.globe, 15)}</span><span>${T('Top destination')}</span><b title="${esc(b ? b.k : '—')}">${esc(b ? b.k : '—')}</b><small>${b ? [b.city, fmtB(tot(b))].filter(Boolean).join(' · ') : ''}</small></div>
+        <div${whole(b && b.k)}><span class="ico">${icon(ICO.globe, 15)}</span><span>${T('Top destination')}</span><b title="${esc(b ? [b.k, b.city, fmtB(tot(b))].filter(Boolean).join(' · ') : '—')}">${esc(b ? b.k : '—')}</b><small>${b ? [b.city, fmtB(tot(b))].filter(Boolean).join(' · ') : ''}</small></div>
         <div><span class="ico">${icon(ICO.grid, 15)}</span><span>${T('Top service')}</span><b title="${esc(c ? c.k : '—')}">${esc(c ? c.k : '—')}</b><small>${c ? pct(tot(c), s.total) : ''}</small></div></div>
-        ${!live ? '' : `<div class="livebadge"><b>${T('Live')}</b>${T('new connections')}</div>`}</div>`;
+        ${!live ? '' : `<div class="livebadge" title="${T('new connections')}"><b>${T('Live')}</b></div>`}</div>`;
     });
   }
 }

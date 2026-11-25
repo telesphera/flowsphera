@@ -995,9 +995,25 @@ html.kiosk .updpill{display:none}
 .ovl div{max-width:min(300px,100%);flex:1 1 0}
 .ovl span:not(.ico){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hicons > .ph > .legend.mid{gap:8px}.hicons > .ph > .right{gap:8px}
-/* (2.12.5, forum #100) an address card (.whole) is never squeezed below its address: the 300 px cap of the other cards does
-   not apply to it, and when the three cards cannot share one row the next one goes under it instead of being run over (a
-   long IPv6 destination ran over «Top service»). The box is more see-through, so the map under it stays visible */
-.ovl{flex-wrap:wrap;background:rgba(8,16,40,.62);backdrop-filter:blur(1.5px)}
-.ovl div.whole{max-width:none;flex:0 0 auto}
-.ovl div:not(.whole){min-width:min(140px,100%)}
+/* (2.12.5, forum #100) the map overlay is one thin strip along the whole bottom of the map (it was a box over the lower
+   left, over the map): label, value and detail on one line per card, the Live badge at its right end. An address card
+   (.whole) keeps its address whole; the others end with … and the strip wraps to a second line only when even that
+   does not fit. See-through, so the map shows under it */
+.overlay{left:12px;right:12px;bottom:10px;align-items:center;justify-content:flex-start;gap:4px 24px;flex-wrap:wrap;container-type:inline-size;padding:5px 14px;border-radius:10px;pointer-events:auto;
+  background:rgba(8,16,40,.6);border:1px solid var(--edge);backdrop-filter:blur(1.5px)}
+.ovl{display:contents}
+.ovl div{display:flex;align-items:center;gap:7px;flex:0 1 auto;max-width:100%;min-width:0}
+.ovl div.whole{flex:0 0 auto;max-width:100%}
+.ovl div:not(.whole){min-width:min(150px,100%)}
+.ovl div:last-child:not(.whole){flex:1 1 0;min-width:min(110px,100%)}     /* the service name gives way (…) before the strip wraps */
+.ovl .ico{width:22px;height:22px;border-radius:6px;flex:none}
+.ovl .ico svg{width:13px;height:13px}
+.ovl span:not(.ico){flex:none}
+.ovl b{font-size:13px;min-width:0}
+.ovl small{flex:none}
+.livebadge{display:flex;align-items:center;gap:6px;padding:0;border:0;border-radius:0;background:none;white-space:nowrap;
+  position:absolute;right:14px;top:50%;transform:translateY(-50%)}                 /* outside the flow: never a line of its own */
+.overlay:has(.livebadge){padding-right:70px}
+.ovl div.whole.long small{display:none}
+/* a narrow map (1366 px screens) keeps the strip to two lines: the details after the values (bytes, city) step aside */
+@container (max-width: 900px){ .ovl small{display:none} }
