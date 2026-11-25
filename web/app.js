@@ -515,18 +515,24 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
     else if (e.componentType === 'geo' && ccOf.has(e.name)) placeFilter('', ccOf.get(e.name)); });     // (2.12.4, forum #81) a country
   // pin the top of the map (Greenland) to the top edge of the panel; the default layout centres it vertically.
   // (2.12.5, forum #100) on Overview the land also ends above the strip of top source / destination / service along the
-  // bottom: the zoom shrinks (never grows past 1.25) until Tierra del Fuego (-56°) sits above the strip's top edge
+  // bottom: the map keeps its size and moves up until Tierra del Fuego (-56°) is above the strip, giving away at most
+  // the empty Arctic above 72° under the top edge (Yegor: a smaller map looks bad); only a panel too low even for that
+  // makes the map smaller
   let roamed = false; c.on('georoam', () => { roamed = true; });
   const strip = () => { const o = el.parentElement && el.parentElement.querySelector('#heroOvl .overlay'); return o && o.offsetHeight ? o : null; };
+  const y = (lo, la) => c.convertToPixel({geoIndex:0}, [lo, la])[1];
   const pinTop = () => { if (roamed || c.isDisposed() || !el.clientHeight) return;
-    const o = strip(), er = el.getBoundingClientRect();
-    const bottom = o ? o.getBoundingClientRect().top - er.top - 6 : el.clientHeight;
-    for (let i = 0; i < 3; i++) {
-      const top = c.convertToPixel({geoIndex:0}, [-40, 83.6])[1], low = c.convertToPixel({geoIndex:0}, [-68, -56])[1];
-      const z0 = c.getOption().geo[0].zoom, z = Math.min(1.25, o ? z0 * (bottom - 6) / (low - top) : 1.25);
-      const dy = top - 6;
-      if (Math.abs(dy) < 1 && Math.abs(z - z0) < .005) return;
-      c.setOption({geo:{zoom:z, center:c.convertFromPixel({geoIndex:0}, [el.clientWidth / 2, el.clientHeight / 2 + dy])}});
+    const o = strip(), bottom = o ? o.getBoundingClientRect().top - el.getBoundingClientRect().top - 6 : Infinity;
+    let z = 1.25;
+    for (let i = 0; i < 4; i++) {
+      const z0 = c.getOption().geo[0].zoom;
+      if (Math.abs(z - z0) > .001) c.setOption({geo:{zoom:z}});
+      const top = y(-40, 83.6), arctic = y(-40, 72), low = y(-68, -56);
+      const dy = Math.min(Math.max(top - 6, low - bottom), arctic - 6);        // up for the strip, never past 72°
+      if (Math.abs(dy) >= 1) c.setOption({geo:{center:c.convertFromPixel({geoIndex:0}, [el.clientWidth / 2, el.clientHeight / 2 + dy])}});
+      const over = y(-68, -56) - bottom;
+      if (over < 1) return;
+      z *= (bottom - 6) / (y(-68, -56) - y(-40, 72));                           // too low a panel: smaller, from 72° down
     } };
   pinTop();
   if (window.ResizeObserver) { const ro = new ResizeObserver(() => requestAnimationFrame(pinTop)); ro.observe(el); onCleanup(() => ro.disconnect());
