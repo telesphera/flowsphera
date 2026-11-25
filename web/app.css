@@ -995,3 +995,9 @@ html.kiosk .updpill{display:none}
 .ovl div{max-width:min(300px,100%);flex:1 1 0}
 .ovl span:not(.ico){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hicons > .ph > .legend.mid{gap:8px}.hicons > .ph > .right{gap:8px}
+/* (2.12.5, forum #100) an address card (.whole) is never squeezed below its address: the 300 px cap of the other cards does
+   not apply to it, and when the three cards cannot share one row the next one goes under it instead of being run over (a
+   long IPv6 destination ran over «Top service»). The box is more see-through, so the map under it stays visible */
+.ovl{flex-wrap:wrap;background:rgba(8,16,40,.62);backdrop-filter:blur(1.5px)}
+.ovl div.whole{max-width:none;flex:0 0 auto}
+.ovl div:not(.whole){min-width:min(140px,100%)}

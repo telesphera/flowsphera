@@ -502,6 +502,13 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
       {id:'siteGuard', type:'scatter', coordinateSystem:'geo', zlevel:4, silent:true, symbolSize:48, itemStyle:{color:'rgba(0,0,0,0)'}, tooltip:{show:false},
         label:{show:true, position:'inside', formatter:'\u2003', fontSize:16, color:'rgba(0,0,0,0)'}, labelLayout:{hideOverlap:true}, data:siteLbl},
     ]});
+  // (2.12.5, forum #99) every setOption of the live arcs (once a second) and of the data (every 15 s) drops ECharts' hover
+  // state, so a country under a still pointer lit up and went dark again; the country under the pointer is lit again after each
+  let hoverCc = null;
+  c.on('mouseover', e => { if (e.componentType === 'geo') hoverCc = e.name; });
+  c.on('mouseout', e => { if (e.componentType === 'geo' && hoverCc === e.name) hoverCc = null; });
+  c.on('globalout', () => { hoverCc = null; });
+  const put = o => { c.setOption(o); if (hoverCc) c.dispatchAction({type:'highlight', geoIndex:0, name:hoverCc}); };
   c.setOption(dataOpt(geo));
   // (2.12.0) a city mark is a filter (its tooltip says so); the pointer shows it can be clicked
   c.on('click', e => { if (e.seriesId === 'remotes' && e.data) placeFilter(e.data.city, e.data.cc);
@@ -531,12 +538,12 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
       if (s && (s[0] !== r.lon || s[1] !== r.lat)) live.push({coords:up ? [s, [r.lon, r.lat]] : [[r.lon, r.lat], s], color:up ? C.up : C.down, born:now});
       if (onConn) onConn(r);
     }
-    if (n || live.length !== lastLen) c.setOption({series:[{id:'live', data:live.map(e => ({coords:e.coords, lineStyle:{color:e.color}}))}]});
+    if (n || live.length !== lastLen) put({series:[{id:'live', data:live.map(e => ({coords:e.coords, lineStyle:{color:e.color}}))}]});
     lastLen = live.length;
   };
   let lastLen = -1;
   if (arcs && !isCustom()) { poll(); every(4000, poll); every(tickS * 1000, tick); }    // a past period: no live arcs
-  return geo => { if (!c.isDisposed()) c.setOption(dataOpt(geo)); };
+  return geo => { if (!c.isDisposed()) put(dataOpt(geo)); };
 }
 const globeStill = () => { try { return localStorage.getItem('ft-globe-still') === '1'; } catch (e) { return false; } };
 function globe(el, geo){
@@ -2689,7 +2696,7 @@ function vTalkers(){
       c.setOption({animation:false, geo:{map:'world', silent:true, roam:false, left:0, right:0, top:0, bottom:0, itemStyle:{areaColor:'rgba(30,56,120,.45)', borderColor:'rgba(110,160,255,.25)', borderWidth:.4}},
         series:[{type:'scatter', coordinateSystem:'geo', symbolSize:d => 4 + 10 * Math.sqrt(d[2] / cmax), itemStyle:{color:'#27D3F5', shadowBlur:10, shadowColor:'#27D3F5'},
           data:city.rows.filter(r => r.la || r.lo).map(r => [r.lo, r.la, tot(r)])}]}); });
-    return `<div class="geomini"><div class="chart" id="cMini" style="height:120px"></div><div class="dl">${cc.rows.map((r, i) => `<i class="idot" style="background:${cols[i]}"></i><button class="link" data-f="country" data-v="${esc(r.k)}">${esc(r.k ? ccName(r.k) : T('Local'))}</button><span class="p">${pct(tot(r), cc.total)}</span><span class="t"></span>`).join('')}${rest > 0 ? `<i class="idot" style="background:${C.other}"></i><span>${T('Others')}</span><span class="p">${pct(rest, cc.total)}</span><span class="t"></span>` : ''}</div></div>`; });
+    return `<div class="geomini"><div class="chart" id="cMini" style="height:120px"></div><div class="dl">${cc.rows.map((r, i) => `<i class="idot" style="background:${cols[i]}"></i><button class="link" data-f="country" data-v="${esc(r.k || 'unknown')}">${esc(r.k ? ccName(r.k) : T('Local'))}</button><span class="p">${pct(tot(r), cc.total)}</span><span class="t"></span>`).join('')}${rest > 0 ? `<i class="idot" style="background:${C.other}"></i><span>${T('Others')}</span><span class="p">${pct(rest, cc.total)}</span><span class="t"></span>` : ''}</div></div>`; });
   section('tDetail', async () => { const d = await api('top', {dim:byNet ? 'net_svc' : 'host_svc', limit:6});
     return `<div class="tw"><table class="compact"><thead><tr><th>${byNet ? T('Network') : T('Host')}</th><th>${T('Main service')}</th><th>${T('Protocol')}</th><th class="num">${T('Volume')}</th></tr></thead><tbody>${d.rows.map((r, i) => { const c = byNet && !r.k ? C.other : HOSTPAL[i % HOSTPAL.length];
       return `<tr${byNet && !r.k ? '' : ` class="click" data-f="${fk}" data-v="${esc(r.k)}"`}><td><span class="idot" style="background:${c};box-shadow:0 0 8px ${c}"></span><span class="${byNet ? '' : 'mono'}">${esc(byNet ? netLabel(r.k) : r.name || r.k)}</span></td><td>${svcBadge(r.service)}</td><td><span class="tag">${L4[r.proto] || r.proto} · ${esc(dv(r.l7))}</span></td><td class="num mono">${fmtB(tot(r))}</td></tr>`; }).join('')}</tbody></table></div>`; });
@@ -2786,8 +2793,9 @@ function vApps(){
 const noSite = () => { const n = META.devices.filter(d => d.lat == null || d.lon == null).map(d => d.name || d.ip);
   return n.length ? `<p class="note warn">${T('No lines from devices without a location — set City and Country (or Latitude and Longitude) in Settings → Devices')}: ${esc(n.join(', '))}</p>` : ''; };
 // the countries as bars (Geolocation, and a panel of the Overview since 2.11.0)
+// (2.12.5, forum #98) the «Local / unknown» row filters too: country:unknown = the records with no country
 const ccList = t => { const max = t.rows.length ? tot(t.rows[0]) : 1;
-  return `<div class="blist">${t.rows.map(r => `<button class="brow" data-f="country" data-v="${esc(r.k)}"><span class="n"><span class="tag mono">${esc(r.k || '—')}</span>&nbsp; ${esc(r.k ? ccName(r.k) : T('Local / unknown'))}</span><span class="t">${fmtB(tot(r))}</span><span class="p">${pct(tot(r), t.total)}</span>
+  return `<div class="blist">${t.rows.map(r => `<button class="brow" data-f="country" data-v="${esc(r.k || 'unknown')}"><span class="n"><span class="tag mono">${esc(r.k || '—')}</span>&nbsp; ${esc(r.k ? ccName(r.k) : T('Local / unknown'))}</span><span class="t">${fmtB(tot(r))}</span><span class="p">${pct(tot(r), t.total)}</span>
       <span class="bar2" style="width:${(100 * tot(r) / max).toFixed(1)}%"><i class="u" style="width:${(100 * r.up / (tot(r) || 1)).toFixed(1)}%"></i><i class="d" style="flex:1"></i></span></button>`).join('')}</div>`; };
 function vGeo(){
   const v = document.getElementById('view');
@@ -3383,7 +3391,12 @@ const mtIfs = o => o.ifs.length ? o.ifs.join(',') : 'all';     // RouterOS: a li
 // RouterOS samples sampling-interval packets in a row, then skips sampling-space: 1 of N = 1 and N - 1
 const mtSamp = o => o.rate > 1 ? ` packet-sampling=yes sampling-interval=1 sampling-space=${o.rate - 1}` : '';
 const each = (o, examples, fn) => (o.ifs.length ? o.ifs : examples).map(fn).join('');
-const ciscoFnf = proto => named(rated((ip, port, o) => `${o.rate > 1 ? `sampler FT-SAMP\n mode random 1 out-of ${o.rate}\n` : ''}flow record FT-REC\n match ipv4 source address\n match ipv4 destination address\n match ipv4 protocol\n match transport source-port\n match transport destination-port\n match interface input\n match flow direction\n collect interface output\n collect counter bytes long\n collect counter packets long\n collect timestamp sys-uptime first\n collect timestamp sys-uptime last\nflow exporter FLOWSPHERA\n destination ${ip}\n transport udp ${port}\n export-protocol ${proto}\n template data timeout 60\nflow monitor FT-MON\n exporter FLOWSPHERA\n record FT-REC\n cache timeout active 60\n! ${T('on every interface to watch (WAN and LAN)')}${each(o, ['GigabitEthernet0/0/0'], n => `\ninterface ${n}\n ip flow monitor FT-MON${o.rate > 1 ? ' sampler FT-SAMP' : ''} input\n ip flow monitor FT-MON${o.rate > 1 ? ' sampler FT-SAMP' : ''} output`)}`));
+// (2.12.5, a customer's Catalyst 9000 on IOS-XE 17) a record keyed on the input interface is refused on an output monitor
+// there, and sys-uptime times are not offered: one record per direction (FT-REC / FT-REC-OUT) and absolute times (the
+// core reads fields 152/153 in v9 since 1.9.1). The same lines work on IOS-XE routers (ISR 4000, ASR 1000, C8000)
+const fnfRec = (name, key, other) => `flow record ${name}\n match ipv4 source address\n match ipv4 destination address\n match ipv4 protocol\n match transport source-port\n match transport destination-port\n match interface ${key}\n match flow direction\n collect interface ${other}\n collect counter bytes long\n collect counter packets long\n collect timestamp absolute first\n collect timestamp absolute last\n!\n`;
+const ciscoFnf = proto => named(rated((ip, port, o) => { const smp = o.rate > 1 ? ' sampler FT-SAMP' : '';
+  return `${o.rate > 1 ? `sampler FT-SAMP\n mode random 1 out-of ${o.rate}\n!\n` : ''}${fnfRec('FT-REC', 'input', 'output')}${fnfRec('FT-REC-OUT', 'output', 'input')}flow exporter FLOWSPHERA\n destination ${ip}\n transport udp ${port}\n export-protocol ${proto}\n template data timeout 60\n!\nflow monitor FT-MON\n exporter FLOWSPHERA\n record FT-REC\n cache timeout active 60\n!\nflow monitor FT-MON-OUT\n exporter FLOWSPHERA\n record FT-REC-OUT\n cache timeout active 60\n! ${T('on every interface to watch (WAN and LAN)')}${each(o, ['GigabitEthernet0/0/0'], n => `\ninterface ${n}\n ip flow monitor FT-MON${smp} input\n ip flow monitor FT-MON-OUT${smp} output`)}`; }));
 const juniper = (tpl, kw) => named(rated((ip, port, o) => `set services flow-monitoring ${tpl} template FT ipv4-template\nset forwarding-options sampling instance FT input rate ${o.rate}\nset forwarding-options sampling instance FT family inet output flow-server ${ip} port ${port}\nset forwarding-options sampling instance FT family inet output flow-server ${ip} ${kw} template FT\n# ${T('on every interface to watch (WAN and LAN)')}${each(o, ['ge-0/0/0.0'], n => { const [ifd, unit = '0'] = n.split('.');
     return `\nset interfaces ${ifd} unit ${unit} family inet sampling input\nset interfaces ${ifd} unit ${unit} family inet sampling output`; })}`));
 const vyos = v => named(rated((ip, port, o) => `set system flow-accounting netflow version ${v}\nset system flow-accounting netflow server ${ip} port ${port}\n${o.rate > 1 ? `set system flow-accounting netflow sampling-rate ${o.rate}\n` : ''}set system flow-accounting netflow timeout expiry-interval 60\n${each(o, ['eth0'], n => `set system flow-accounting interface ${n}\n`)}# ${T('VyOS 1.4 and newer: set system flow-accounting netflow interface eth0')}\ncommit; save`));

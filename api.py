@@ -580,6 +580,10 @@ def scope(q):
                                  else f'(exporter = {{f{i}d{n}:String}} AND (in_if = {{f{i}i{n}:UInt32}} OR out_if = {{f{i}i{n}:UInt32}}))')
                 cond = '(' + ' OR '.join(parts) + ')'
                 fcols |= {'exporter', 'in_if', 'out_if'}
+        elif k == 'country' and v.lower() in ('unknown', '--'):
+            # (2.12.5, forum #98) «Local / unknown» in a countries list is a filter too: the records with no country
+            cond = "country = ''"
+            fcols.add('country')
         elif k in FILTERS:
             col, typ = FILTERS[k]
             if typ != 'String' and not (v.isascii() and v.isdigit()) or k == 'dir' and v not in DIR_VALUES:
