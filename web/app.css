@@ -1005,7 +1005,7 @@ html.kiosk .updpill{display:none}
 .ovl div{display:flex;align-items:center;gap:7px;flex:0 1 auto;max-width:100%;min-width:0}
 .ovl div.whole{flex:0 0 auto;max-width:100%}
 .ovl div:not(.whole){min-width:min(150px,100%)}
-.ovl div:last-child:not(.whole){flex:1 1 0;min-width:min(110px,100%)}     /* the service name gives way (…) before the strip wraps */
+.ovl div:last-child:not(.whole){flex:1 1 0;min-width:min(200px,100%)}     /* the service name gives way (…) before the strip wraps; (2.12.6) never below ~90 px of name — a 39-character IPv6 at 1600 px left «AT…» on one line, now the card takes the second line */
 .ovl .ico{width:22px;height:22px;border-radius:6px;flex:none}
 .ovl .ico svg{width:13px;height:13px}
 .ovl span:not(.ico){flex:none}
