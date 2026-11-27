@@ -2704,8 +2704,8 @@ def _event_match(a, f):
         return any(common.network_of(x).lower() == v.lower() for x in addrs if x)
     if k == 'device':
         return v == (a.get('exporter') or a.get('device'))
-    if k == 'country':
-        return v == a.get('country')
+    if k == 'country':          # (2.12.6) «Local / unknown» (unknown or --) = no country, as scope() reads it
+        return not a.get('country') if v.lower() in ('unknown', '--') else v == a.get('country')
     if k == 'asn':
         w = v[2:] if v.upper().startswith('AS') else v
         return (w.isdigit() and int(w) == int(a.get('asn') or 0)) or (not w.isdigit() and w.lower() in str(a.get('org', '')).lower())
@@ -3572,6 +3572,33 @@ ROUTES = {'/api/hosts/find': api_hosts_find, '/api/hosts/dns': api_hosts_dns, '/
           '/api/alerts': api_alerts, '/api/ifload': api_ifload, '/api/ingest': api_ingest, '/api/apps': api_apps,
           '/api/capacity': api_capacity, '/api/capacity/iface': api_capacity_iface, '/api/usage': api_usage, '/api/qos': api_qos, '/api/conversations': api_conversations}
 STATIC = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.json': 'application/json; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2'}
+# (2.12.6, forum #102) the front end is asked again after every upgrade: html/js/css/json are «no-cache» + ETag (the
+# browser keeps its copy and gets 304 while the file is the same), and index.html names app.css / brand.js / boot.js
+# with ?v=<version-mtime>, boot.js passes it on to app.js. Before: max-age=86400 without a validator — after an
+# upgrade the browser ran the OLD app.js up to a day (the Version card, from the API, already said the new one)
+REVALIDATE = ('.html', '.js', '.css', '.json')
+FRONT = ('app.js', 'app.css', 'brand.js', 'boot.js')
+
+
+def static_etag(st):
+    return f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+
+
+def front_stamp():
+    """<VERSION>.<BUILD>-<newest mtime of the front end files>: changes with an upgrade and with a stage deploy"""
+    t = 0
+    for f in FRONT:
+        try:
+            t = max(t, int(os.stat(os.path.join(WEB_DIR, f)).st_mtime))
+        except OSError:
+            pass
+    return f'{VERSION}.{BUILD}-{t:x}'
+
+
+def stamp_index(body, stamp):
+    for f in ('app.css', 'brand.js', 'boot.js'):
+        body = body.replace(f'"{f}"'.encode(), f'"{f}?v={stamp}"'.encode())
+    return body
 
 
 AUTH = None
@@ -3656,6 +3683,9 @@ class H(BaseHTTPRequestHandler):
         if getattr(self, '_disposition', None):
             self.send_header('Content-Disposition', self._disposition)
             self._disposition = None
+        if getattr(self, '_etag', None):
+            self.send_header('ETag', self._etag)
+            self._etag = None
         self.send_header('X-Content-Type-Options', 'nosniff')
         try:
             self.end_headers()
@@ -3758,10 +3788,18 @@ class H(BaseHTTPRequestHandler):
         full = os.path.realpath(os.path.join(root, path))
         if not full.startswith(os.path.realpath(root) + os.sep) or not os.path.isfile(full):
             return self.send(404, b'not found', 'text/plain')
+        ext = os.path.splitext(full)[1]
+        ctype, cache = STATIC.get(ext, 'application/octet-stream'), 'no-cache' if ext in REVALIDATE else 'max-age=86400'
+        if path == 'index.html':     # carries the front end's stamp: no ETag of its own, always sent
+            with open(full, 'rb') as f:
+                return self.send(200, stamp_index(f.read(), front_stamp()), ctype, cache)
+        st = os.stat(full)
+        self._etag = static_etag(st)
+        if self.headers.get('If-None-Match') == self._etag:
+            return self.send(304, b'', ctype, cache)
         with open(full, 'rb') as f:
             body = f.read()
-        ext = os.path.splitext(full)[1]
-        self.send(200, body, STATIC.get(ext, 'application/octet-stream'), 'no-cache' if ext == '.html' else 'max-age=86400')
+        self.send(200, body, ctype, cache)
 
 
     def do_POST(self):

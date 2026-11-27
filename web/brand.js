@@ -93,9 +93,15 @@
     // (2.12.5) only when the added nodes bring a logo: the pages are drawn again often, and every change redrew it
     const hasLogo = n => n.nodeType === 1 && (n.matches('canvas[data-logo]') || !!n.querySelector('canvas[data-logo]'));
     let queued = false;
+    const redraw = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; all(); }); };
+    // (2.12.6) a logo hidden at the start (folded menu on a phone: width 0, skipped) or resized is drawn again when its
+    // size changes — the MutationObserver alone missed both (a class change only; fit() never ran after a resize)
+    const ro = window.ResizeObserver ? new ResizeObserver(redraw) : null;
+    const watch = () => ro && document.querySelectorAll('canvas[data-logo]').forEach(c => ro.observe(c));
+    watch();
     new MutationObserver(list => {
       if (queued || !list.some(m => [...m.addedNodes].some(hasLogo))) return;
-      queued = true; requestAnimationFrame(() => { queued = false; all(); });
+      watch(); redraw();
     }).observe(document.body, {childList: true, subtree: true});
   });
 })();

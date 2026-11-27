@@ -2307,5 +2307,9 @@
  "on the command line": "у командному рядку",
  "Click: show only this country": "Клік: показати лише цю країну",
  "Click: stop the globe": "Клік: зупинити глобус",
- "Click: turn the globe again": "Клік: знову обертати глобус"
+ "Click: turn the globe again": "Клік: знову обертати глобус",
+ "Cisco IOS-XE (Catalyst 9000, ISR 1000/4000). Older IOS 15: write «timestamp sys-uptime» instead of «timestamp absolute»": "Cisco IOS-XE (Catalyst 9000, ISR 1000/4000). Старіший IOS 15: пишіть «timestamp sys-uptime» замість «timestamp absolute»",
+ "Show only this instead": "Натомість показати лише це",
+ "Leave this out instead": "Натомість виключити це",
+ "Recent filters": "Недавні фільтри"
 }

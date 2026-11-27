@@ -1017,3 +1017,7 @@ html.kiosk .updpill{display:none}
 .ovl div.whole.long small{display:none}
 /* a narrow map (1366 px screens) keeps the strip to two lines: the details after the values (bytes, city) step aside */
 @container (max-width: 900px){ .ovl small{display:none} }
+/* (2.12.6, forum #112) the flip of a filter chip (≠ / =) and the recent filters in the search guide */
+.fchip button.flip{font-weight:700;color:var(--ink3);margin-left:2px}
+.fchip button.flip:hover{color:var(--ink)}
+.qguide h5.qrecent{margin:6px 8px 4px;font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)}

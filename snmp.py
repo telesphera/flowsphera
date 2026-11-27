@@ -205,7 +205,6 @@ class Session:
         with os.fdopen(fd, 'w') as f:
             f.write(_conf(entry))
         self.raw = False
-        self.partial = []           # (2.12.5) walks the device ended with an error after some rows
         self.env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'SNMPCONFPATH': self.dir, 'SNMP_PERSISTENT_DIR': self.dir,
                     'HOME': self.dir, 'MIBS': '', 'MIBDIRS': '/dev/null'}
 
@@ -228,12 +227,16 @@ class Session:
         err = '\n'.join(x for x in (r.stderr.strip() or r.stdout.strip()).splitlines() if not x.startswith('Created directory'))
         if r.returncode and not rows:
             raise SnmpError(classify(err), err.splitlines()[0] if err else f'{tool} exit {r.returncode}')
-        if r.returncode:
+        if r.returncode and tool == 'snmpbulkwalk':
             # (2.12.5) the device broke the walk part way (RouterOS 7.17 ipCidrRoute: rows, then «OID not increasing»):
-            # the rows read are kept, but the journal says the table may be incomplete instead of passing it as whole
+            # the rows read are kept, but the journal says the table may be incomplete instead of passing it as whole.
+            # (2.12.6) walks only (a get where one OID has no table is no broken table), once per device and table per
+            # process: the counters thread walks every minute — a device that always breaks a walk wrote 1,440 lines a day
             first = err.splitlines()[0] if err else f'exit {r.returncode}'
-            print(f'snmp {self.target}: {" ".join(oids)} ended early after {len(rows)} values ({first}) — the table may be incomplete', flush=True)
-            self.partial.append(' '.join(oids))
+            key = (self.target, ' '.join(oids))
+            if key not in _PARTIAL_SAID:
+                _PARTIAL_SAID.add(key)
+                print(f'snmp {self.target}: {key[1]} ended early after {len(rows)} values ({first}) — the table may be incomplete (said once)', flush=True)
         return rows
 
     def get(self, *oids):
@@ -248,6 +251,7 @@ class Session:
             self.raw = False
 
 
+_PARTIAL_SAID = set()       # (2.12.6) (device, OID) whose broken walk the journal has already reported
 LINE = re.compile(r'^\.?([\d.]+) = (?:([A-Za-z][\w-]*): ?)?(.*)$')
 NO_VALUE = ('No Such Object', 'No Such Instance', 'No more variables')
 
@@ -283,7 +287,10 @@ def value(t, v, raw=False):
         except UnicodeDecodeError:
             return b.hex()
         txt = txt.rstrip('\x00')
-        return txt if txt.isprintable() else b.hex()
+        # (2.12.6) line breaks and tabs are text: a Cisco IOS sysDescr has several lines (str.isprintable() is False for
+        # \r \n \t) and turned into ~400 hex digits; only other control bytes mean «not text»
+        flat = txt.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+        return txt.replace('\r\n', '\n').replace('\r', '\n').strip() if flat.isprintable() else b.hex()
     if t == 'STRING' or (not t and v.startswith('"')):
         return v[1:-1].replace('\\"', '"').replace('\\\\', '\\') if len(v) >= 2 and v[0] == v[-1] == '"' else v
     if t in ('INTEGER', 'Gauge32', 'Counter32', 'Counter64', 'Unsigned32', 'Timeticks'):

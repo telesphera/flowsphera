@@ -94,7 +94,16 @@ function putFilter(f, add){
   if (!FILTER_KEYS.includes(k) || !v) return;
   state.filters = state.filters.filter(x => !(x.k === k && (x.v === v || (!add && !neg && !x.neg))));
   state.filters.push({k, v, neg});
+  rememberFilter({k, v, neg});
 }
+// (2.12.6, forum #112) the filters used last (typed or clicked), newest first, offered in the empty search box
+const RECENT_MAX = 8;
+function recentFilters(){ try { const a = JSON.parse(localStorage.getItem('ft-recent-filters') || '[]');
+  return Array.isArray(a) ? a.filter(f => f && FILTER_KEYS.includes(f.k) && f.v).slice(0, RECENT_MAX) : []; } catch (e) { return []; } }
+function rememberFilter(f){ try { const a = recentFilters().filter(x => !(x.k === f.k && String(x.v) === f.v && !!x.neg === f.neg));
+  localStorage.setItem('ft-recent-filters', JSON.stringify([{k:f.k, v:f.v, neg:f.neg}, ...a].slice(0, RECENT_MAX))); } catch (e) {} }
+// a filter as it is typed in the search box (device by name, a named network with its spaces as typed)
+const filterText = f => `${f.neg ? '-' : ''}${f.k}:${f.k === 'net' ? netTyped(f.v) : f.v}`;     // device: by its address (qParse takes it)
 function addFilter(k, v, neg){ putFilter({k, v, neg}); state.sel = null; render(); }
 // (2.12.0, forum #54) a click on a city on the map filters by it — with its country, so Paris, France is not Paris, Texas;
 // a place without a city name (only the country is known) filters by the country
@@ -475,7 +484,7 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
     const cities = new Map(); for (const r of rows) { const k = r.city + '|' + r.country; const g = cities.get(k) || {name:r.city || ccName(r.country), city:r.city, cc:r.country, lon:r.lo, lat:r.la, v:0}; g.v += tot(r); cities.set(k, g); }
     return {geo:{regions}, series:[
       {id:'agg', data:rows.map((r, k) => { const s = siteGeo(r.exporter); if (!s) return null; const f = tot(r) / rmax;
-        return {coords:[s, [r.lo, r.la]], lineStyle:{width:k < MAP_LINES ? .6 + 3.4 * f : .4 + .6 * f, opacity:k < MAP_LINES ? .22 : .1, color:r.up > r.dn ? C.up : C.down}}; }).filter(Boolean)},
+        return {coords:[s, [r.lo, r.la]], lineStyle:{width:k < MAP_LINES ? .7 + 3.3 * f : .9 + .5 * f, opacity:k < MAP_LINES ? .32 : .24, color:r.up > r.dn ? C.up : C.down}}; }).filter(Boolean)},   /* (2.12.6, forum #105) the small places' lines were .1 opaque and .4 px: invisible on a NOC screen, read as «traffic over» — now plainly seen, still under the top 20 */
       {id:'remotes', data:[...cities.values()].map(g => { const onSite = META.devices.some(d => d.lat != null && Math.abs(d.lat - g.lat) < 0.6 && Math.abs(d.lon - g.lon) < 0.9);
         return {name:g.name, full:`${g.name}, ${ccName(g.cc)}`, city:g.city, cc:g.cc, value:[g.lon, g.lat, g.v], v:g.v, label:onSite ? {show:false} : undefined}; })}]};
   };
@@ -506,8 +515,10 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
   // state, so a country under a still pointer lit up and went dark again; the country under the pointer is lit again after each
   let hoverCc = null;
   c.on('mouseover', e => { if (e.componentType === 'geo') hoverCc = e.name; });
-  c.on('mouseout', e => { if (e.componentType === 'geo' && hoverCc === e.name) hoverCc = null; });
-  c.on('globalout', () => { hoverCc = null; });
+  // (2.12.6) a highlight set by dispatchAction is not undone by ECharts' own hover-out: put it down when the pointer leaves
+  const unlit = () => { if (hoverCc) c.dispatchAction({type:'downplay', geoIndex:0, name:hoverCc}); hoverCc = null; };
+  c.on('mouseout', e => { if (e.componentType === 'geo' && hoverCc === e.name) unlit(); });
+  c.on('globalout', unlit);
   const put = o => { c.setOption(o); if (hoverCc) c.dispatchAction({type:'highlight', geoIndex:0, name:hoverCc}); };
   c.setOption(dataOpt(geo));
   // (2.12.0) a city mark is a filter (its tooltip says so); the pointer shows it can be clicked
@@ -518,15 +529,16 @@ function flatMap(el, geo, onConn, arcs = !isCustom()){
   // bottom: the map keeps its size and moves up until Tierra del Fuego (-56°) is above the strip, giving away at most
   // the empty Arctic above 72° under the top edge (Yegor: a smaller map looks bad); only a panel too low even for that
   // makes the map smaller
-  let roamed = false; c.on('georoam', () => { roamed = true; });
+  let roamed = false, mapZ = 1.25; c.on('georoam', () => { roamed = true; });
   const strip = () => { const o = el.parentElement && el.parentElement.querySelector('#heroOvl .overlay'); return o && o.offsetHeight ? o : null; };
   const y = (lo, la) => c.convertToPixel({geoIndex:0}, [lo, la])[1];
   const pinTop = () => { if (roamed || c.isDisposed() || !el.clientHeight) return;
     const o = strip(), bottom = o ? o.getBoundingClientRect().top - el.getBoundingClientRect().top - 6 : Infinity;
     let z = 1.25;
     for (let i = 0; i < 4; i++) {
-      const z0 = c.getOption().geo[0].zoom;
-      if (Math.abs(z - z0) > .001) c.setOption({geo:{zoom:z}});
+      // (2.12.6) the zoom kept here, not read back by getOption() (a deep copy of every series, 4× a resize); a panel too
+      // low for the whole land lowers scaleLimit.min with it — at min 1 ECharts cut z ≈ .8 back to 1, land under the strip
+      if (Math.abs(z - mapZ) > .001) { mapZ = z; c.setOption({geo:{zoom:z, scaleLimit:{min:Math.min(1, z), max:60}}}); }
       const top = y(-40, 83.6), arctic = y(-40, 72), low = y(-68, -56);
       const dy = Math.min(Math.max(top - 6, low - bottom), arctic - 6);        // up for the strip, never past 72°
       if (Math.abs(dy) >= 1) c.setOption({geo:{center:c.convertFromPixel({geoIndex:0}, [el.clientWidth / 2, el.clientHeight / 2 + dy])}});
@@ -3418,7 +3430,8 @@ const each = (o, examples, fn) => (o.ifs.length ? o.ifs : examples).map(fn).join
 // core reads fields 152/153 in v9 since 1.9.1). The same lines work on IOS-XE routers (ISR 4000, ASR 1000, C8000)
 const fnfRec = (name, key, other) => `flow record ${name}\n match ipv4 source address\n match ipv4 destination address\n match ipv4 protocol\n match transport source-port\n match transport destination-port\n match interface ${key}\n match flow direction\n collect interface ${other}\n collect counter bytes long\n collect counter packets long\n collect timestamp absolute first\n collect timestamp absolute last\n!\n`;
 const ciscoFnf = proto => named(rated((ip, port, o) => { const smp = o.rate > 1 ? ' sampler FT-SAMP' : '';
-  return `${o.rate > 1 ? `sampler FT-SAMP\n mode random 1 out-of ${o.rate}\n!\n` : ''}${fnfRec('FT-REC', 'input', 'output')}${fnfRec('FT-REC-OUT', 'output', 'input')}flow exporter FLOWSPHERA\n destination ${ip}\n transport udp ${port}\n export-protocol ${proto}\n template data timeout 60\n!\nflow monitor FT-MON\n exporter FLOWSPHERA\n record FT-REC\n cache timeout active 60\n!\nflow monitor FT-MON-OUT\n exporter FLOWSPHERA\n record FT-REC-OUT\n cache timeout active 60\n! ${T('on every interface to watch (WAN and LAN)')}${each(o, ['GigabitEthernet0/0/0'], n => `\ninterface ${n}\n ip flow monitor FT-MON${smp} input\n ip flow monitor FT-MON-OUT${smp} output`)}`; }));
+  // (2.12.6) said which Cisco this is: IOS 15 (ISR G2) may refuse `timestamp absolute` — it takes the sys-uptime lines
+  return `! ${T('Cisco IOS-XE (Catalyst 9000, ISR 1000/4000). Older IOS 15: write «timestamp sys-uptime» instead of «timestamp absolute»')}\n${o.rate > 1 ? `sampler FT-SAMP\n mode random 1 out-of ${o.rate}\n!\n` : ''}${fnfRec('FT-REC', 'input', 'output')}${fnfRec('FT-REC-OUT', 'output', 'input')}flow exporter FLOWSPHERA\n destination ${ip}\n transport udp ${port}\n export-protocol ${proto}\n template data timeout 60\n!\nflow monitor FT-MON\n exporter FLOWSPHERA\n record FT-REC\n cache timeout active 60\n!\nflow monitor FT-MON-OUT\n exporter FLOWSPHERA\n record FT-REC-OUT\n cache timeout active 60\n! ${T('on every interface to watch (WAN and LAN)')}${each(o, ['GigabitEthernet0/0/0'], n => `\ninterface ${n}\n ip flow monitor FT-MON${smp} input\n ip flow monitor FT-MON-OUT${smp} output`)}`; }));
 const juniper = (tpl, kw) => named(rated((ip, port, o) => `set services flow-monitoring ${tpl} template FT ipv4-template\nset forwarding-options sampling instance FT input rate ${o.rate}\nset forwarding-options sampling instance FT family inet output flow-server ${ip} port ${port}\nset forwarding-options sampling instance FT family inet output flow-server ${ip} ${kw} template FT\n# ${T('on every interface to watch (WAN and LAN)')}${each(o, ['ge-0/0/0.0'], n => { const [ifd, unit = '0'] = n.split('.');
     return `\nset interfaces ${ifd} unit ${unit} family inet sampling input\nset interfaces ${ifd} unit ${unit} family inet sampling output`; })}`));
 const vyos = v => named(rated((ip, port, o) => `set system flow-accounting netflow version ${v}\nset system flow-accounting netflow server ${ip} port ${port}\n${o.rate > 1 ? `set system flow-accounting netflow sampling-rate ${o.rate}\n` : ''}set system flow-accounting netflow timeout expiry-interval 60\n${each(o, ['eth0'], n => `set system flow-accounting interface ${n}\n`)}# ${T('VyOS 1.4 and newer: set system flow-accounting netflow interface eth0')}\ncommit; save`));
@@ -5444,9 +5457,13 @@ function renderShell(){
   // on narrow screens the menu is a scrolling row: keep the current page in sight
   const cur = document.querySelector('#nav [aria-current="page"]'), navEl = document.getElementById('nav');
   if (cur && navEl.scrollWidth > navEl.clientWidth) navEl.scrollLeft += cur.getBoundingClientRect().left - navEl.getBoundingClientRect().left - (navEl.clientWidth - cur.offsetWidth) / 2;
-  document.getElementById('chips').innerHTML = (isCustom() ? `<span class="fchip period"><span class="k">${T('period')}:</span><button class="lnk" id="periodEdit" title="${T('Change the period')}">${esc(rangeLabel())}</button><button aria-label="${T('Back to')} ${esc(presetLabel(state.prevRange))}" title="${T('Back to')}: ${esc(presetLabel(state.prevRange))}" id="periodX">×</button></span>` : '') + state.filters.map((f, i) => `<span class="fchip ${f.neg ? 'neg' : ''}" title="${esc(chipKey(f) + (f.neg ? ' ≠ ' : ': ') + f.v)}"><span class="k">${f.neg ? '-' : ''}${f.k}:</span>${esc(f.k === 'device' ? devName(f.v) : (f.k === 'in_if' || f.k === 'out_if' || f.k === 'iface') && /^\d+$/.test(f.v) ? (ifLabel(pathDevice(), +f.v) === String(f.v) ? 'if ' + f.v : ifLabel(pathDevice(), +f.v)) : f.v)}<button aria-label="${T('Remove filter')}" data-i="${i}">×</button></span>`).join('')
+  document.getElementById('chips').innerHTML = (isCustom() ? `<span class="fchip period"><span class="k">${T('period')}:</span><button class="lnk" id="periodEdit" title="${T('Change the period')}">${esc(rangeLabel())}</button><button aria-label="${T('Back to')} ${esc(presetLabel(state.prevRange))}" title="${T('Back to')}: ${esc(presetLabel(state.prevRange))}" id="periodX">×</button></span>` : '') + state.filters.map((f, i) => `<span class="fchip ${f.neg ? 'neg' : ''}" title="${esc(chipKey(f) + (f.neg ? ' ≠ ' : ': ') + f.v)}"><span class="k">${f.neg ? '-' : ''}${f.k}:</span>${esc(f.k === 'device' ? devName(f.v) : (f.k === 'in_if' || f.k === 'out_if' || f.k === 'iface') && /^\d+$/.test(f.v) ? (ifLabel(pathDevice(), +f.v) === String(f.v) ? 'if ' + f.v : ifLabel(pathDevice(), +f.v)) : f.v)}<button class="flip" aria-label="${f.neg ? T('Show only this instead') : T('Leave this out instead')}" title="${f.neg ? T('Show only this instead') : T('Leave this out instead')}" data-n="${i}">${f.neg ? '=' : '≠'}</button><button aria-label="${T('Remove filter')}" data-i="${i}">×</button></span>`).join('')
     + (state.filters.length ? `<button class="lnk" id="clearF">${T('Clear all')}</button>` : '');
   document.querySelectorAll('#chips button[data-i]').forEach(b => b.onclick = () => { state.filters.splice(+b.dataset.i, 1); render(); });
+  // (2.12.6, forum #112) ≠ turns a filter into its exclusion (a big item clicked into a filter, then left out to see the
+  // rest); = turns it back. Another positive filter of the key stays (add): flipping one must not drop the others
+  document.querySelectorAll('#chips button[data-n]').forEach(b => b.onclick = () => { const f = state.filters[+b.dataset.n]; if (!f) return;
+    state.filters.splice(+b.dataset.n, 1); putFilter({k:f.k, v:f.v, neg:!f.neg}, true); state.sel = null; render(); });
   const cf = document.getElementById('clearF'); if (cf) cf.onclick = () => { state.filters = []; render(); };
   const px = document.getElementById('periodX'); if (px) px.onclick = () => { state.range = state.prevRange || '24h'; render(); };
   const pe = document.getElementById('periodEdit'); if (pe) pe.onclick = openPeriod;
@@ -5772,7 +5789,10 @@ function qGuide(){
   const word = qWord(), list = qSuggest(word, qGuide);
   qItems = [];
   if (list && !list.length) { qBox.hidden = true; return; }
-  qBox.innerHTML = guideHtml(list, qItems, T('<b>-</b>key:value leaves out · two values of one key: either of them · <b>Enter</b> applies · <b>Backspace</b> in an empty box removes the last filter · <b>/</b> opens the search'));
+  // (2.12.6, forum #112) the empty box first offers the filters used last; one not in use now is applied by a click
+  const rec = list === null ? recentFilters().filter(f => !state.filters.some(x => x.k === f.k && String(x.v) === String(f.v) && !!x.neg === !!f.neg))
+    .map(f => ({text:filterText(f), label:f.k === 'device' ? `${f.neg ? '-' : ''}device:${devName(f.v)}` : filterText(f), note:chipKey(f), apply:true})) : [];
+  qBox.innerHTML = (rec.length ? `<h5 class="qrecent">${T('Recent filters')}</h5>${guideHtml(rec, qItems, '')}` : '') + guideHtml(list, qItems, T('<b>-</b>key:value leaves out · two values of one key: either of them · <b>Enter</b> applies · <b>Backspace</b> in an empty box removes the last filter · <b>/</b> opens the search'));
   qBox.hidden = false; qSel = Math.min(qSel, qItems.length - 1); qMark();
 }
 // (1.11.1) the same guide for the filter fields of forms (reports): a suggestion completes the word — nothing is

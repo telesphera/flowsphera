@@ -26,9 +26,9 @@ _IF_LONG = {
     'gigabitethernet': 'gi', 'gi': 'gi', 'gig': 'gi',
     'twogigabitethernet': 'tw', 'tw': 'tw',
     'fivegigabitethernet': 'fi', 'fi': 'fi',
-    'tengigabitethernet': 'te', 'te': 'te', 'ten': 'te',
+    'tengigabitethernet': 'te', 'tengige': 'te', 'te': 'te', 'ten': 'te',     # (2.12.6) IOS-XR TenGigE
     'twentyfivegige': 'twe', 'twe': 'twe',
-    'fortygigabitethernet': 'fo', 'fo': 'fo',
+    'fortygigabitethernet': 'fo', 'fortygige': 'fo', 'fo': 'fo',
     'fiftygige': 'fif', 'fif': 'fif',
     'hundredgige': 'hu', 'hu': 'hu',
     'twohundredgige': 'two', 'fourhundredgige': 'fou',
@@ -38,6 +38,14 @@ _IF_LONG = {
     'loopback': 'lo', 'lo': 'lo',
     'tunnel': 'tu', 'tu': 'tu',
     'appgigabitethernet': 'ap', 'ap': 'ap',
+    # (2.12.6) the rest of the Cisco forms the old two-letter rule matched (CHANGELOG 2.12.5 promised they still do)
+    'serial': 'se', 'se': 'se',
+    'management': 'ma', 'mgmteth': 'mg', 'ma': 'ma',
+    'dialer': 'di', 'di': 'di',
+    'multilink': 'mu', 'mu': 'mu',
+    'virtual-template': 'vt', 'virtualtemplate': 'vt', 'vt': 'vt',
+    'bundle-ether': 'be', 'be': 'be',
+    'bdi': 'bd', 'bd': 'bd',
 }
 
 
@@ -83,8 +91,10 @@ def local_if(d, port):
         if hit is not None:
             return hit
         # (2.12.5) the device names its LLDP ports and none of the names is an interface: its port number is no ifIndex
-        # either (Cisco IOS numbers LLDP ports on its own) — a guess here put a neighbour on a wrong port; leave it unknown
-        if sub != 3 and (txt or desc):
+        # either (Cisco IOS numbers LLDP ports on its own) — a guess here put a neighbour on a wrong port; leave it unknown.
+        # (2.12.6) only for a port ID that IS a name (1 interfaceAlias, 5 interfaceName, 7 local as text): with 2, 4, 6
+        # (component, network address, circuit) or a numeric local the port number stays the ifIndex guess as before
+        if sub in (1, 5) or (sub == 7 and txt and not txt.isdigit()):
             return None
     # no own entry for the port (FortiOS has no lldpLocPortTable: port 5 = ifIndex 5, proven on a FortiWiFi 40F), or one
     # that gives only a MAC: most devices number LLDP ports by ifIndex

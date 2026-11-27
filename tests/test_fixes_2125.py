@@ -44,7 +44,7 @@ class CiscoCommands(unittest.TestCase):
         a = js.index('const fnfRec =')
         b = js.index('\nconst juniper', a)
         code = js[a:b]
-        self.assertNotIn('sys-uptime', code)
+        self.assertNotIn('collect timestamp sys-uptime', code)   # (2.12.6) the IOS 15 hint names it, the commands do not
         self.assertIn('collect timestamp absolute first', code)
         self.assertIn("fnfRec('FT-REC', 'input', 'output')", code)
         self.assertIn("fnfRec('FT-REC-OUT', 'output', 'input')", code)

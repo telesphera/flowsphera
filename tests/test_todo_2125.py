@@ -90,25 +90,29 @@ class Values(unittest.TestCase):
 class BrokenWalk(unittest.TestCase):
     def session(self):
         s = snmp.Session.__new__(snmp.Session)
-        s.target, s.raw, s.env, s.partial = 'udp:192.0.2.1:161', False, {}, []
+        s.target, s.raw, s.env = 'udp:192.0.2.1:161', False, {}
         return s
 
-    def test_rows_then_error_is_kept_and_reported(self):
+    def setUp(self):
+        snmp._PARTIAL_SAID.clear()
+
+    def test_rows_then_error_is_kept_and_reported_once(self):
         out = '.1.3.6.1.2.1.4.24.4.1.1.1 = INTEGER: 1\n.1.3.6.1.2.1.4.24.4.1.1.2 = INTEGER: 2\n'
         r = subprocess.CompletedProcess([], 1, out, 'Error: OID not increasing: .1.3.6.1.2.1.4.24.4.1.1.2\n')
         s = self.session()
         with mock.patch.object(snmp.subprocess, 'run', return_value=r), mock.patch('builtins.print') as pr:
             rows = s.run('snmpbulkwalk', [], ['1.3.6.1.2.1.4.24.4'])
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(s.partial, ['1.3.6.1.2.1.4.24.4'])
-        self.assertIn('incomplete', pr.call_args[0][0])
+            self.assertEqual(len(rows), 2)
+            self.assertIn('incomplete', pr.call_args[0][0])
+            s.run('snmpbulkwalk', [], ['1.3.6.1.2.1.4.24.4'])      # (2.12.6) the next minute: not again
+        self.assertEqual(pr.call_count, 1)
 
-    def test_clean_walk_is_not_partial(self):
-        r = subprocess.CompletedProcess([], 0, '.1.3.6.1.2.1.1.5.0 = STRING: "x"\n', '')
+    def test_get_with_a_missing_oid_is_not_reported(self):
+        r = subprocess.CompletedProcess([], 2, '.1.3.6.1.2.1.1.5.0 = STRING: "x"\n', 'Error in packet')
         s = self.session()
-        with mock.patch.object(snmp.subprocess, 'run', return_value=r):
-            s.run('snmpget', [], ['1.3.6.1.2.1.1.5.0'])
-        self.assertEqual(s.partial, [])
+        with mock.patch.object(snmp.subprocess, 'run', return_value=r), mock.patch('builtins.print') as pr:
+            self.assertEqual(len(s.run('snmpget', [], ['1.3.6.1.2.1.1.5.0', '1.3.6.1.2.1.1.9.0'])), 1)
+        pr.assert_not_called()
 
 
 if __name__ == '__main__':
