@@ -1005,7 +1005,7 @@ html.kiosk .updpill{display:none}
 .ovl div{display:flex;align-items:center;gap:7px;flex:0 1 auto;max-width:100%;min-width:0}
 .ovl div.whole{flex:0 0 auto;max-width:100%}
 .ovl div:not(.whole){min-width:min(150px,100%)}
-.ovl div:last-child:not(.whole){flex:1 1 0;min-width:min(200px,100%)}     /* the service name gives way (…) before the strip wraps; (2.12.6) never below ~90 px of name — a 39-character IPv6 at 1600 px left «AT…» on one line, now the card takes the second line */
+.ovl div:last-child:not(.whole){flex:1 1 0;min-width:min(200px,100%);max-width:300px}     /* the service name gives way (…) before the strip wraps; (2.12.6) never below ~90 px of name — a 39-character IPv6 at 1600 px left «AT…» on one line, now the card takes the second line */
 .ovl .ico{width:22px;height:22px;border-radius:6px;flex:none}
 .ovl .ico svg{width:13px;height:13px}
 .ovl span:not(.ico){flex:none}
@@ -1016,7 +1016,9 @@ html.kiosk .updpill{display:none}
 .overlay:has(.livebadge){padding-right:70px}
 .ovl div.whole.long small{display:none}
 /* a narrow map (1366 px screens) keeps the strip to two lines: the details after the values (bytes, city) step aside */
-@container (max-width: 900px){ .ovl small{display:none} }
+@container (max-width: 900px){ .ovl small{display:none}
+  /* (2.12.6) a narrow map: the service card drops its label (its icon stays) so its name keeps ~80 px in two lines */
+  .ovl div:last-child:not(.whole){min-width:min(110px,100%);max-width:300px} .ovl div:last-child:not(.whole) span:not(.ico){display:none} }
 /* (2.12.6, forum #112) the flip of a filter chip (≠ / =) and the recent filters in the search guide */
 .fchip button.flip{font-weight:700;color:var(--ink3);margin-left:2px}
 .fchip button.flip:hover{color:var(--ink)}
