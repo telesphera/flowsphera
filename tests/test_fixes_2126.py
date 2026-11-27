@@ -71,6 +71,22 @@ class LldpPortSubtypes(unittest.TestCase):
         self.assertEqual(neighbours.local_if(self.dev(5, 'port8'), 7), 8)
 
 
+class LldpManagementAddress(unittest.TestCase):
+    """A device that keeps to LLDP-MIB shows only columns 3–5 of lldpRemManAddrTable: the address is in the index"""
+    def test_columns_3_to_5_give_the_address(self):
+        class S:
+            def walk(self, oid, raw=False):
+                if oid == snmp.LLDP_LOC:
+                    return [(f'{oid}.7.1.2.1', 'INTEGER', 5), (f'{oid}.7.1.3.1', 'Hex-STRING', hx('Gi1/0/1'))]
+                if oid == snmp.LLDP_REM:
+                    return [(f'{oid}.4.0.1.1', 'INTEGER', 4), (f'{oid}.5.0.1.1', 'Hex-STRING', 'bb000000a59a')]
+                if oid == snmp.LLDP_MAN:
+                    return [(f'{oid}.{c}.0.1.1.1.4.192.0.2.32', 'INTEGER', 2) for c in (3, 4, 5)]
+                return []
+        lldp, _ = snmp._lldp(S())
+        self.assertEqual(lldp['rem'][0][7], ['192.0.2.32'])
+
+
 class FrontEndCache(unittest.TestCase):
     def test_index_names_the_stamp(self):
         body = b'<link rel="stylesheet" href="app.css">\n<script src="brand.js"></script>\n<script src="boot.js"></script>'

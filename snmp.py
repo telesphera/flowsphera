@@ -451,7 +451,9 @@ def _lldp(s):
             r[col - 3] = _text(v) if col in (8, 9) else v
     for o, _, v in man:
         k = (_suffix(o, LLDP_MAN) or '').split('.')
-        if len(k) > 6 and k[0] == '1' and all(x.isdigit() for x in k):       # lldpRemManAddrSubtype: the index holds the address
+        # the index holds the address. (2.12.6) any column: RouterOS / FortiOS show the index columns 1–2 too, a device that
+        # keeps to LLDP-MIB (Cisco) only 3–5 — reading column 1 alone lost every management address there
+        if len(k) > 6 and k[0] in ('1', '2', '3', '4', '5') and all(x.isdigit() for x in k):
             a = _inet([int(x) for x in k[4:]])
             r = rows.get((k[2], k[3]))
             if a is not None and r is not None and str(a) not in r[7]:
