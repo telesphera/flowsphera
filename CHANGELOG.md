@@ -4,6 +4,39 @@ FlowSphera follows [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 in Settings → General, at the bottom of every page, in the collector log and by the installer. Fixes may also come as
 a new **build** of a version (`BUILD`, shown as «2.0.0 build 2»); `flowsphera upgrade` installs a newer build too.
 
+## 2.12.6 — 2026-11-27
+### New
+- **One click turns a filter into its exclusion.** Every filter chip has a **≠** button: a big item clicked into a filter
+  can now be left out to see the rest more clearly, and **=** turns it back. Typing `-` before a filter
+  (`-ip:10.0.0.5`, `-l7:STUN`) still works as before.
+- **Recent filters.** The empty search box first offers the last eight filters you used, typed or clicked; one click
+  applies one again. They are kept in your browser.
+
+### Fixed
+- **The new version opens at once after an upgrade.** The browser could keep running the previous interface for up to a
+  day after `flowsphera upgrade` (the Version card already showed the new number), and only Ctrl+F5 helped. The page now
+  asks the server for its files again after every upgrade.
+- **Lines to small places on the map are plainly visible.** Places outside the top 20 had lines so thin and faint that a
+  wall screen did not show them, which read as «no traffic there any more». They stay thinner than the top 20, but can
+  be seen.
+- **A country goes dark again when the pointer leaves it** on the live map.
+- **The whole map fits a low Overview panel** (for example a 1366×768 wall screen): the land no longer sits under the
+  strip at the bottom.
+- **«Local / unknown» filters the Events page too**; before, it left the list empty there.
+- **Multi-line device descriptions are text again.** A Cisco IOS description (several lines) and interface aliases that
+  end with a line break were shown as long rows of hex digits since 2.12.5.
+- **LLDP links on more Cisco ports.** Short and full names of IOS-XR TenGigE and FortyGigE ports, Serial, Management,
+  Dialer, Multilink, Virtual-Template and Bundle-Ether interfaces match again. Switches that announce their LLDP ports by
+  a network address or a component name have their neighbours placed by the port number again.
+- **The collector journal notes an SNMP table the device broke off once**, not every minute.
+- **The Cisco commands say which Cisco they are for**: IOS-XE; older IOS 15 takes `timestamp sys-uptime` instead of
+  `timestamp absolute`.
+- **The logo is drawn on phones with reduced motion** also when the menu was folded at the start.
+- **Compiled core 1.9.2:** FortiGate application names arrive also when the FortiGate exports **IPFIX** (before, only
+  NetFlow v9); NetFlow v9 records with only a start time, or with times in seconds, keep their own times; the
+  application names kept in memory are capped, so a collector open to any source stays within its memory even
+  against forged packets.
+
 ## 2.12.5 — 2026-11-25
 ### Fixed
 - **Cisco IOS-XE lines that Catalyst 9000 switches take.** On IOS-XE 17 a Catalyst 9000 refused the output monitor of
